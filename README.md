@@ -5,15 +5,15 @@
 ### Cloud Run Env Manager
 ```js
 new keetapulumi.cloudrun.EnvManager('mycloudrun-env', {
-    variables: {
-        PLAINTEXT_VARIABLE: 'Hello',
-        PLAINTEXT_VARIABLE_TWO: { value: 'Hello', secret: false },
-        SECRET_VARIABLE: { value: pulumi.random(), secret: true }
-    },
+	variables: {
+		PLAINTEXT_VARIABLE: 'Hello',
+		PLAINTEXT_VARIABLE_TWO: { value: 'Hello', secret: false },
+		SECRET_VARIABLE: { value: pulumi.random(), secret: true }
+	},
 
-    // serviceAccount/secretRegionName are optional
-    // These both must be defined when you have one or more secrets
-    // The service account is used to grant read access to the secrets that are being created
+	// serviceAccount/secretRegionName are optional
+	// These both must be defined when you have one or more secrets
+	// The service account is used to grant read access to the secrets that are being created
 	serviceAccount: new gcp.serviceaccount.Account(),
 	secretRegionName: 'us-east1'
 }, { provider });
@@ -22,38 +22,38 @@ new keetapulumi.cloudrun.EnvManager('mycloudrun-env', {
 ## Docker
 ```js
 new keetapulumi.docker.Image('mydockerimage', {
-    // Docker image name
+	// Docker image name
 	imageName: 'my-app',
 
-    // Registry to push image too
+	// Registry to push image too
 	registryUrl: 'gcr.io/xyz'.
 
-    versioning: {
-        type: 'FILE' | 'PLAIN'
+	versioning: {
+		type: 'FILE' | 'PLAIN'
 
-        // If type is FILE, specify a path to generate a hash from
-        fromFile: './path/to/file',
+		// If type is FILE, specify a path to generate a hash from
+		fromFile: './path/to/file',
 
-        // If type is PLAIN specify a version identifier
-        value: '0.0.0',
-    }
+		// If type is PLAIN specify a version identifier
+		value: '0.0.0',
+	}
 
-    // Docker --build-arg's
+	// Docker --build-arg's
 	buildArgs: { 
-        ARG_TO_PASS: 'node16'
-    },
+		ARG_TO_PASS: 'node16'
+	},
 
-    // Path of directory to build
+	// Path of directory to build
 	buildDirectory: string;
 
-    // Optional path to dockerfile
+	// Optional path to dockerfile
 	dockerfile: string;
 
-    // Optional `--platform` tag to pass to docker
+	// Optional `--platform` tag to pass to docker
 	platform: 'linux/amd64';
 
-    // Optional - Additional arguments to pass to docker build
-    additionalArguments: []
+	// Optional - Additional arguments to pass to docker build
+	additionalArguments: []
 });
 
 // Generate an identifier from a specific path
