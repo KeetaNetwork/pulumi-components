@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "KeetaPay Typescript Eslint Config",
   "repository": "https://github.com/keetapay/pulumi-components.git",
-  "main": "index.js",
+  "main": "dist/index.js",
   "author": "@ezraripps",
   "license": "ISC",
   "scripts": {

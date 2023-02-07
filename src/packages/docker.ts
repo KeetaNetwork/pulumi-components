@@ -5,7 +5,7 @@ import { promisifyExec } from '../utils';
 import * as pulumi from '@pulumi/pulumi';
 import { GCP_COMPONENT_PREFIX } from './gcp/constants';
 
-function getFileResourceIdentifier(path: string): string {
+export function getFileResourceIdentifier(path: string): string {
 	const hash = crypto.createHash('sha1');
 
 	const fileContents = fs.readFileSync(path);
@@ -16,12 +16,13 @@ function getFileResourceIdentifier(path: string): string {
 
 interface GCPDockerImageInput {
 	imageName: string;
-	registry_url: string;
-	resource_path: string;
-	build_args: { [key: string]: string };
+	registryUrl: string;
+	versioning: { type: 'FILE', fromFile: string; } | { type: 'PLAIN', value: string; };
+	buildArgs: { [key: string]: string };
 	buildDirectory: string;
-	dockerfile: string;
+	dockerfile?: string;
 	platform?: string;
+	additionalArguments?: string[]
 }
 
 export class Image extends pulumi.ComponentResource {
@@ -47,11 +48,11 @@ export class Image extends pulumi.ComponentResource {
 				args.push('--platform', input.platform);
 			}
 
-			for (const [ key, value ] of Object.entries(input.build_args)) {
+			for (const [ key, value ] of Object.entries(input.buildArgs)) {
 				args.push('--build-arg', `${key}=${value}`);
 			}
 
-			await promisifyExec('docker', args);
+			await promisifyExec('docker', [...args, ...(input.additionalArguments || [])]);
 
 			await promisifyExec('docker', [ 'image', 'push', imageURI ]);
 		}
@@ -62,14 +63,22 @@ export class Image extends pulumi.ComponentResource {
 	constructor(prefix: string, input: GCPDockerImageInput, opts?: pulumi.CustomResourceOptions) {
 		super(`${GCP_COMPONENT_PREFIX}:DockerImage`, prefix, {}, { ...opts });
 
-		const versionIdentifier = getFileResourceIdentifier(input.resource_path);
-
 		let forwardSlash = '';
-		if (!input.registry_url.endsWith('/')) {
+		if (!input.registryUrl.endsWith('/')) {
 			forwardSlash = '/';
 		}
 
-		const imageURI = `${input.registry_url}${forwardSlash}${input.imageName}:${versionIdentifier}`;
+		let versionIdentifier;
+
+		if (input.versioning.type === 'FILE') {
+			versionIdentifier = getFileResourceIdentifier(input.versioning.fromFile);
+		} else if (input.versioning.type === 'PLAIN') {
+			versionIdentifier = input.versioning.value;
+		} else {
+			throw new Error(`Invalid docker versioning input ${JSON.stringify(input.versioning)}`);
+		}
+
+		const imageURI = `${input.registryUrl}${forwardSlash}${input.imageName}:${versionIdentifier}`;
 		if (Image.AwaitingOutput[imageURI] === undefined) {
 			Image.AwaitingOutput[imageURI] = this.checkImage(imageURI, input);
 		}
