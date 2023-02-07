@@ -11,7 +11,7 @@ interface ExecResponse {
 	stderr: string[];
 }
 
-export function promisifyExec(script: string, args: string[] = []) {
+export function promisifyExec(script: string, args: string[] = []): Promise<ExecResponse> {
 	return new Promise(function(resolve, reject) {
 		const child = spawn(script, args);
 
