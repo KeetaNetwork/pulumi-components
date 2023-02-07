@@ -64,7 +64,7 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 				continue;
 			}
 
-			this.variableOutput.push(this.makeSecretVariable(name, asString));
+			this.variableOutput.push(this.makeSecretVariable(variableName, asString));
 		}
 
 		this.registerOutputs({ variableOutput: this.variableOutput });
