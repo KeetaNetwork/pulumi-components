@@ -18,7 +18,7 @@ interface GCPDockerImageInput {
 	imageName: string;
 	registryUrl: string;
 	versioning: { type: 'FILE', fromFile: string; } | { type: 'PLAIN', value: string; };
-	buildArgs: { [key: string]: string };
+	buildArgs: { [key: string]: string | undefined };
 	buildDirectory: string;
 	dockerfile?: string;
 	platform?: string;
@@ -49,7 +49,7 @@ export class Image extends pulumi.ComponentResource {
 			}
 
 			for (const [ key, value ] of Object.entries(input.buildArgs)) {
-				args.push('--build-arg', `${key}=${value}`);
+				args.push('--build-arg', `${key}=${value ?? ''}`);
 			}
 
 			await promisifyExec('docker', [...args, ...(input.additionalArguments || [])]);
