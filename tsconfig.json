@@ -1,0 +1,17 @@
+{
+	"compilerOptions": {
+		"target": "ES2016",
+		"lib": ["DOM", "ES2016", "ES2020.Promise"],
+		"rootDir": "./src",
+		"moduleResolution": "node",
+		"esModuleInterop": true,
+		"strict": true,
+		"declaration": true,
+		"outDir": "dist",
+		"sourceMap": true
+	},
+	"include": [
+		"src/**/*.ts"
+	],
+	"exclude": [ "dist", "dist/**" ]
+}

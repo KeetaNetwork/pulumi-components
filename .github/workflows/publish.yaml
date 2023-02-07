@@ -1,0 +1,37 @@
+
+name: Package Publish
+
+on:
+  push:
+    branches:
+     - main
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 14
+          registry-url: 'https://npm.pkg.github.com'
+
+      - name: Install Packages
+        run: npm install
+      
+      - name: Build
+        run: npm run tsc
+
+      - name: Check version changes
+        uses: EndBug/version-check@v1
+        id: check
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          diff-search: true
+
+      - name: Publish Package
+        if: steps.check.outputs.changed == 'true'
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
