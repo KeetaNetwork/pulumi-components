@@ -4,6 +4,7 @@ import { GCP_COMPONENT_PREFIX } from './constants';
 import type { OutputWrapped } from '../../types';
 import type { GcpRegionName } from './regions';
 import { normalizeName } from '../../utils';
+import { getServiceAccountMemberID } from './misc';
 
 interface EnvironmentVariables {
 	[name: string]: OutputWrapped<string | number> | {
@@ -16,10 +17,12 @@ interface CloudRunEnvManagerInput {
 	variables: EnvironmentVariables;
 	serviceAccount?: gcp.serviceaccount.Account;
 	secretRegionName?: GcpRegionName;
+	prefix?: string;
 }
 
 export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvManagerInput {
 	#name: string;
+	#prefix: string;
 
 	readonly variables: EnvironmentVariables;
 	readonly variableOutput: gcp.types.input.cloudrun.ServiceTemplateSpecContainerEnv[] = [];
@@ -30,6 +33,7 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 		super(`${GCP_COMPONENT_PREFIX}:CloudRunEnvManager`, name, input, { ...opts });
 
 		this.#name = name;
+		this.#prefix = input.prefix ?? this.#name;
 		this.serviceAccount = input.serviceAccount;
 		this.secretRegionName = input.secretRegionName;
 		this.variables = input.variables;
@@ -67,7 +71,7 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 	}
 
 	private makeSecretVariable(name: string, value: OutputWrapped<string>) {
-		const secretName = normalizeName(this.#name, name);
+		const secretName = normalizeName(this.#prefix, name);
 
 		if (!this.serviceAccount || !this.secretRegionName) {
 			throw new Error('Cannot create secret without providing serviceAccount and RegionName to EnvVariables()');
@@ -89,7 +93,7 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 
 		new gcp.secretmanager.SecretIamBinding(`${secretName}-iam-binding`, {
 			secretId: secret.secretId,
-			members: [ pulumi.interpolate`serviceAccount:${this.serviceAccount.email}` ],
+			members: [ getServiceAccountMemberID(this.serviceAccount) ],
 			role: 'roles/secretmanager.secretAccessor'
 		}, { parent: secret });
 
