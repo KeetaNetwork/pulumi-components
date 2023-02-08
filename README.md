@@ -14,7 +14,7 @@ new keetapulumi.cloudrun.EnvManager('mycloudrun-env', {
 	// serviceAccount/secretRegionName are optional
 	// These both must be defined when you have one or more secrets
 	// The service account is used to grant read access to the secrets that are being created
-	serviceAccount: new gcp.serviceaccount.Account(),
+	serviceAccount: pulumi.interpolate`serviceAccount:${new gcp.serviceaccount.Account().email}`,
 	secretRegionName: 'us-east1'
 }, { provider });
 ```
@@ -69,8 +69,6 @@ const sleeper = keetapulumi.sleeper.makeSleeper('vpc-sleeper', vpc, 30);
 // Will wait 30 seconds after VPC deletion to delete
 const vpcconnector = new gcp.vpcaccess.connector('needs-sleeper', { ... }, { parent: sleeper })
 ```
-
-## Misc
 
 ### Types
 ```js

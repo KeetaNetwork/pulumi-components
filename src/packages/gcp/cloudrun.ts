@@ -4,7 +4,6 @@ import { GCP_COMPONENT_PREFIX } from './constants';
 import type { OutputWrapped } from '../../types';
 import type { GcpRegionName } from './regions';
 import { normalizeName } from '../../utils';
-import { getServiceAccountMemberID } from './misc';
 
 interface EnvironmentVariables {
 	[name: string]: OutputWrapped<string | number> | {
@@ -15,7 +14,7 @@ interface EnvironmentVariables {
 
 interface CloudRunEnvManagerInput {
 	variables: EnvironmentVariables;
-	serviceAccount?: gcp.serviceaccount.Account;
+	serviceAccount?: pulumi.Input<string>;
 	secretRegionName?: GcpRegionName;
 	prefix?: string;
 }
@@ -26,7 +25,7 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 
 	readonly variables: EnvironmentVariables;
 	readonly variableOutput: gcp.types.input.cloudrun.ServiceTemplateSpecContainerEnv[] = [];
-	readonly serviceAccount?: gcp.serviceaccount.Account;
+	readonly serviceAccount?: pulumi.Input<string>;
 	readonly secretRegionName?: GcpRegionName;
 
 	constructor(name: string, input: CloudRunEnvManagerInput, opts?: pulumi.CustomResourceOptions) {
@@ -93,7 +92,7 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 
 		new gcp.secretmanager.SecretIamBinding(`${secretName}-iam-binding`, {
 			secretId: secret.secretId,
-			members: [ getServiceAccountMemberID(this.serviceAccount) ],
+			members: [ this.serviceAccount ],
 			role: 'roles/secretmanager.secretAccessor'
 		}, { parent: secret });
 
