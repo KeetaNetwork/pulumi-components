@@ -32,32 +32,36 @@ export class Image extends pulumi.ComponentResource {
 
 	private async checkImage(imageURI: string, input: GCPDockerImageInput) {
 		try {
-			// Remove the local copy of the image
-			await promisifyExec('docker', [ 'rm', imageURI ]);
-
-			// Attempt to pull the remote version of the image
-			await promisifyExec('docker', [ 'pull', imageURI ]);
-		} catch {
-			const args = [ 'build', input.buildDirectory, '-t', imageURI ];
-
-			if (input.dockerfile) {
-				args.push('-f', input.dockerfile);
+			try {
+				// Remove the local copy of the image
+				await promisifyExec('docker', [ 'rm', imageURI ]);
+	
+				// Attempt to pull the remote version of the image
+				await promisifyExec('docker', [ 'pull', imageURI ]);
+			} catch {
+				const args = [ 'build', input.buildDirectory, '-t', imageURI ];
+	
+				if (input.dockerfile) {
+					args.push('-f', input.dockerfile);
+				}
+	
+				if (input.platform) {
+					args.push('--platform', input.platform);
+				}
+	
+				for (const [ key, value ] of Object.entries(input.buildArgs ?? {})) {
+					args.push('--build-arg', `${key}=${value ?? ''}`);
+				}
+	
+				await promisifyExec('docker', [...args, ...(input.additionalArguments || [])]);
+	
+				await promisifyExec('docker', [ 'image', 'push', imageURI ]);
 			}
-
-			if (input.platform) {
-				args.push('--platform', input.platform);
-			}
-
-			for (const [ key, value ] of Object.entries(input.buildArgs ?? {})) {
-				args.push('--build-arg', `${key}=${value ?? ''}`);
-			}
-
-			await promisifyExec('docker', [...args, ...(input.additionalArguments || [])]);
-
-			await promisifyExec('docker', [ 'image', 'push', imageURI ]);
+	
+			return imageURI;
+		} catch(e) {
+			throw e;
 		}
-
-		return imageURI;
 	}
 
 	constructor(prefix: string, input: GCPDockerImageInput, opts?: pulumi.CustomResourceOptions) {
