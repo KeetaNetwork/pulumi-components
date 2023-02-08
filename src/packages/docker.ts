@@ -35,31 +35,33 @@ export class Image extends pulumi.ComponentResource {
 			try {
 				// Remove the local copy of the image
 				await promisifyExec('docker', [ 'rm', imageURI ]);
-	
+
 				// Attempt to pull the remote version of the image
 				await promisifyExec('docker', [ 'pull', imageURI ]);
 			} catch {
 				const args = [ 'build', input.buildDirectory, '-t', imageURI ];
-	
+
 				if (input.dockerfile) {
 					args.push('-f', input.dockerfile);
 				}
-	
+
 				if (input.platform) {
 					args.push('--platform', input.platform);
 				}
-	
+
 				for (const [ key, value ] of Object.entries(input.buildArgs ?? {})) {
 					args.push('--build-arg', `${key}=${value ?? ''}`);
 				}
-	
+
 				await promisifyExec('docker', [...args, ...(input.additionalArguments || [])]);
-	
+
 				await promisifyExec('docker', [ 'image', 'push', imageURI ]);
 			}
-	
+
 			return imageURI;
-		} catch(e) {
+		} catch (e) {
+			console.log(`Failed to build docker image ${imageURI}`, e);
+
 			throw e;
 		}
 	}
