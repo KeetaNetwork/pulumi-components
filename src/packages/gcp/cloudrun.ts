@@ -5,8 +5,13 @@ import type { OutputWrapped } from '../../types';
 import type { GcpRegionName } from './regions';
 import { normalizeName } from '../../utils';
 
+export interface EnvironmentGCPSecretData {
+	version: OutputWrapped<string>;
+	name: OutputWrapped<string>;
+}
+
 interface EnvironmentVariables {
-	[name: string]: OutputWrapped<string | number> | {
+	[name: string]: EnvironmentGCPSecretData | OutputWrapped<string | number> | {
 		value: OutputWrapped<string | number>;
 		secret: boolean;
 	}
@@ -17,6 +22,10 @@ interface CloudRunEnvManagerInput {
 	serviceAccount?: pulumi.Input<string>;
 	secretRegionName?: GcpRegionName;
 	prefix?: string;
+}
+
+function isEnvironmentGCPSecretData(val: any): val is EnvironmentGCPSecretData {
+	return typeof val === 'object' && val && val.version && val.name;
 }
 
 export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvManagerInput {
@@ -39,34 +48,60 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 
 		for (const variableName in input.variables) {
 			const valueOrWrapper = input.variables[variableName];
-			let value: OutputWrapped<string | number>;
-			let secret = false;
-			if (pulumi.Output.isInstance(valueOrWrapper)) {
-				value = valueOrWrapper;
-			} else if (typeof valueOrWrapper === 'object') {
+			if (isEnvironmentGCPSecretData(valueOrWrapper)) {
+				this.variableOutput.push(this.registerExistingSecret(variableName, valueOrWrapper));
+
+				continue;
+			}
+
+			let value = valueOrWrapper;
+			let isSecret = false;
+
+			if (typeof valueOrWrapper === 'object' && !pulumi.Output.isInstance(valueOrWrapper)) {
 				value = valueOrWrapper.value;
-				secret = valueOrWrapper.secret;
-			} else {
-				value = valueOrWrapper;
+				isSecret = valueOrWrapper.secret;
 			}
 
 			const asString = pulumi.output(value).apply(function(val) {
 				return(String(val));
 			});
 
-			if (!secret) {
-				this.variableOutput.push({
-					name: variableName,
-					value: asString
-				});
-
+			if (isSecret) {
+				this.variableOutput.push(this.makeSecretVariable(variableName, asString));
 				continue;
 			}
 
-			this.variableOutput.push(this.makeSecretVariable(variableName, asString));
+			this.variableOutput.push({
+				name: variableName,
+				value: asString
+			});
 		}
 
 		this.registerOutputs({ variableOutput: this.variableOutput });
+	}
+
+	private registerExistingSecret(name: string, secret: EnvironmentGCPSecretData) {
+		const bindingName = normalizeName(this.#prefix, 'non-managed', name, 'iam-binding');
+
+		if (!this.serviceAccount) {
+			throw new Error('Cannot create a secret binding without providing serviceAccount and RegionName to EnvVariables()');
+		}
+
+		new gcp.secretmanager.SecretIamBinding(bindingName, {
+			secretId: secret.name,
+			members: [ this.serviceAccount ],
+			role: 'roles/secretmanager.secretAccessor'
+		}, { parent: this });
+
+		return({
+			name: name,
+			valueFrom: {
+				secretKeyRef: {
+					key: secret.version ?? 'latest',
+					name: secret.name
+				}
+			}
+		});
 	}
 
 	private makeSecretVariable(name: string, value: OutputWrapped<string>) {
