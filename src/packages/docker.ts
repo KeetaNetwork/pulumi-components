@@ -1,15 +1,41 @@
 import crypto from 'crypto';
 import fs from 'fs';
+import path from 'path';
 import type { OutputWrapped } from '../types';
 import { promisifyExec } from '../utils';
 import * as pulumi from '@pulumi/pulumi';
 import { GCP_COMPONENT_PREFIX } from './gcp/constants';
 
-export function getFileResourceIdentifier(path: string): string {
+function updateHashWithSingleFile(fullPath: string, hash: crypto.Hash) {
+	const statInfo = fs.statSync(fullPath);
+	hash.update(`${fullPath}:${statInfo.size}:${statInfo.mtimeMs}`);
+}
+
+function updateHashWithMultipleFiles(filePath: string, hash: crypto.Hash) {
+	if (fs.statSync(filePath).isFile()) {
+		updateHashWithSingleFile(filePath, hash);
+		return;
+	}
+
+	const info = fs.readdirSync(filePath, { withFileTypes: true });
+
+	for (const item of info) {
+		const fullPath = path.join(filePath, item.name);
+		if (item.isFile()) {
+			updateHashWithSingleFile(fullPath, hash);
+			continue;
+		}
+
+		if (item.isDirectory()) {
+			updateHashWithMultipleFiles(fullPath, hash);
+		}
+	}
+}
+
+export function getFileResourceIdentifier(computeFrom: string): string {
 	const hash = crypto.createHash('sha1');
 
-	const fileContents = fs.readFileSync(path);
-	hash.update(fileContents);
+	updateHashWithMultipleFiles(computeFrom, hash);
 
 	return hash.digest('hex').substring(0, 9);
 }
