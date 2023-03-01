@@ -7,8 +7,7 @@ import * as pulumi from '@pulumi/pulumi';
 import { GCP_COMPONENT_PREFIX } from './gcp/constants';
 
 function updateHashWithSingleFile(fullPath: string, hash: crypto.Hash) {
-	const statInfo = fs.statSync(fullPath);
-	hash.update(`${fullPath}:${statInfo.size}:${statInfo.mtimeMs}`);
+	hash.update(fs.readFileSync(fullPath));
 }
 
 function updateHashWithMultipleFiles(filePath: string, hash: crypto.Hash) {
