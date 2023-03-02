@@ -179,7 +179,15 @@ export class ConfigPolicyBinding extends PolicyBindingBase implements PolicyData
 	}
 }
 
-export function applyBindings(bindings: PolicyDataBinding[], allowProject = false) {
+type ApplyBindingsOptions = (NonNullable<ConstructorParameters<typeof gcpLegacy.storage.BucketIAMPolicy>[2]> & { allowProject?: boolean }) | undefined;
+export function applyBindings(bindings: PolicyDataBinding[], options: ApplyBindingsOptions) {
+	options = {
+		allowProject: false,
+		...options
+	};
+	const allowProject = options.allowProject;
+	delete options['allowProject'];
+
 	const seenIDs = new Set<string>();
 	for (const binding of bindings) {
 		const { type, id, name, policyData } = binding;
@@ -195,7 +203,7 @@ export function applyBindings(bindings: PolicyDataBinding[], allowProject = fals
 				new gcpLegacy.storage.BucketIAMPolicy(policyResourceName, {
 					bucket: name,
 					policyData: policyData
-				});
+				}, options);
 				break;
 			case 'project':
 				if (!allowProject) {
@@ -206,7 +214,8 @@ export function applyBindings(bindings: PolicyDataBinding[], allowProject = fals
 					project: name,
 					policyData: policyData
 				}, {
-					protect: true
+					protect: true,
+					...options
 				});
 				break;
 			case 'keyring':
@@ -221,7 +230,7 @@ export function applyBindings(bindings: PolicyDataBinding[], allowProject = fals
 					new gcpLegacy.kms.KeyRingIAMPolicy(policyResourceName, {
 						keyRingId: pulumi.interpolate`${project}/${location}/${name}`,
 						policyData: policyData
-					});
+					}, options);
 				}
 				break;
 			case 'key':
@@ -235,14 +244,14 @@ export function applyBindings(bindings: PolicyDataBinding[], allowProject = fals
 					new gcpLegacy.kms.CryptoKeyIAMPolicy(policyResourceName, {
 						cryptoKeyId: pulumi.interpolate`${keyRingFQN}/${name}`,
 						policyData: policyData
-					});
+					}, options);
 				}
 				break;
 			case 'config':
 				new gcpLegacy.runtimeconfig.ConfigIamPolicy(policyResourceName, {
 					config: name,
 					policyData: policyData
-				});
+				}, options);
 				break;
 		}
 	}
