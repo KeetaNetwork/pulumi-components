@@ -179,7 +179,7 @@ export class ConfigPolicyBinding extends PolicyBindingBase implements PolicyData
 	}
 }
 
-export async function applyBindings(bindings: PolicyDataBinding[], allowProject = false) {
+export function applyBindings(bindings: PolicyDataBinding[], allowProject = false) {
 	const seenIDs = new Set<string>();
 	for (const binding of bindings) {
 		const { type, id, name, policyData } = binding;
