@@ -1,3 +1,5 @@
+import type * as pulumi from '@pulumi/pulumi';
+import * as crypto from 'crypto';
 import { spawn } from 'child_process';
 
 export function normalizeName(...args: string[]) {
@@ -34,4 +36,44 @@ export function promisifyExec(script: string, args: string[] = []): Promise<Exec
 			resolve(resp);
 		});
 	});
+}
+
+export function nonNullable<T>(input: T | undefined | null): T {
+	if (input === undefined || input === null) {
+		throw(new Error('invalid input, expected non-null value'));
+	}
+
+	return(input);
+}
+
+export function hash(input: string, length?: number): string;
+export function hash(input: pulumi.Output<string>, length?: number): pulumi.Output<string>;
+export function hash(input: string | pulumi.Output<string>, length?: number): string | pulumi.Output<string>;
+export function hash(input: string | pulumi.Output<string>, length: number = 8): string | pulumi.Output<string> {
+	const hashFunction = crypto.createHash('sha256');
+
+	if (typeof(input) === 'string') {
+		hashFunction.update(input);
+		const hashValue = hashFunction.digest('hex');
+		const truncatedHashValue = hashValue.slice(0, length);
+		return(truncatedHashValue);
+	} else {
+		return(input.apply(function(realInput) {
+			return(hash(realInput, length));
+		}));
+	}
+}
+
+export function tail(input: string): string;
+export function tail(input: pulumi.Output<string>): pulumi.Output<string>;
+export function tail(input: string | pulumi.Output<string>): string | pulumi.Output<string>;
+export function tail(input: string | pulumi.Output<string>) {
+	if (typeof(input) === 'string') {
+		const result = input.split('/').slice(-1)[0];
+		return(result);
+	}
+
+	return(input.apply(function(realInput) {
+		return(tail(realInput));
+	}));
 }
