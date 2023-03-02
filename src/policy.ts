@@ -1,6 +1,8 @@
 import * as pulumi from '@pulumi/pulumi';
 import * as gcpLegacy from '@pulumi/gcp';
 
+import * as utils from './utils';
+
 export interface PolicyDataBinding {
 	type: 'bucket' | 'project' | 'keyring' | 'key' | 'config';
 	name: pulumi.Input<string>;
@@ -99,10 +101,10 @@ export class KeyRingPolicyBinding extends PolicyBindingBase implements PolicyDat
 	readonly type = 'keyring';
 	readonly id: string;
 	readonly name: pulumi.Input<string>;
-	readonly keyring?: gcpLegacy.kms.KeyRing;
+	readonly keyring: gcpLegacy.kms.KeyRing;
 	private static cachedKeyRingsByID: { [keyringID: string]: KeyRingPolicyBinding } = {};
 
-	constructor(resourceId: string, resourceName: pulumi.Input<string>, keyring?: gcpLegacy.kms.KeyRing) {
+	constructor(resourceId: string, resourceName: pulumi.Input<string>, keyring: gcpLegacy.kms.KeyRing) {
 		super();
 
 		this.id = resourceId;
@@ -208,21 +210,30 @@ export async function applyBindings(bindings: PolicyDataBinding[], allowProject 
 				});
 				break;
 			case 'keyring':
-				new gcpLegacy.kms.KeyRingIAMPolicy(policyResourceName, {
-					keyRingId: pulumi.interpolate`${state.project}/${primaryDeploymentRegion}/${name}`,
-					policyData: policyData
-				});
-				break;
-			case 'key':
 				{
-					if (!(binding instanceof policy.KeyPolicyBinding)) {
+					if (!(binding instanceof KeyRingPolicyBinding)) {
 						throw(new Error('internal error: mismatch between type and object'));
 					}
 
-					const keyRingName = utils.tail(binding.key.keyRing);
+					const project = binding.keyring.project;
+					const location = binding.keyring.location;
+
+					new gcpLegacy.kms.KeyRingIAMPolicy(policyResourceName, {
+						keyRingId: pulumi.interpolate`${project}/${location}/${name}`,
+						policyData: policyData
+					});
+				}
+				break;
+			case 'key':
+				{
+					if (!(binding instanceof KeyPolicyBinding)) {
+						throw(new Error('internal error: mismatch between type and object'));
+					}
+
+					const keyRingFQN = binding.key.keyRing;
 
 					new gcpLegacy.kms.CryptoKeyIAMPolicy(policyResourceName, {
-						cryptoKeyId: pulumi.interpolate`${state.project}/${primaryDeploymentRegion}/${keyRingName}/${name}`,
+						cryptoKeyId: pulumi.interpolate`${keyRingFQN}/${name}`,
 						policyData: policyData
 					});
 				}
