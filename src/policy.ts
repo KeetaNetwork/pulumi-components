@@ -239,10 +239,19 @@ export function applyBindings(bindings: PolicyDataBinding[], options: ApplyBindi
 						throw(new Error('internal error: mismatch between type and object'));
 					}
 
-					const keyRingFQN = binding.key.keyRing;
+					const keyRingFQNWrapper = binding.key.keyRing;
+
+					const keyRingPath = keyRingFQNWrapper.apply(function(keyRingFQN) {
+						const parts = keyRingFQN.split('/');
+						const project = parts[1];
+						const location = parts[3];
+						const keyring = parts[5];
+
+						return(`${project}/${location}/${keyring}`);
+					});
 
 					new gcpLegacy.kms.CryptoKeyIAMPolicy(policyResourceName, {
-						cryptoKeyId: pulumi.interpolate`${keyRingFQN}/${name}`,
+						cryptoKeyId: pulumi.interpolate`${keyRingPath}/${name}`,
 						policyData: policyData
 					}, options);
 				}
