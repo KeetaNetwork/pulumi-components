@@ -1,7 +1,6 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import type { OutputWrapped } from '../types';
 import { promisifyExec } from '../utils';
 import * as pulumi from '@pulumi/pulumi';
 import { GCP_COMPONENT_PREFIX } from './gcp/constants';
@@ -51,9 +50,9 @@ interface GCPDockerImageInput {
 }
 
 export class Image extends pulumi.ComponentResource {
-	private static AwaitingOutput: { [rawUrl: string]: Promise<OutputWrapped<string>> } = {};
+	private static AwaitingOutput: { [rawUrl: string]: Promise<pulumi.Output<string>> } = {};
 
-	readonly uri: OutputWrapped<string>;
+	readonly uri: pulumi.Output<string>;
 
 	private async checkImage(imageURI: string, input: GCPDockerImageInput) {
 		try {

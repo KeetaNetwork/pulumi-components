@@ -1,26 +1,25 @@
 import * as pulumi from '@pulumi/pulumi';
 import * as gcp from '@pulumi/gcp';
 import { GCP_COMPONENT_PREFIX } from './constants';
-import type { OutputWrapped } from '../../types';
 import type { GcpRegionName } from './regions';
 import { normalizeName } from '../../utils';
 
 export interface EnvironmentGCPSecretData {
-	version: OutputWrapped<string>;
-	name: OutputWrapped<string>;
+	version: pulumi.Input<string>;
+	name: pulumi.Input<string>;
 }
 
 interface EnvironmentVariables {
-	[name: string]: EnvironmentGCPSecretData | OutputWrapped<string | number> | {
-		value: OutputWrapped<string | number>;
+	[name: string]: EnvironmentGCPSecretData | pulumi.Input<string | number> | {
+		value: pulumi.Input<string | number>;
 		secret: boolean;
 	}
 }
 
 interface CloudRunEnvManagerInput {
 	variables: EnvironmentVariables;
-	serviceAccounts?: pulumi.Input<string[]>;
-	secretRegionNames?: pulumi.Input<GcpRegionName[]>;
+	serviceAccount?: pulumi.Input<string[]>;
+	secretRegionName?: pulumi.Input<GcpRegionName[]>;
 	prefix?: string;
 }
 
@@ -34,16 +33,16 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 
 	readonly variables: EnvironmentVariables;
 	readonly variableOutput: gcp.types.input.cloudrun.ServiceTemplateSpecContainerEnv[] = [];
-	readonly serviceAccounts?: pulumi.Input<string[]>;
-	readonly secretRegionNames?: pulumi.Input<GcpRegionName[]>;
+	readonly serviceAccount?: pulumi.Input<string>;
+	readonly secretRegionName?: pulumi.Input<GcpRegionName>;
 
 	constructor(name: string, input: CloudRunEnvManagerInput, opts?: pulumi.CustomResourceOptions) {
 		super(`${GCP_COMPONENT_PREFIX}:CloudRunEnvManager`, name, input, { ...opts });
 
 		this.#name = name;
 		this.#prefix = input.prefix ?? this.#name;
-		this.serviceAccounts = input.serviceAccounts;
-		this.secretRegionNames = input.secretRegionNames;
+		this.serviceAccount = input.serviceAccount;
+		this.secretRegionName = input.secretRegionName;
 		this.variables = input.variables;
 
 		for (const variableName in input.variables) {
@@ -83,13 +82,13 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 	private registerExistingSecret(name: string, secret: EnvironmentGCPSecretData) {
 		const bindingName = normalizeName(this.#prefix, 'non-managed', name, 'iam-binding');
 
-		if (!this.serviceAccounts) {
+		if (!this.serviceAccount) {
 			throw new Error('Cannot create a secret binding without providing serviceAccounts and RegionName to EnvVariables()');
 		}
 
-		new gcp.secretmanager.SecretIamBinding(bindingName, {
+		new gcp.secretmanager.SecretIamMember(bindingName, {
 			secretId: secret.name,
-			members: this.serviceAccounts,
+			member: this.serviceAccount,
 			role: 'roles/secretmanager.secretAccessor'
 		}, { parent: this });
 
@@ -104,23 +103,19 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 		});
 	}
 
-	private makeSecretVariable(name: string, value: OutputWrapped<string>) {
+	private makeSecretVariable(name: string, value: pulumi.Input<string>) {
 		const secretName = normalizeName(this.#prefix, name);
 
-		if (!this.serviceAccounts || !this.secretRegionNames) {
+		if (!this.serviceAccount || !this.secretRegionName) {
 			throw new Error('Cannot create secret without providing serviceAccount and RegionName to EnvVariables()');
 		}
 
 		let replicationConfig: gcp.secretmanager.SecretArgs['replication'] = { automatic: true };
 
-		if (this.secretRegionNames) {
+		if (this.secretRegionName) {
 			replicationConfig = {
 				userManaged: {
-					replicas: pulumi.output(this.secretRegionNames).apply(function(resolvedRegions) {
-						return resolvedRegions.map(function(region) {
-							return({ location: region });
-						});
-					})
+					replicas: [{ location: this.secretRegionName }]
 				}
 			};
 		}
@@ -135,9 +130,9 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 			secretData: pulumi.secret(value)
 		}, { parent: secret });
 
-		new gcp.secretmanager.SecretIamBinding(`${secretName}-iam-binding`, {
+		new gcp.secretmanager.SecretIamMember(`${secretName}-iam-binding`, {
 			secretId: secret.secretId,
-			members: this.serviceAccounts,
+			member: this.serviceAccount,
 			role: 'roles/secretmanager.secretAccessor'
 		}, { parent: secret });
 
