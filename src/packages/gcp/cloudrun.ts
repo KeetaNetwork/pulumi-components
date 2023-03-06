@@ -10,8 +10,8 @@ export interface EnvironmentGCPSecretData {
 }
 
 interface EnvironmentVariables {
-	[name: string]: EnvironmentGCPSecretData | pulumi.Output<string | number> | string | number | {
-		value: pulumi.Output<string | number> | string | number;
+	[name: string]: EnvironmentGCPSecretData | {
+		value: pulumi.Input<string | number>;
 		secret: boolean;
 	}
 }
@@ -53,19 +53,13 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 				continue;
 			}
 
-			let value = valueOrWrapper;
-			let isSecret = false;
-
-			if (typeof valueOrWrapper === 'object' && !pulumi.Output.isInstance(valueOrWrapper)) {
-				value = valueOrWrapper.value;
-				isSecret = valueOrWrapper.secret;
-			}
+			const { value, secret } = valueOrWrapper;
 
 			const asString = pulumi.output(value).apply(function(val) {
 				return(String(val));
 			});
 
-			if (isSecret) {
+			if (secret) {
 				this.variableOutput.push(this.makeSecretVariable(variableName, asString));
 				continue;
 			}
