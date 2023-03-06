@@ -72,10 +72,12 @@ export class BucketPolicyBinding extends PolicyBindingBase implements PolicyData
 	}
 }
 
+type IAMAuditConfig = Omit<ConstructorParameters<typeof gcpLegacy.projects.IAMAuditConfig>[1], 'project'>;
 export class ProjectPolicyBinding extends PolicyBindingBase implements PolicyDataBinding {
 	readonly type = 'project';
 	readonly id: string;
 	readonly name: string;
+	private auditConfigs?: IAMAuditConfig[];
 	private static cachedProjects: { [projectName: string]: ProjectPolicyBinding } = {};
 
 	constructor(projectName: string) {
@@ -83,6 +85,14 @@ export class ProjectPolicyBinding extends PolicyBindingBase implements PolicyDat
 
 		this.id = projectName;
 		this.name = projectName;
+	}
+
+	addAuditConfig(config: IAMAuditConfig) {
+		if (this.auditConfigs === undefined) {
+			this.auditConfigs = [];
+		}
+
+		this.auditConfigs.push({ ...config });
 	}
 
 	static fromProjectName(projectName: string) {
@@ -95,6 +105,27 @@ export class ProjectPolicyBinding extends PolicyBindingBase implements PolicyDat
 		return(this.cachedProjects[projectName]);
 	}
 
+	get policyData() {
+		const basePolicyDataWrapper = super.policyData;
+
+		if (this.auditConfigs === undefined) {
+			return(basePolicyDataWrapper);
+		}
+
+		const policyData = basePolicyDataWrapper.apply((basePolicyDataString) => {
+			if (this.auditConfigs === undefined) {
+				return(basePolicyDataString);
+			}
+
+			const basePolicyData = JSON.parse(basePolicyDataString);
+
+			basePolicyData.auditConfigs = this.auditConfigs;
+
+			return(JSON.stringify(basePolicyData));
+		});
+
+		return(policyData);
+	}
 }
 
 export class KeyRingPolicyBinding extends PolicyBindingBase implements PolicyDataBinding {
