@@ -10,16 +10,16 @@ export interface EnvironmentGCPSecretData {
 }
 
 interface EnvironmentVariables {
-	[name: string]: EnvironmentGCPSecretData | pulumi.Input<string | number> | {
-		value: pulumi.Input<string | number>;
+	[name: string]: EnvironmentGCPSecretData | pulumi.Output<string | number> | string | number | {
+		value: pulumi.Output<string | number> | string | number;
 		secret: boolean;
 	}
 }
 
 interface CloudRunEnvManagerInput {
 	variables: EnvironmentVariables;
-	serviceAccount?: pulumi.Input<string[]>;
-	secretRegionName?: pulumi.Input<GcpRegionName[]>;
+	serviceAccount?: pulumi.Input<string>;
+	secretRegionName?: pulumi.Input<GcpRegionName>;
 	prefix?: string;
 }
 

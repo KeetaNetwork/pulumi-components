@@ -50,7 +50,7 @@ interface GCPDockerImageInput {
 }
 
 export class Image extends pulumi.ComponentResource {
-	private static AwaitingOutput: { [rawUrl: string]: Promise<pulumi.Output<string>> } = {};
+	private static AwaitingOutput: { [rawUrl: string]: Promise<string> } = {};
 
 	readonly uri: pulumi.Output<string>;
 
