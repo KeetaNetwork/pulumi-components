@@ -20,7 +20,7 @@ async function createBuild(inputs: IBuild) {
 	// eslint-disable-next-line @typescript-eslint/no-var-requires
 	const { default: { CloudBuildClient }} = require('@google-cloud/cloudbuild');
 	const cloudBuild = new CloudBuildClient({});
-	const [ operation ] = await cloudBuild.createBuild({ build: inputs});
+	const [ operation ] = await cloudBuild.createBuild({ build: inputs });
 	const [ metadata ] = await operation.promise();
 
 	return({ metadata, operation });
