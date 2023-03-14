@@ -1,6 +1,6 @@
 {
   "name": "@keetapay/pulumi-components",
-  "version": "1.0.21",
+  "version": "1.0.22",
   "description": "KeetaPay Pulumi Components",
   "repository": "https://github.com/keetapay/pulumi-components.git",
   "main": "dist/index.js",

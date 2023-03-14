@@ -53,11 +53,20 @@ const cloudbuildProvider: pulumi.dynamic.ResourceProvider = {
 	}
 };
 
+interface CloudBuildInputsArg {
+	projectId: pulumi.Input<string>;
+	build: DeepInput<IBuild>;
+}
+
 export class CloudBuild extends pulumi.dynamic.Resource {
 	readonly operation!: pulumi.Output<IBuild>;
 	readonly metadata!: pulumi.Output<IBuildOperationMetadata>;
 
-	constructor(name: string, args: DeepInput<CloudBuildInputs>, opts?: pulumi.CustomResourceOptions) {
-		super(cloudbuildProvider, name, args, opts);
+	constructor(name: string, args: CloudBuildInputsArg, opts?: pulumi.CustomResourceOptions) {
+		super(cloudbuildProvider, name, {
+			...args,
+			operation: undefined,
+			metadata: undefined
+		}, opts);
 	}
 }
