@@ -17,7 +17,7 @@ export enum HashType {
 }
 
 async function createBuild(inputs: IBuild) {
-	// eslint-disable-next-line @typescript-eslint/no-var-requires
+	// eslint-disable-next-line @typescript-eslint/no-var-requires, no-type-assertion/no-type-assertion
 	const cloudbuild = require('@google-cloud/cloudbuild').default as typeof cloudbuildTypeImport;
 	const client = new cloudbuild.CloudBuildClient({});
 	const [ operation ] = await client.createBuild({
