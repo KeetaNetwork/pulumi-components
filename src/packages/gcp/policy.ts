@@ -1,7 +1,7 @@
 import * as pulumi from '@pulumi/pulumi';
 import * as gcpLegacy from '@pulumi/gcp';
 
-import * as utils from './utils';
+import * as utils from '../../utils';
 
 export interface PolicyDataBinding {
 	type: 'bucket' | 'project' | 'keyring' | 'key' | 'config';
