@@ -1,10 +1,10 @@
 import * as pulumi from '@pulumi/pulumi';
 import { randomUUID } from 'crypto';
-import type * as cloudbuild from '@google-cloud/cloudbuild';
+import type * as cloudbuildTypeImport from '@google-cloud/cloudbuild';
 import type { DeepInput } from '../../types';
 
-export type IBuild = cloudbuild.protos.google.devtools.cloudbuild.v1.IBuild;
-export type IBuildOperationMetadata = cloudbuild.protos.google.devtools.cloudbuild.v1.IBuildOperationMetadata;
+export type IBuild = cloudbuildTypeImport.protos.google.devtools.cloudbuild.v1.IBuild;
+export type IBuildOperationMetadata = cloudbuildTypeImport.protos.google.devtools.cloudbuild.v1.IBuildOperationMetadata;
 
 interface CloudBuildInputs {
 	build: IBuild;
@@ -18,9 +18,11 @@ export enum HashType {
 
 async function createBuild(inputs: IBuild) {
 	// eslint-disable-next-line @typescript-eslint/no-var-requires
-	const { default: { CloudBuildClient }} = require('@google-cloud/cloudbuild');
-	const cloudBuild = new CloudBuildClient({});
-	const [ operation ] = await cloudBuild.createBuild({ build: inputs });
+	const cloudbuild = require('@google-cloud/cloudbuild').default as typeof cloudbuildTypeImport;
+	const client = new cloudbuild.CloudBuildClient({});
+	const [ operation ] = await client.createBuild({
+		build: inputs
+	});
 	const [ metadata ] = await operation.promise();
 
 	return({ metadata, operation });
@@ -29,13 +31,23 @@ async function createBuild(inputs: IBuild) {
 
 const cloudbuildProvider: pulumi.dynamic.ResourceProvider = {
 	async check(olds: CloudBuildInputs, news: CloudBuildInputs) {
-		return({ inputs: { ...olds, ...news }});
+		return({
+			inputs: {
+				...olds,
+				...news
+			}
+		});
 	},
 	async create(inputs: CloudBuildInputs) {
-		return({ id: randomUUID(), outs: await createBuild(inputs.cb) });
+		return({
+			id: randomUUID(),
+			outs: await createBuild(inputs.build)
+		});
 	},
 	async update(_ignore_id, _ignore_olds, news: CloudBuildInputs) {
-		return({ outs: await createBuild(news.cb) });
+		return({
+			outs: await createBuild(news.build)
+		});
 	},
 	async delete() {
 		return;
