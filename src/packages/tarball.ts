@@ -5,6 +5,8 @@ import * as child_process from 'child_process';
 import * as path from 'path';
 import * as process from 'process';
 
+import * as utils from '../utils';
+
 function createTarballFromGit(directory: string, commitID: string = 'HEAD'): { commit: string, file: string } {
 	let commit: string;
 	if (commitID === 'HEAD') {
@@ -32,7 +34,9 @@ function createTarballFromGit(directory: string, commitID: string = 'HEAD'): { c
 		recursive: true
 	});
 
-	const tarballPath = path.join(tarballDir, `${commit}.tar.gz`);
+	const canonicalDir = fs.realpathSync(directory);
+	const dirHash = utils.hash(canonicalDir, 32);
+	const tarballPath = path.join(tarballDir, `${dirHash}-${commit}.tar.gz`);
 	const tarballTmpPath = `${tarballPath}.new`;
 
 	if (fs.existsSync(tarballPath)) {
