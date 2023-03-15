@@ -1,7 +1,7 @@
 import * as pulumi from '@pulumi/pulumi';
 import { randomUUID } from 'crypto';
 import type * as cloudbuildTypeImport from '@google-cloud/cloudbuild';
-import type { DeepInput } from '../../types';
+import type { DeepInput, DeepOutput } from '../../types';
 
 export type IBuild = cloudbuildTypeImport.protos.google.devtools.cloudbuild.v1.IBuild;
 export type IBuildOperationMetadata = cloudbuildTypeImport.protos.google.devtools.cloudbuild.v1.IBuildOperationMetadata;
@@ -22,31 +22,62 @@ async function createBuild(inputs: CloudBuildInputs) {
 	const cloudbuild = require('@google-cloud/cloudbuild').default as typeof cloudbuildTypeImport;
 	const client = new cloudbuild.CloudBuildClient({});
 	const [ operation ] = await client.createBuild(inputs);
-	const [ metadata ] = await operation.promise();
+	const [ waitedResults ] = await operation.promise();
 
-	return({ metadata, operation });
+	if (waitedResults.results === undefined || waitedResults.results === null) {
+		waitedResults.results = {};
+	}
+
+	const retval = {
+		status: waitedResults.status ?? 'UNKNOWN',
+		results: {
+			images: (waitedResults.results.images ?? []).map(function(image) {
+				return({
+					name: image.name ?? null,
+					digest: image.digest ?? null
+				});
+			}),
+			artifactManifest: waitedResults.results.artifactManifest ?? null,
+			numArtifacts: waitedResults.results.numArtifacts ? Number(waitedResults.results.numArtifacts) : null
+		},
+		logUrl: waitedResults.logUrl ?? null,
+		statusDetail: waitedResults.statusDetail ?? null
+	};
+
+	return(retval);
 }
-
+type BuildOutput = Awaited<ReturnType<typeof createBuild>>;
+type PulumiBuildOutput = DeepOutput<BuildOutput>;
 
 const cloudbuildProvider: pulumi.dynamic.ResourceProvider = {
-	async check(olds: CloudBuildInputs, news: CloudBuildInputs) {
-		return({
+	async check(oldInput: CloudBuildInputs, newInput: CloudBuildInputs) {
+		const retval = {
 			inputs: {
-				...olds,
-				...news
+				...oldInput,
+				...newInput
 			}
-		});
+		};
+
+		return(retval);
 	},
 	async create(inputs: CloudBuildInputs) {
-		return({
-			id: randomUUID(),
-			outs: await createBuild(inputs)
-		});
+		const id = randomUUID();
+		const output = await createBuild(inputs);
+
+		const retval = {
+			id: id,
+			outs: output
+		};
+
+		return(retval);
 	},
-	async update(_ignore_id, _ignore_olds, news: CloudBuildInputs) {
-		return({
-			outs: await createBuild(news)
-		});
+	async update(_ignore_id, _ignore_oldInput, newInput: CloudBuildInputs) {
+		const output = await createBuild(newInput);
+		const retval = {
+			outs: output
+		};
+
+		return(retval);
 	},
 	async delete() {
 		return;
@@ -58,15 +89,19 @@ interface CloudBuildInputsArg {
 	build: DeepInput<IBuild>;
 }
 
-export class CloudBuild extends pulumi.dynamic.Resource {
-	readonly operation!: pulumi.Output<IBuild>;
-	readonly metadata!: pulumi.Output<IBuildOperationMetadata>;
+export class CloudBuild extends pulumi.dynamic.Resource implements PulumiBuildOutput {
+	public readonly status!: pulumi.Output<BuildOutput['status']>;
+	public readonly results!: pulumi.Output<BuildOutput['results']>;
+	public readonly logUrl!: pulumi.Output<BuildOutput['logUrl']>;
+	public readonly statusDetail!: pulumi.Output<BuildOutput['statusDetail']>;
 
 	constructor(name: string, args: CloudBuildInputsArg, opts?: pulumi.CustomResourceOptions) {
 		super(cloudbuildProvider, name, {
 			...args,
-			operation: undefined,
-			metadata: undefined
+			status: undefined,
+			results: undefined,
+			logUrl: undefined,
+			statusDetail: undefined
 		}, opts);
 	}
 }
