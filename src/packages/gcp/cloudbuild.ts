@@ -105,3 +105,5 @@ export class CloudBuild extends pulumi.dynamic.Resource implements PulumiBuildOu
 		}, opts);
 	}
 }
+
+export default CloudBuild;
