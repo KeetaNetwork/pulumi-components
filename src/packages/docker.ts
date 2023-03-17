@@ -164,7 +164,6 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 	abstract _checkImage(prefix: string, imageURI: string, input: GCPDockerLocalImageInput | GCPDockerRemoteImageInput): Promise<string>;
 	abstract _checkImage(prefix: string, imageURI: string, input: GCPDockerLocalImageInput | GCPDockerRemoteImageInput): Promise<pulumi.Output<string>>;
 	abstract _checkImage(prefix: string, imageURI: string, input: GCPDockerLocalImageInput | GCPDockerRemoteImageInput): Promise<string | pulumi.Output<string>>;
-	abstract clean(): void;
 
 	protected getDockerBuildArgs(input: GCPDockerImageInput) {
 		const args: string[] = [];
@@ -242,6 +241,11 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 
 		this.registerOutputs({ uri: this.uri });
 	}
+
+	/**
+	 * Perform any cleanup required post-deployment
+	 */
+	abstract clean(): void;
 }
 
 export class LocalDockerImage extends BaseDockerImage {
@@ -407,10 +411,7 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 		/**
 		 * If a provider is provided, use it for the child resources
 		 */
-		let childProvider: gcp.Provider | undefined;
-		if (gcp.Provider.isInstance(input.provider)) {
-			childProvider = input.provider;
-		}
+		const childProvider = RemoteDockerImage.childProvider(input);
 
 		const imageSourceObject = new gcp.storage.BucketObject(`${prefix}-cloudbuild-src`, {
 			bucket: input.bucket.name,
@@ -547,7 +548,39 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 			this.localAsset.clean();
 		}
 	}
+
+	static childProvider(input: GCPDockerRemoteImageInput) {
+		/**
+		 * If a provider is provided, use it for the child resources
+		 */
+		let childProvider: gcp.Provider | undefined;
+		if (gcp.Provider.isInstance(input.provider)) {
+			childProvider = input.provider;
+		}
+
+		return(childProvider);
+	}
+
+	static bindPermissions(prefix: string, input: GCPDockerRemoteImageInput) {
+		const childProvider = this.childProvider(input);
+
+		new gcp.storage.BucketIAMMember(`${prefix}-`, {
+			bucket: input.bucket.name,
+			member: pulumi.interpolate`serviceAccount:${input.serviceAccount.email}`,
+			role: 'roles/storage.objectCreator'
+		}, {
+			provider: childProvider
+		});
+	}
 }
+
+type GenericDockerImageInput = (GCPDockerLocalImageInput | GCPDockerRemoteImageInput) & {
+	/**
+	 * Automatically grant the specified Service Account access to the
+	 * bucket to upload the source code for code build
+	 */
+	bindPermissions?: boolean;
+};
 
 /**
  * Create a Docker image using either a local Docker build or GCP CloudBuild
@@ -560,10 +593,14 @@ export class DockerImage implements PublicInterface<LocalDockerImage> {
 	readonly getProvider: LocalDockerImage['getProvider'];
 	readonly clean: LocalDockerImage['clean'];
 
-	constructor(prefix: string, input: GCPDockerRemoteImageInput | GCPDockerLocalImageInput, opts?: pulumi.CustomResourceOptions) {
+	constructor(prefix: string, input: GenericDockerImageInput, opts?: pulumi.CustomResourceOptions) {
 		let image: RemoteDockerImage | LocalDockerImage;
 
 		if ('serviceAccount' in input && 'bucket' in input && 'provider' in input) {
+			if (input.bindPermissions === true) {
+				RemoteDockerImage.bindPermissions(prefix, input);
+			}
+
 			image = new RemoteDockerImage(prefix, input, opts);
 		} else {
 			image = new LocalDockerImage(prefix, input, opts);
