@@ -311,6 +311,9 @@ export class LocalDockerImage extends BaseDockerImage {
 			 */
 			await promisifyExec('docker', buildArgs);
 
+			/*
+			 * Push the image
+			 */
 			await promisifyExec('docker', [ 'image', 'push', imageURI ]);
 
 			/**
@@ -344,6 +347,18 @@ export class LocalDockerImage extends BaseDockerImage {
 	}
 }
 
+/*
+ * Produce a Docker image using Google Cloud Build
+ *
+ * The service account supplied is used to push/pull the image to/from the
+ * repository, to create the tarball in the specified Bucket, and to run the
+ * Cloud Build job.
+ *
+ * It needs access to a few project-level resources to work:
+ *     - roles/logging.logWriter - to write logs
+ *     - roles/cloudbuild.builds.builder - to run the build
+ *     - roles/cloudbuild.serviceAgent - to run the build
+ */
 export class RemoteDockerImage extends BaseDockerImage implements PublicInterface<LocalDockerImage> {
 	private localAsset?: Tarball.GitTarballArchive | Tarball.DirTarballArchive;
 	private async getBuildTarball(input: GCPDockerImageInput['buildDirectory'], cacheID: string) {
@@ -501,6 +516,9 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 			}
 		}, { parent: this });
 
+		/**
+		 * Compute the image digest from the build results
+		 */
 		const image = buildInfo.results.apply(function(results) {
 			if (results === undefined || results === null) {
 				throw(new Error(`No results from build process for ${name}`));
@@ -533,7 +551,7 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 		}
 	}
 
-	static childProvider(input: GCPDockerRemoteImageInput) {
+	static childProvider(input: Pick<GCPDockerRemoteImageInput, 'provider'>) {
 		/**
 		 * If a provider is provided, use it for the child resources
 		 */
@@ -545,16 +563,42 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 		return(childProvider);
 	}
 
-	static bindPermissions(prefix: string, input: GCPDockerRemoteImageInput) {
+	static bindPermissions(prefix: string, input: Pick<GCPDockerRemoteImageInput, 'bucket' | 'serviceAccount' | 'provider'>, includeProject: boolean = false) {
 		const childProvider = this.childProvider(input);
 
-		new gcp.storage.BucketIAMMember(`${prefix}-`, {
+		new gcp.storage.BucketIAMMember(`${prefix}-iam-bucket`, {
 			bucket: input.bucket.name,
 			member: pulumi.interpolate`serviceAccount:${input.serviceAccount.email}`,
 			role: 'roles/storage.objectCreator'
 		}, {
 			provider: childProvider
 		});
+
+		if (includeProject) {
+			const projectPerms = {
+				'logs': 'roles/logging.logWriter',
+				'builds': 'roles/cloudbuild.builds.builder',
+				'serviceAgent': 'roles/cloudbuild.serviceAgent'
+			};
+
+			const project = input.provider.project.apply(function(checkProject) {
+				if (checkProject === undefined || checkProject === null) {
+					throw(new Error('No project specified for provider'));
+				}
+
+				return(checkProject);
+			});
+
+			for (const [name, role] of Object.entries(projectPerms)) {
+				new gcp.projects.IAMMember(`${prefix}-iam-${name}`, {
+					project: project,
+					member: pulumi.interpolate`serviceAccount:${input.serviceAccount.email}`,
+					role: role
+				}, {
+					provider: childProvider
+				});
+			}
+		}
 	}
 }
 
