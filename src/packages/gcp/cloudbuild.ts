@@ -1,15 +1,20 @@
 import * as pulumi from '@pulumi/pulumi';
-import { randomUUID } from 'crypto';
+import * as gcp from '@pulumi/gcp';
+import * as googleAuth from 'google-auth-library';
 import type * as cloudbuildTypeImport from '@google-cloud/cloudbuild';
+
+import { randomUUID } from 'crypto';
+
 import type { DeepInput, DeepOutput } from '../../types';
 
 export type IBuild = cloudbuildTypeImport.protos.google.devtools.cloudbuild.v1.IBuild;
 export type IBuildOperationMetadata = cloudbuildTypeImport.protos.google.devtools.cloudbuild.v1.IBuildOperationMetadata;
 
 interface CloudBuildInputs {
-	projectId: string;
 	build: IBuild;
-}
+	projectId: string | undefined;
+	accessToken: string | undefined;
+};
 
 export enum HashType {
 	NONE = 0,
@@ -20,8 +25,37 @@ export enum HashType {
 async function createBuild(inputs: CloudBuildInputs) {
 	// eslint-disable-next-line @typescript-eslint/no-var-requires, no-type-assertion/no-type-assertion
 	const cloudbuild = require('@google-cloud/cloudbuild').default as typeof cloudbuildTypeImport;
-	const client = new cloudbuild.CloudBuildClient({});
-	const [ operation ] = await client.createBuild(inputs);
+
+	const projectId = inputs.projectId;
+
+	/*
+	 * Authenticate to CloudBuild using the same credentials as the GCP provider.
+	 */
+	const accessToken = inputs.accessToken;
+	let auth: googleAuth.GoogleAuth | undefined = undefined;
+	if (accessToken !== undefined) {
+		console.debug({accessToken});
+
+		const authClient = new googleAuth.UserRefreshClient();
+		authClient.setCredentials({
+			access_token: accessToken,
+		});
+
+		new googleAuth.GoogleAuth({
+			authClient: authClient
+		});
+	}
+
+	const client = new cloudbuild.CloudBuildClient({
+		projectId,
+		auth
+	});
+
+	const [ operation ] = await client.createBuild({
+		projectId: projectId,
+		build: inputs.build,
+	});
+
 	const [ waitedResults ] = await operation.promise();
 
 	if (waitedResults.results === undefined || waitedResults.results === null) {
@@ -85,7 +119,7 @@ const cloudbuildProvider: pulumi.dynamic.ResourceProvider = {
 };
 
 interface CloudBuildInputsArg {
-	projectId: pulumi.Input<string>;
+	gcpProvider: Pick<gcp.Provider, 'project'>;
 	build: DeepInput<IBuild>;
 }
 
@@ -95,9 +129,19 @@ export class CloudBuild extends pulumi.dynamic.Resource implements PulumiBuildOu
 	public readonly logUrl!: pulumi.Output<BuildOutput['logUrl']>;
 	public readonly statusDetail!: pulumi.Output<BuildOutput['statusDetail']>;
 
+	static HashType = HashType;
+
 	constructor(name: string, args: CloudBuildInputsArg, opts?: pulumi.CustomResourceOptions) {
+		const passArgs: DeepInput<CloudBuildInputs> = {
+			build: args.build,
+			projectId: args.gcpProvider.project,
+
+			/* XXX:TODO: Figure out how to pass in the access token */
+			accessToken: undefined
+		}
+
 		super(cloudbuildProvider, name, {
-			...args,
+			...passArgs,
 			status: undefined,
 			results: undefined,
 			logUrl: undefined,
