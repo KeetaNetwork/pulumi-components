@@ -207,7 +207,7 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 		let versionIdentifier: string;
 		switch (input.versioning.type) {
 			case 'FILE':
-				versionIdentifier = getFileResourceIdentifier(input.versioning.fromFile);
+				versionIdentifier = `hash_${getFileResourceIdentifier(input.versioning.fromFile)}`;
 				break;
 			case 'PLAIN':
 				versionIdentifier = input.versioning.value;
@@ -215,7 +215,7 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 			case 'GIT':
 				{
 					const tarball = new Tarball.GitTarballArchive(input.versioning.directory, input.versioning.commitID);
-					versionIdentifier = tarball.uniqueID;
+					versionIdentifier = `git_${tarball.uniqueID}`;
 				}
 				break;
 			default:
