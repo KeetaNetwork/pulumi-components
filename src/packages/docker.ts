@@ -559,7 +559,6 @@ export class DockerImage implements PublicInterface<LocalDockerImage> {
 	readonly imageBase: LocalDockerImage['imageBase'];
 	readonly getProvider: LocalDockerImage['getProvider'];
 	readonly clean: LocalDockerImage['clean'];
-	readonly _checkImage: LocalDockerImage['_checkImage'];
 
 	constructor(prefix: string, input: GCPDockerRemoteImageInput | GCPDockerLocalImageInput, opts?: pulumi.CustomResourceOptions) {
 		let image: RemoteDockerImage | LocalDockerImage;
@@ -576,7 +575,12 @@ export class DockerImage implements PublicInterface<LocalDockerImage> {
 		this.imageBase = image.imageBase;
 		this.getProvider = image.getProvider;
 		this.clean = image.clean;
-		this._checkImage = image._checkImage;
+	}
+
+	async _checkImage(..._ignore_args: Parameters<LocalDockerImage['_checkImage']>) : Promise<string>;
+	async _checkImage(..._ignore_args: Parameters<LocalDockerImage['_checkImage']>): Promise<pulumi.Output<string>>;
+	async _checkImage(..._ignore_args: Parameters<LocalDockerImage['_checkImage']>): Promise<string | pulumi.Output<string>> {
+		throw(new Error('internal function, do not call'));
 	}
 }
 
