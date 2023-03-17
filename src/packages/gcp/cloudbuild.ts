@@ -1,5 +1,5 @@
 import * as pulumi from '@pulumi/pulumi';
-import * as gcp from '@pulumi/gcp';
+import type * as gcp from '@pulumi/gcp';
 import * as googleAuth from 'google-auth-library';
 import type * as cloudbuildTypeImport from '@google-cloud/cloudbuild';
 
@@ -14,7 +14,7 @@ interface CloudBuildInputs {
 	build: IBuild;
 	projectId: string | undefined;
 	accessToken: string | undefined;
-};
+}
 
 export enum HashType {
 	NONE = 0,
@@ -32,13 +32,11 @@ async function createBuild(inputs: CloudBuildInputs) {
 	 * Authenticate to CloudBuild using the same credentials as the GCP provider.
 	 */
 	const accessToken = inputs.accessToken;
-	let auth: googleAuth.GoogleAuth | undefined = undefined;
+	const auth: googleAuth.GoogleAuth | undefined = undefined;
 	if (accessToken !== undefined) {
-		console.debug({accessToken});
-
 		const authClient = new googleAuth.UserRefreshClient();
 		authClient.setCredentials({
-			access_token: accessToken,
+			access_token: accessToken
 		});
 
 		new googleAuth.GoogleAuth({
@@ -53,7 +51,7 @@ async function createBuild(inputs: CloudBuildInputs) {
 
 	const [ operation ] = await client.createBuild({
 		projectId: projectId,
-		build: inputs.build,
+		build: inputs.build
 	});
 
 	const [ waitedResults ] = await operation.promise();
@@ -138,7 +136,7 @@ export class CloudBuild extends pulumi.dynamic.Resource implements PulumiBuildOu
 
 			/* XXX:TODO: Figure out how to pass in the access token */
 			accessToken: undefined
-		}
+		};
 
 		super(cloudbuildProvider, name, {
 			...passArgs,

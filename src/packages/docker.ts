@@ -6,19 +6,20 @@ import fs from 'fs';
 import path from 'path';
 import { spawn as childProcessSpawn } from 'child_process';
 
-import { promisifyExec, PublicInterface, hash } from '../utils';
-import { UnwrapDeepInput } from '../types';
+import { promisifyExec, hash } from '../utils';
+import type { PublicInterface } from '../utils';
+import type { UnwrapDeepInput } from '../types';
 import CloudBuild from './gcp/cloudbuild';
 import * as Tarball from './tarball';
 import { GCP_COMPONENT_PREFIX } from './gcp/constants';
 
-function updateHashWithSingleFile(fullPath: string, hash: crypto.Hash) {
-	hash.update(fs.readFileSync(fullPath));
+function updateHashWithSingleFile(fullPath: string, hashState: crypto.Hash) {
+	hashState.update(fs.readFileSync(fullPath));
 }
 
-function updateHashWithMultipleFiles(filePath: string, hash: crypto.Hash) {
+function updateHashWithMultipleFiles(filePath: string, hashState: crypto.Hash) {
 	if (fs.statSync(filePath).isFile()) {
-		updateHashWithSingleFile(filePath, hash);
+		updateHashWithSingleFile(filePath, hashState);
 		return;
 	}
 
@@ -27,22 +28,22 @@ function updateHashWithMultipleFiles(filePath: string, hash: crypto.Hash) {
 	for (const item of info) {
 		const fullPath = path.join(filePath, item.name);
 		if (item.isFile()) {
-			updateHashWithSingleFile(fullPath, hash);
+			updateHashWithSingleFile(fullPath, hashState);
 			continue;
 		}
 
 		if (item.isDirectory()) {
-			updateHashWithMultipleFiles(fullPath, hash);
+			updateHashWithMultipleFiles(fullPath, hashState);
 		}
 	}
 }
 
 export function getFileResourceIdentifier(computeFrom: string): string {
-	const hash = crypto.createHash('sha1');
+	const hashState = crypto.createHash('sha1');
 
-	updateHashWithMultipleFiles(computeFrom, hash);
+	updateHashWithMultipleFiles(computeFrom, hashState);
 
-	return hash.digest('hex').substring(0, 9);
+	return hashState.digest('hex').substring(0, 9);
 }
 
 interface GCPDockerImageInput {
@@ -114,9 +115,9 @@ interface GCPDockerImageInput {
 	secrets?: {
 		[envName: string]: pulumi.Input<string>;
 	}
-};
+}
 
-interface GCPDockerLocalImageInput extends GCPDockerImageInput {};
+type GCPDockerLocalImageInput = GCPDockerImageInput;
 interface GCPDockerRemoteImageInput extends GCPDockerImageInput {
 	/**
 	 * Service account to use for performing the CloudBuild,
@@ -136,7 +137,7 @@ interface GCPDockerRemoteImageInput extends GCPDockerImageInput {
 	 * and other resources
 	 */
 	provider: gcp.Provider | Pick<gcp.Provider, 'project'>;
-};
+}
 
 abstract class BaseDockerImage extends pulumi.ComponentResource {
 	private static AwaitingOutput: { [rawUrl: string]: Promise<string | pulumi.Output<string>> } = {};
@@ -231,13 +232,13 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 			this.imageCache = `${imageBaseName}:${input.cacheFromTag}`;
 		}
 
-		if (LocalDockerImage.AwaitingOutput[imageURI] === undefined) {
+		if (BaseDockerImage.AwaitingOutput[imageURI] === undefined) {
 			const imageInfo = this._checkImage(prefix, imageURI, input);
 
-			LocalDockerImage.AwaitingOutput[imageURI] = imageInfo;
+			BaseDockerImage.AwaitingOutput[imageURI] = imageInfo;
 		}
 
-		this.uri = pulumi.output(LocalDockerImage.AwaitingOutput[imageURI]);
+		this.uri = pulumi.output(BaseDockerImage.AwaitingOutput[imageURI]);
 
 		this.registerOutputs({ uri: this.uri });
 	}
@@ -293,40 +294,31 @@ export class LocalDockerImage extends BaseDockerImage {
 				}
 			}
 
-			try {
-				// Attempt to pull the remote version of the image
-				await promisifyExec('docker', [ 'pull', imageURI ]);
-			} catch {
-				/* If we can't pull the image, then build it */
+			/**
+			 * Get the build directory from the input, which may
+			 * require creating a temporary directory and extracting
+			 * a tarball into it
+			 */
+			const buildDirectory = await this.getBuildDirectory(input.buildDirectory);
 
-				/**
-				 * Get the build directory from the input, which may
-				 * require creating a temporary directory and extracting
-				 * a tarball into it
-				 */
-				const buildDirectory = await this.getBuildDirectory(input.buildDirectory);
+			/**
+			 * Compute the arguments for "docker build"
+			 */
+			const buildArgs = [ 'build', '-t', imageURI, ...this.getDockerBuildArgs(input), buildDirectory];
 
-				/**
-				 * Compute the arguments for "docker build"
-				 */
-				const buildArgs = [ 'build', buildDirectory, '-t', imageURI ];
+			/*
+			 * Run "docker build" to build the image
+			 */
+			await promisifyExec('docker', buildArgs);
 
-				buildArgs.push(...this.getDockerBuildArgs(input));
+			await promisifyExec('docker', [ 'image', 'push', imageURI ]);
 
-				/*
-				 * Run "docker build" to build the image
-				 */
-				await promisifyExec('docker', buildArgs);
-
-				await promisifyExec('docker', [ 'image', 'push', imageURI ]);
-
-				/**
-				 * Add the additional tags and push them
-				 */
-				for (const taggedImage of this.getDockerBuildTags(input)) {
-					await promisifyExec('docker', [ 'tag', imageURI, taggedImage ]);
-					await promisifyExec('docker', [ 'image', 'push', taggedImage ]);
-				}
+			/**
+			 * Add the additional tags and push them
+			 */
+			for (const taggedImage of this.getDockerBuildTags(input)) {
+				await promisifyExec('docker', [ 'tag', imageURI, taggedImage ]);
+				await promisifyExec('docker', [ 'image', 'push', taggedImage ]);
 			}
 
 			const imageInfoJSON = await promisifyExec('docker', [ 'image', 'inspect', imageURI ]);
@@ -341,10 +333,6 @@ export class LocalDockerImage extends BaseDockerImage {
 		} finally {
 			this.clean();
 		}
-	}
-
-	constructor(prefix: string, input: GCPDockerImageInput, opts?: pulumi.CustomResourceOptions) {
-		super(prefix, input, opts);
 	}
 
 	clean() {
@@ -539,10 +527,6 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 		return(image);
 	}
 
-	constructor(prefix: string, input: GCPDockerRemoteImageInput, opts?: pulumi.CustomResourceOptions) {
-		super(prefix, input, opts);
-	}
-
 	clean() {
 		if (this.localAsset) {
 			this.localAsset.clean();
@@ -610,7 +594,7 @@ export class DockerImage implements PublicInterface<LocalDockerImage> {
 		this.uri = image.uri;
 		this.image = image.image;
 		this.imageBase = image.imageBase;
-		this.getProvider = image.getProvider;
+		this.getProvider = image.getProvider.bind(image);
 		this.clean = image.clean;
 	}
 
