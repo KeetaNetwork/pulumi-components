@@ -138,7 +138,7 @@ interface GCPDockerRemoteImageInput extends GCPDockerImageInput {
 	provider: gcp.Provider | Pick<gcp.Provider, 'project'>;
 };
 
-abstract class DockerImage extends pulumi.ComponentResource {
+abstract class BaseDockerImage extends pulumi.ComponentResource {
 	private static AwaitingOutput: { [rawUrl: string]: Promise<string | pulumi.Output<string>> } = {};
 
 	/**
@@ -244,7 +244,7 @@ abstract class DockerImage extends pulumi.ComponentResource {
 	}
 }
 
-export class LocalDockerImage extends DockerImage {
+export class LocalDockerImage extends BaseDockerImage {
 	private cleanTmpDir?: string;
 	private async getBuildDirectory(input: GCPDockerImageInput['buildDirectory']) {
 		if (typeof input === 'string') {
@@ -352,7 +352,7 @@ export class LocalDockerImage extends DockerImage {
 	}
 }
 
-export class RemoteDockerImage extends DockerImage implements PublicInterface<LocalDockerImage> {
+export class RemoteDockerImage extends BaseDockerImage implements PublicInterface<LocalDockerImage> {
 	private localAsset?: Tarball.GitTarballArchive | Tarball.DirTarballArchive;
 	private async getBuildTarball(input: GCPDockerImageInput['buildDirectory'], cacheID: string) {
 		let tarball: Tarball.GitTarballArchive | Tarball.DirTarballArchive;
@@ -546,6 +546,37 @@ export class RemoteDockerImage extends DockerImage implements PublicInterface<Lo
 		if (this.localAsset) {
 			this.localAsset.clean();
 		}
+	}
+}
+
+/**
+ * Create a Docker image using either a local Docker build or GCP CloudBuild
+ */
+export class DockerImage implements PublicInterface<LocalDockerImage> {
+	readonly urn: LocalDockerImage['urn'];
+	readonly uri: LocalDockerImage['uri'];
+	readonly image: LocalDockerImage['image'];
+	readonly imageBase: LocalDockerImage['imageBase'];
+	readonly getProvider: LocalDockerImage['getProvider'];
+	readonly clean: LocalDockerImage['clean'];
+	readonly _checkImage: LocalDockerImage['_checkImage'];
+
+	constructor(prefix: string, input: GCPDockerRemoteImageInput | GCPDockerLocalImageInput, opts?: pulumi.CustomResourceOptions) {
+		let image: RemoteDockerImage | LocalDockerImage;
+
+		if ('serviceAccount' in input && 'bucket' in input && 'provider' in input) {
+			image = new RemoteDockerImage(prefix, input, opts);
+		} else {
+			image = new LocalDockerImage(prefix, input, opts);
+		}
+
+		this.urn = image.urn;
+		this.uri = image.uri;
+		this.image = image.image;
+		this.imageBase = image.imageBase;
+		this.getProvider = image.getProvider;
+		this.clean = image.clean;
+		this._checkImage = image._checkImage;
 	}
 }
 
