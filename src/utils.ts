@@ -16,9 +16,11 @@ interface ExecResponse {
 	stderr: string[];
 }
 
-export function promisifyExec(script: string, args: string[] = []): Promise<ExecResponse> {
+export function promisifyExec(script: string, args: string[] = [], env?: NodeJS.ProcessEnv): Promise<ExecResponse> {
 	return new Promise(function(resolve, reject) {
-		const child = spawn(script, args);
+		const child = spawn(script, args, {
+			env: env
+		});
 
 		const resp: ExecResponse = { exitCode: null, stdout: [], stderr: [] };
 

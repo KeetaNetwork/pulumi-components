@@ -275,6 +275,7 @@ export class LocalDockerImage extends BaseDockerImage {
 	async _checkImage(_ignore_prefix: string, imageURI: string, input: GCPDockerImageInput): Promise<string>;
 	async _checkImage(_ignore_prefix: string, imageURI: string, input: GCPDockerImageInput): Promise<pulumi.Output<string>>;
 	async _checkImage(_ignore_prefix: string, imageURI: string, input: GCPDockerImageInput): Promise<string | pulumi.Output<string>> {
+		let secretsDir: string | undefined;
 		try {
 			try {
 				// Remove the local copy of the image
@@ -304,12 +305,40 @@ export class LocalDockerImage extends BaseDockerImage {
 			/**
 			 * Compute the arguments for "docker build"
 			 */
-			const buildArgs = [ 'build', '-t', imageURI, ...this.getDockerBuildArgs(input), buildDirectory];
+			const buildArgs = [ '-t', imageURI, ...this.getDockerBuildArgs(input)];
+			let env: NodeJS.ProcessEnv | undefined;
+
+			/**
+			 * Setup a socket for secrets for the build
+			 */
+			if (input.secrets) {
+				secretsDir = fs.mkdtempSync('/tmp/docker-secrets-');
+
+				/*
+				 * Create a source-able script that exports the secrets
+				 */
+				const secretsFile = path.join(secretsDir, 'secrets.sh');
+				const secretsScriptContents = (await Promise.all(Object.entries(input.secrets).map(async function([key, value]) {
+					if (pulumi.Output.isInstance(value)) {
+						value = value.get();
+					} else if (typeof value !== 'string' && 'then' in value) {
+						value = await value;
+					}
+					return(`export ${key}='${value}'`);
+				}))).join('\n');
+
+				fs.writeFileSync(secretsFile, secretsScriptContents, { mode: 0o700 });
+
+				buildArgs.push('--secret', `id=secrets,src=${secretsFile}`);
+
+				env = {};
+				env['DOCKER_BUILDKIT'] = '1';
+			}
 
 			/*
 			 * Run "docker build" to build the image
 			 */
-			await promisifyExec('docker', buildArgs);
+			await promisifyExec('docker', ['build', ...buildArgs, buildDirectory], env);
 
 			/*
 			 * Push the image
@@ -335,6 +364,10 @@ export class LocalDockerImage extends BaseDockerImage {
 			throw(buildError);
 		} finally {
 			this.clean();
+
+			if (secretsDir) {
+				fs.rmSync(secretsDir, { recursive: true, force: true });
+			}
 		}
 	}
 
