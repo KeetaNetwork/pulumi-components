@@ -82,8 +82,6 @@ async function createBuild(inputs: CloudBuildInputs) {
 				}
 			});
 
-			console.info(`Created secret ${secret.name}`);
-
 			cleanupFunctions.push(async function() {
 				await secretClient.deleteSecret({ name: secret.name });
 			});

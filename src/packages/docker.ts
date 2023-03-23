@@ -107,6 +107,10 @@ interface GCPDockerImageInput {
 		type: 'GIT';
 		directory: string;
 		commitID?: string;
+	} | {
+		type: 'DIRECTORY';
+		directory: string;
+		excludePatterns?: string[]
 	};
 
 	/**
@@ -286,7 +290,16 @@ export class LocalDockerImage extends BaseDockerImage {
 			return input;
 		}
 
-		const tarball = new Tarball.GitTarballArchive(input.directory, input.commitID);
+		let tarball;
+		if (input.type === 'GIT') {
+			tarball = new Tarball.GitTarballArchive(input.directory, input.commitID);
+		} else if (input.type === 'DIRECTORY') {
+			// XXX:TODO Change undefined
+			tarball = new Tarball.DirTarballArchive(input.directory, undefined, input.excludePatterns);
+		} else {
+			throw new Error(`Invalid docker buildDirectory input ${JSON.stringify(input)}`);
+		}
+
 		const tarballPath = await tarball.path;
 
 		const tmpDir = fs.mkdtempSync('/tmp/docker-build-');
@@ -406,8 +419,12 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 		let tarball: Tarball.GitTarballArchive | Tarball.DirTarballArchive;
 		if (typeof input === 'string') {
 			tarball = new Tarball.DirTarballArchive(input, cacheID);
-		} else {
+		} else if (input.type === 'DIRECTORY') {
+			tarball = new Tarball.DirTarballArchive(input.directory, cacheID, input.excludePatterns);
+		} else if (input.type === 'GIT') {
 			tarball = new Tarball.GitTarballArchive(input.directory, input.commitID);
+		} else {
+			throw new Error(`Unknown buildDirectory input: ${JSON.stringify(input)}`);
 		}
 
 		this.localAsset = tarball;

@@ -13,7 +13,7 @@ import * as utils from '../utils';
  * and returning the path to the tarball.  If a cacheID is provided, it
  * will be used to cache the tarball.
  */
-function createTarballFromDir(directory: string, cacheID?: string): { file: string, uniqueID: string, shouldClean: boolean } {
+function createTarballFromDir(directory: string, cacheID?: string, excludePatterns: string[] = []): { file: string, uniqueID: string, shouldClean: boolean } {
 	let shouldClean = false;
 	if (cacheID === undefined) {
 		cacheID = crypto.randomUUID();
@@ -49,7 +49,19 @@ function createTarballFromDir(directory: string, cacheID?: string): { file: stri
 	 * Create the tarball
 	 * --no-xattrs will remove macOS added extended attributes
 	 */
-	const createResults = child_process.spawnSync('tar', ['-C', directory, '--no-xattrs', '-zcf', tarballTmpPath, '.'], {
+
+	const excludeFlags = excludePatterns.flatMap(function(pattern) {
+		return(['--exclude', `'${pattern}'`]);
+	});
+
+	const createResults = child_process.spawnSync('tar', [
+		'-C', directory,
+		...excludeFlags,
+		'--no-xattrs',
+		'-zcf',
+		tarballTmpPath,
+		'.'
+	], {
 		env: {
 			...process.env,
 			LC_ALL: 'C',
@@ -63,7 +75,7 @@ function createTarballFromDir(directory: string, cacheID?: string): { file: stri
 	/**
 	 * Verify that the created tarball is valid
 	 */
-	const checkResults = child_process.spawnSync('tar', ['-ztf', tarballTmpPath]);
+	const checkResults = child_process.spawnSync('/bin/bash', ['-c', `tar -ztf ${tarballTmpPath} > /dev/null`]);
 	if (checkResults.status !== 0) {
 		throw new Error(`tar failed: ${checkResults.stderr.toString()}`);
 	}
@@ -213,8 +225,8 @@ export class DirTarballArchive extends pulumi.asset.FileAsset {
 	 */
 	private _path: string;
 
-	constructor(dir: string, cacheID?: string) {
-		const { file, uniqueID, shouldClean } = createTarballFromDir(dir, cacheID);
+	constructor(dir: string, cacheID?: string, excludePatterns?: string[]) {
+		const { file, uniqueID, shouldClean } = createTarballFromDir(dir, cacheID, excludePatterns);
 
 		super(file);
 		this.uniqueID = uniqueID;
