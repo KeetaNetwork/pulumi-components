@@ -47,8 +47,9 @@ function createTarballFromDir(directory: string, cacheID?: string): { file: stri
 
 	/**
 	 * Create the tarball
+	 * --no-xattrs will remove macOS added extended attributes
 	 */
-	const createResults = child_process.spawnSync('tar', ['-C', directory, '-zcvf', tarballTmpPath, '.'], {
+	const createResults = child_process.spawnSync('tar', ['-C', directory, '--no-xattrs', '-zcf', tarballTmpPath, '.'], {
 		env: {
 			...process.env,
 			LC_ALL: 'C',
