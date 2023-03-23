@@ -50,8 +50,8 @@ function createTarballFromDir(directory: string, cacheID?: string, excludePatter
 	 * --no-xattrs will remove macOS added extended attributes
 	 */
 
-	const excludeFlags = excludePatterns.flatMap(function(pattern) {
-		return(['--exclude', `'${pattern}'`]);
+	const excludeFlags = excludePatterns.map(function(pattern) {
+		return(`--exclude='${pattern}'`);
 	});
 
 	const createResults = child_process.spawnSync('tar', [
