@@ -106,10 +106,12 @@ interface GCPDockerImageInput {
 	buildDirectory: string | {
 		type: 'GIT';
 		directory: string;
+		dockerfilePath?: string;
 		commitID?: string;
 	} | {
 		type: 'DIRECTORY';
 		directory: string;
+		dockerfilePath?: string;
 		excludePatterns?: string[]
 	};
 
@@ -197,6 +199,10 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 
 		for (const [ key, value ] of Object.entries(input.buildArgs ?? {})) {
 			args.push('--build-arg', `${key}=${value ?? ''}`);
+		}
+
+		if (typeof input.buildDirectory !== 'string' && input.buildDirectory.dockerfilePath) {
+			args.push('-f', input.buildDirectory.dockerfilePath);
 		}
 
 		return(args);
