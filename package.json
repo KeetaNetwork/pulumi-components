@@ -1,6 +1,6 @@
 {
   "name": "@keetapay/pulumi-components",
-  "version": "1.0.25",
+  "version": "1.0.26",
   "description": "KeetaPay Pulumi Components",
   "repository": "https://github.com/keetapay/pulumi-components.git",
   "main": "dist/index.js",
@@ -18,8 +18,10 @@
   },
   "dependencies": {
     "@google-cloud/cloudbuild": "3.4.0",
+    "@google-cloud/secret-manager": "4.2.1",
     "@pulumi/command": "0.7.0",
     "@pulumi/gcp": "6.49.0",
-    "@pulumi/pulumi": "3.54.0"
+    "@pulumi/pulumi": "3.54.0",
+    "google-auth-library": "8.7.0"
   }
 }

@@ -2,6 +2,9 @@ import type * as pulumi from '@pulumi/pulumi';
 import * as crypto from 'crypto';
 import { spawn } from 'child_process';
 
+
+export type PublicInterface<T> = Pick<T, keyof T>;
+
 export function normalizeName(...args: string[]) {
 	const joined = args.join('-').toLowerCase();
 	return joined.replace(/\.|_/g, '-');
@@ -13,9 +16,11 @@ interface ExecResponse {
 	stderr: string[];
 }
 
-export function promisifyExec(script: string, args: string[] = []): Promise<ExecResponse> {
+export function promisifyExec(script: string, args: string[] = [], env?: NodeJS.ProcessEnv): Promise<ExecResponse> {
 	return new Promise(function(resolve, reject) {
-		const child = spawn(script, args);
+		const child = spawn(script, args, {
+			env: env
+		});
 
 		const resp: ExecResponse = { exitCode: null, stdout: [], stderr: [] };
 
