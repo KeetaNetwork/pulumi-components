@@ -347,7 +347,7 @@ export class LocalDockerImage extends BaseDockerImage {
 			 * Compute the arguments for "docker build"
 			 */
 			const buildArgs = [ '-t', imageURI, ...this.getDockerBuildArgs(input)];
-			const env: NodeJS.ProcessEnv = process.env;
+			const env: NodeJS.ProcessEnv = { ...{}, ...process.env };
 
 			/**
 			 * Setup a socket for secrets for the build
