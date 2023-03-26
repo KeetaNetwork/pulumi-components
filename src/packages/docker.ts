@@ -4,7 +4,6 @@ import * as gcp from '@pulumi/gcp';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import { spawn as childProcessSpawn } from 'child_process';
 
 import { promisifyExec, hash } from '../utils';
 import type { PublicInterface } from '../utils';
@@ -186,7 +185,7 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 	abstract _checkImage(prefix: string, imageURI: string, input: GCPDockerLocalImageInput | GCPDockerRemoteImageInput): Promise<pulumi.Output<string>>;
 	abstract _checkImage(prefix: string, imageURI: string, input: GCPDockerLocalImageInput | GCPDockerRemoteImageInput): Promise<string | pulumi.Output<string>>;
 
-	protected getDockerBuildArgs(input: GCPDockerImageInput) {
+	protected getDockerBuildArgs(input: GCPDockerImageInput, buildDirectory: string) {
 		const args: string[] = [];
 
 		if (this.imageCache) {
@@ -202,7 +201,7 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 		}
 
 		if (typeof input.buildDirectory !== 'string' && input.buildDirectory.dockerfilePath) {
-			args.push('-f', input.buildDirectory.dockerfilePath);
+			args.push('-f', path.join(buildDirectory, input.buildDirectory.dockerfilePath));
 		}
 
 		return(args);
@@ -312,7 +311,7 @@ export class LocalDockerImage extends BaseDockerImage {
 		this.toCleanDirectories.push(tmpDir);
 
 		try {
-			childProcessSpawn('tar', [ '-zxf', tarballPath, '-C', tmpDir ]);
+			await promisifyExec('tar', [ '-zxf', tarballPath, '-C', tmpDir ]);
 		} catch {
 			throw new Error(`Failed to extract tarball ${tarballPath} to ${tmpDir}`);
 		}
@@ -352,7 +351,7 @@ export class LocalDockerImage extends BaseDockerImage {
 			/**
 			 * Compute the arguments for "docker build"
 			 */
-			const buildArgs = [ '-t', imageURI, ...this.getDockerBuildArgs(input)];
+			const buildArgs = [ '-t', imageURI, ...this.getDockerBuildArgs(input, buildDirectory)];
 			const env: NodeJS.ProcessEnv = { ...process.env };
 
 			/**
@@ -558,7 +557,7 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 				'-t',
 				this.image,
 				...additionalSecretBuildArgs,
-				...this.getDockerBuildArgs(input),
+				...this.getDockerBuildArgs(input, '.'),
 				'.'
 			],
 			env: env,
