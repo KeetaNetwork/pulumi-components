@@ -532,7 +532,7 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 					cacheID
 				];
 
-				return(`temporary-delete-me-${prefix}-build-secret-${hash(hashParts.join('|'), 8)}`);
+				return(`temporary-delete-me-build-secret-${hash(hashParts.join('|'), 8)}`);
 			});
 
 			/**
