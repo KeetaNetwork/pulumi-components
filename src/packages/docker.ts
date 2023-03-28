@@ -366,7 +366,11 @@ export class LocalDockerImage extends BaseDockerImage {
 
 				const secretsFileContents = await this.resolveSecretsObject(input.secrets);
 
-				fs.writeFileSync(secretsFilePath, secretsFileContents.get(), { mode: 0o700 });
+				try {
+					fs.writeFileSync(secretsFilePath, secretsFileContents.get(), { mode: 0o700 });
+				} catch {
+					fs.writeFileSync(secretsFilePath, '', { mode: 0o700 });
+				}
 
 				this.toCleanDirectories.push(secretsDir);
 
