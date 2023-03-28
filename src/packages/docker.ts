@@ -43,7 +43,7 @@ export function getFileResourceIdentifier(computeFrom: string): string {
 
 	updateHashWithMultipleFiles(computeFrom, hashState);
 
-	return hashState.digest('hex').substring(0, 9);
+	return hashState.digest('hex');
 }
 
 interface SecretsInput {
@@ -352,7 +352,7 @@ export class LocalDockerImage extends BaseDockerImage {
 			 * Compute the arguments for "docker build"
 			 */
 			const buildArgs = [ '-t', imageURI, ...this.getDockerBuildArgs(input, buildDirectory)];
-			const env: NodeJS.ProcessEnv = { ...process.env };
+			const env = { ...process.env };
 
 			/**
 			 * Setup a socket for secrets for the build
