@@ -145,7 +145,9 @@ async function createBuild(inputs: CloudBuildInputs) {
 				numArtifacts: waitedResults.results.numArtifacts ? Number(waitedResults.results.numArtifacts) : null
 			},
 			logUrl: waitedResults.logUrl ?? null,
-			statusDetail: waitedResults.statusDetail ?? null
+			statusDetail: waitedResults.statusDetail ?? null,
+			build: inputs.build,
+			projectId: inputs.projectId
 		};
 	} catch (e) {
 		error = e;
@@ -167,10 +169,9 @@ async function createBuild(inputs: CloudBuildInputs) {
 }
 
 const cloudbuildProvider: pulumi.dynamic.ResourceProvider = {
-	async check(oldInput: CloudBuildInputs, newInput: CloudBuildInputs) {
+	async check(_ignore_oldInput: CloudBuildInputs, newInput: CloudBuildInputs) {
 		const retval = {
 			inputs: {
-				...oldInput,
 				...newInput
 			}
 		};
@@ -212,6 +213,8 @@ export class CloudBuild extends pulumi.dynamic.Resource implements PulumiBuildOu
 	public readonly results!: pulumi.Output<BuildOutput['results']>;
 	public readonly logUrl!: pulumi.Output<BuildOutput['logUrl']>;
 	public readonly statusDetail!: pulumi.Output<BuildOutput['statusDetail']>;
+	public readonly build!: pulumi.Output<BuildOutput['build']>;
+	public readonly projectId!: pulumi.Output<BuildOutput['projectId']>;
 
 	static HashType = HashType;
 
