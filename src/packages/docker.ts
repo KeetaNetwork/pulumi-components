@@ -521,11 +521,33 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 		if (input.secrets) {
 			const remoteSecretFileDirectory = '/workspace/secrets';
 			const remoteSecretFilePath = path.join(remoteSecretFileDirectory, './keeta-build-secrets.txt');
-			const secretId = `temporary-delete-me-${prefix}-build-secret-${Date.now()}`;
 
+			/**
+			 * Serialized form of secrets
+			 */
+			const secrets = await this.resolveSecretsObject(input.secrets);
+
+			/**
+			 * An ID to pass to the build, which will be used to create
+			 * a temporary secret in Secret Manager
+			 */
+			const secretId = secrets.apply(function(secretsPlain) {
+				const hashParts = [
+					prefix,
+					secretsPlain,
+					cacheID
+				];
+
+				return(`temporary-delete-me-build-secret-${hash(hashParts.join('|'), 8)}`);
+			});
+
+			/**
+			 * Structure to pass to the build, which will be used to create
+			 * a temporary secret in Secret Manager
+			 */
 			temporarySecret = {
 				secretId: secretId,
-				input: await this.resolveSecretsObject(input.secrets)
+				input: secrets
 			};
 
 			const secretEnvName = 'KEETA_SECRET';
