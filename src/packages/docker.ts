@@ -9,7 +9,7 @@ import { promisifyExec, hash } from '../utils';
 import type { PublicInterface } from '../utils';
 import type { DeepInput, UnwrapDeepInput } from '../types';
 import CloudBuild from './gcp/cloudbuild';
-import type { ISecrets, TemporarySecretInput } from './gcp/cloudbuild';
+import type { ISecrets } from './gcp/cloudbuild';
 import * as Tarball from './tarball';
 import { GCP_COMPONENT_PREFIX } from './gcp/constants';
 
@@ -221,15 +221,17 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 
 	protected async resolveSecretsObject(secrets: SecretsInput) {
 		const allSecrets = await Promise.all(Object.entries(secrets).map(async function([key, value]) {
-			if (pulumi.Output.isInstance(value)) {
-				value = value.get();
-			} else if (typeof value !== 'string' && 'then' in value) {
+			if (typeof value !== 'string' && 'then' in value) {
 				value = await value;
 			}
-			return(`${key}=${value}`);
+			return(pulumi.interpolate`${key}=${value}`);
 		}));
 
-		return allSecrets.join('\n');
+		const retval = pulumi.all(allSecrets).apply(function(allSecretsPlain) {
+			return(allSecretsPlain.join('\n'));
+		});
+
+		return(retval);
 	}
 
 	constructor(prefix: string, input: GCPDockerImageInput, opts?: pulumi.CustomResourceOptions) {
@@ -364,7 +366,7 @@ export class LocalDockerImage extends BaseDockerImage {
 
 				const secretsFileContents = await this.resolveSecretsObject(input.secrets);
 
-				fs.writeFileSync(secretsFilePath, secretsFileContents, { mode: 0o700 });
+				fs.writeFileSync(secretsFilePath, secretsFileContents.get(), { mode: 0o700 });
 
 				this.toCleanDirectories.push(secretsDir);
 
@@ -509,7 +511,7 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 		let env: string[] | undefined;
 		let secretEnv: string[] | undefined;
 		const additionalSecretBuildArgs: string[] = [];
-		let temporarySecret: TemporarySecretInput | undefined;
+		let temporarySecret;
 		let availableSecrets: DeepInput<ISecrets> | undefined;
 
 		if (input.secrets) {

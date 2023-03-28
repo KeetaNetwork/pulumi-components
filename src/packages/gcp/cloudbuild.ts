@@ -1,4 +1,3 @@
-import fs from 'fs';
 import * as pulumi from '@pulumi/pulumi';
 import type * as gcp from '@pulumi/gcp';
 import * as googleAuth from 'google-auth-library';
@@ -13,9 +12,8 @@ export type IBuild = cloudbuildTypeImport.protos.google.devtools.cloudbuild.v1.I
 export type IBuildOperationMetadata = cloudbuildTypeImport.protos.google.devtools.cloudbuild.v1.IBuildOperationMetadata;
 export type ISecrets = cloudbuildTypeImport.protos.google.devtools.cloudbuild.v1.ISecrets;
 
-export interface TemporarySecretInput {
+interface TemporarySecretInput {
 	secretParent?: string;
-	isFile?: boolean;
 	input: string;
 	secretId: string;
 }
@@ -71,7 +69,7 @@ async function createBuild(inputs: CloudBuildInputs) {
 
 	try {
 		if (inputs.temporarySecret !== undefined) {
-			const { secretId, isFile, input, secretParent } = inputs.temporarySecret;
+			const { secretId, input, secretParent } = inputs.temporarySecret;
 
 			const [ secret ] = await secretClient.createSecret({
 				parent: secretParent ?? `projects/${projectId}`,
@@ -108,10 +106,7 @@ async function createBuild(inputs: CloudBuildInputs) {
 			}
 
 
-			let versionContents = input;
-			if (isFile === true) {
-				versionContents = fs.readFileSync(input, 'utf8');
-			}
+			const versionContents = input;
 
 			await secretClient.addSecretVersion({
 				parent: secret.name,
