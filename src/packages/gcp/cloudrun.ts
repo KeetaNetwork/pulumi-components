@@ -1,7 +1,7 @@
 import * as pulumi from '@pulumi/pulumi';
 import * as gcp from '@pulumi/gcp';
 import { GCP_COMPONENT_PREFIX } from './constants';
-import type { GcpRegionName } from './regions';
+import type { GCPRegion } from './constants';
 import { normalizeName } from '../../utils';
 
 export interface EnvironmentGCPSecretData {
@@ -19,7 +19,7 @@ interface EnvironmentVariables {
 interface CloudRunEnvManagerInput {
 	variables: EnvironmentVariables;
 	serviceAccount?: pulumi.Input<string>;
-	secretRegionName?: pulumi.Input<GcpRegionName>;
+	secretRegionName?: pulumi.Input<GCPRegion>;
 	prefix?: string;
 }
 
@@ -34,7 +34,7 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 	readonly variables: EnvironmentVariables;
 	readonly variableOutput: gcp.types.input.cloudrun.ServiceTemplateSpecContainerEnv[] = [];
 	readonly serviceAccount?: pulumi.Input<string>;
-	readonly secretRegionName?: pulumi.Input<GcpRegionName>;
+	readonly secretRegionName?: pulumi.Input<GCPRegion>;
 
 	constructor(name: string, input: CloudRunEnvManagerInput, opts?: pulumi.CustomResourceOptions) {
 		super(`${GCP_COMPONENT_PREFIX}:CloudRunEnvManager`, name, input, { ...opts });
