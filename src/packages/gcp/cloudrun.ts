@@ -2,7 +2,7 @@ import * as pulumi from '@pulumi/pulumi';
 import * as gcp from '@pulumi/gcp';
 import { GCP_COMPONENT_PREFIX } from './constants';
 import type { GCPRegion } from './constants';
-import { normalizeName } from '../../utils';
+import { normalizeName, inputApply } from '../../utils';
 
 export interface EnvironmentGCPSecretData {
 	version: pulumi.Input<string>;
@@ -10,7 +10,7 @@ export interface EnvironmentGCPSecretData {
 }
 
 interface EnvironmentVariables {
-	[name: string]: EnvironmentGCPSecretData | {
+	[name: string]: pulumi.Input<string | number> | EnvironmentGCPSecretData | {
 		value: pulumi.Input<string | number>;
 		secret: boolean;
 	}
@@ -23,8 +23,16 @@ interface CloudRunEnvManagerInput {
 	prefix?: string;
 }
 
-function isEnvironmentGCPSecretData(val: any): val is EnvironmentGCPSecretData {
-	return typeof val === 'object' && val && val.version && val.name;
+function isEnvironmentGCPSecretData(val: unknown): val is EnvironmentGCPSecretData {
+	if (typeof val !== 'object' || val === null) {
+		return(false);
+	}
+
+	if (!('version' in val) || !('name' in val)) {
+		return(false);
+	}
+
+	return(true);
 }
 
 export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvManagerInput {
@@ -45,6 +53,12 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 		this.secretRegionName = input.secretRegionName;
 		this.variables = input.variables;
 
+		const convertValueToString = function(value: pulumi.Input<string | number>) {
+			return(inputApply(value, function(val) {
+				return(String(val));
+			}));
+		};
+
 		for (const variableName in input.variables) {
 			const valueOrWrapper = input.variables[variableName];
 			if (isEnvironmentGCPSecretData(valueOrWrapper)) {
@@ -53,20 +67,27 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 				continue;
 			}
 
-			const { value, secret } = valueOrWrapper;
+			if (typeof valueOrWrapper === 'object' && 'value' in valueOrWrapper) {
+				const { value, secret } = valueOrWrapper;
 
-			const asString = pulumi.output(value).apply(function(val) {
-				return(String(val));
-			});
+				const asString = convertValueToString(value);
 
-			if (secret) {
-				this.variableOutput.push(this.makeSecretVariable(variableName, asString));
+				if (secret) {
+					this.variableOutput.push(this.makeSecretVariable(variableName, asString));
+					continue;
+				}
+
+				this.variableOutput.push({
+					name: variableName,
+					value: asString
+				});
+
 				continue;
 			}
 
 			this.variableOutput.push({
 				name: variableName,
-				value: asString
+				value: convertValueToString(valueOrWrapper)
 			});
 		}
 

@@ -1,7 +1,6 @@
-import type * as pulumi from '@pulumi/pulumi';
+import * as pulumi from '@pulumi/pulumi';
 import * as crypto from 'crypto';
 import { spawn } from 'child_process';
-
 
 export type PublicInterface<T> = Pick<T, keyof T>;
 
@@ -81,4 +80,10 @@ export function tail(input: string | pulumi.Output<string>) {
 	return(input.apply(function(realInput) {
 		return(tail(realInput));
 	}));
+}
+
+export function inputApply<InnerType, InputType extends pulumi.Input<InnerType>, CallbackType>(input: InputType, callback: (value: pulumi.Unwrap<InputType>) => CallbackType): pulumi.Output<CallbackType> {
+	const output = pulumi.output(input);
+	const retval = output.apply(callback);
+	return(retval);
 }
