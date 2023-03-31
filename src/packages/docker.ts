@@ -12,6 +12,7 @@ import CloudBuild from './gcp/cloudbuild';
 import type { ISecrets } from './gcp/cloudbuild';
 import * as Tarball from './tarball';
 import { GCP_COMPONENT_PREFIX } from './gcp/constants';
+import LocalDockerImageBuilder from './localdocker';
 
 function updateHashWithSingleFile(fullPath: string, hashState: crypto.Hash) {
 	hashState.update(fs.readFileSync(fullPath));
@@ -48,6 +49,23 @@ export function getFileResourceIdentifier(computeFrom: string): string {
 
 interface SecretsInput {
 	[envName: string]: pulumi.Input<string>;
+}
+
+interface BaseBuildDirectoryOptions<Type extends 'GIT' | 'DIRECTORY'> {
+	type: Type;
+	directory: string;
+	/**
+	 * Path to dockerfile to use, relative to root of build directory
+	 */
+	dockerfilePath?: string;
+}
+
+interface GitBuildDirOptions extends BaseBuildDirectoryOptions<'GIT'> {
+	commitID?: string;
+}
+
+interface DirectoryBuildDirOptions extends BaseBuildDirectoryOptions<'DIRECTORY'> {
+	excludePatterns?: string[]
 }
 
 interface GCPDockerImageInput {
@@ -102,17 +120,7 @@ interface GCPDockerImageInput {
 	 * Source to build from, either a directory or a git
 	 * working copy and optional commit
 	 */
-	buildDirectory: string | {
-		type: 'GIT';
-		directory: string;
-		dockerfilePath?: string;
-		commitID?: string;
-	} | {
-		type: 'DIRECTORY';
-		directory: string;
-		dockerfilePath?: string;
-		excludePatterns?: string[]
-	};
+	buildDirectory: string | GitBuildDirOptions | DirectoryBuildDirOptions;
 
 	/**
 	 * Platform to build image for
@@ -154,7 +162,7 @@ interface GCPDockerRemoteImageInput extends GCPDockerImageInput {
 }
 
 abstract class BaseDockerImage extends pulumi.ComponentResource {
-	private static AwaitingOutput: { [rawUrl: string]: Promise<string | pulumi.Output<string>> } = {};
+	private static AwaitingOutput: { [rawUrl: string]: pulumi.Output<string> } = {};
 
 	/**
 	 * The fully qualified URL to the built image (<image>@<sha256:hash>)
@@ -181,9 +189,7 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 	 */
 	protected toCleanDirectories: string[] = [];
 
-	abstract _checkImage(prefix: string, imageURI: string, input: GCPDockerLocalImageInput | GCPDockerRemoteImageInput): Promise<string>;
-	abstract _checkImage(prefix: string, imageURI: string, input: GCPDockerLocalImageInput | GCPDockerRemoteImageInput): Promise<pulumi.Output<string>>;
-	abstract _checkImage(prefix: string, imageURI: string, input: GCPDockerLocalImageInput | GCPDockerRemoteImageInput): Promise<string | pulumi.Output<string>>;
+	abstract _checkImage(prefix: string, imageURI: string, input: GCPDockerLocalImageInput | GCPDockerRemoteImageInput): pulumi.Output<string>;
 
 	protected getDockerBuildArgs(input: GCPDockerImageInput, buildDirectory: string) {
 		const args: string[] = [];
@@ -219,19 +225,12 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 		return(tags);
 	}
 
-	protected async resolveSecretsObject(secrets: SecretsInput) {
-		const allSecrets = await Promise.all(Object.entries(secrets).map(async function([key, value]) {
-			if (typeof value !== 'string' && 'then' in value) {
-				value = await value;
-			}
-			return(pulumi.interpolate`${key}=${value}`);
-		}));
-
-		const retval = pulumi.all(allSecrets).apply(function(allSecretsPlain) {
-			return(allSecretsPlain.join('\n'));
+	protected resolveSecretsObject(secrets: SecretsInput) {
+		return pulumi.secret(secrets).apply(function(unwrapped) {
+			return Object.entries(unwrapped).map(function([key, value]) {
+				return(`${key}=${value}`);
+			}).join('\n');
 		});
-
-		return(retval);
 	}
 
 	constructor(prefix: string, input: GCPDockerImageInput, opts?: pulumi.CustomResourceOptions) {
@@ -271,12 +270,12 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 		}
 
 		if (BaseDockerImage.AwaitingOutput[imageURI] === undefined) {
-			const imageInfo = this._checkImage(prefix, imageURI, input);
+			const imageInfo = pulumi.output(this._checkImage(prefix, imageURI, input));
 
 			BaseDockerImage.AwaitingOutput[imageURI] = imageInfo;
 		}
 
-		this.uri = pulumi.output(BaseDockerImage.AwaitingOutput[imageURI]);
+		this.uri = BaseDockerImage.AwaitingOutput[imageURI];
 
 		this.registerOutputs({ uri: this.uri });
 	}
@@ -321,94 +320,29 @@ export class LocalDockerImage extends BaseDockerImage {
 		return(tmpDir);
 	}
 
-	async _checkImage(_ignore_prefix: string, imageURI: string, input: GCPDockerImageInput): Promise<string>;
-	async _checkImage(_ignore_prefix: string, imageURI: string, input: GCPDockerImageInput): Promise<pulumi.Output<string>>;
-	async _checkImage(_ignore_prefix: string, imageURI: string, input: GCPDockerImageInput): Promise<string | pulumi.Output<string>> {
-		try {
-			try {
-				// Remove the local copy of the image
-				await promisifyExec('docker', [ 'image', 'rm', imageURI ]);
-			} catch {
-				/* Ignore errors removing an image */
-			}
-
-			/*
-			 * Pull the cache image if appropriate
-			 */
-			if (this.imageCache) {
-				try {
-					await promisifyExec('docker', [ 'pull', this.imageCache ]);
-				} catch {
-					/* Ignore errors attempt to pull cache image */
-				}
-			}
-
-			/**
-			 * Get the build directory from the input, which may
-			 * require creating a temporary directory and extracting
-			 * a tarball into it
-			 */
-			const buildDirectory = await this.getBuildDirectory(input.buildDirectory);
-
-			/**
-			 * Compute the arguments for "docker build"
-			 */
-			const buildArgs = [ '-t', imageURI, ...this.getDockerBuildArgs(input, buildDirectory)];
-			const env = { ...process.env };
-
-			/**
-			 * Setup a socket for secrets for the build
-			 */
-			if (input.secrets) {
-				const secretsDir = fs.mkdtempSync('/tmp/secrets-');
-
-				const secretsFilePath = path.join(secretsDir, 'secrets');
-
-				const secretsFileContents = await this.resolveSecretsObject(input.secrets);
-
-				try {
-					fs.writeFileSync(secretsFilePath, secretsFileContents.get(), { mode: 0o700 });
-				} catch {
-					fs.writeFileSync(secretsFilePath, '', { mode: 0o700 });
-				}
-
-				this.toCleanDirectories.push(secretsDir);
-
-				buildArgs.push('--secret', `id=secrets,src=${secretsFilePath}`);
-
-				env['DOCKER_BUILDKIT'] = '1';
-			}
-
-			/*
-			 * Run "docker build" to build the image
-			 */
-			await promisifyExec('docker', ['build', ...buildArgs, buildDirectory], env);
-
-			/*
-			 * Push the image
-			 */
-			await promisifyExec('docker', [ 'image', 'push', imageURI ]);
-
-			/**
-			 * Add the additional tags and push them
-			 */
-			for (const taggedImage of this.getDockerBuildTags(input)) {
-				await promisifyExec('docker', [ 'tag', imageURI, taggedImage ]);
-				await promisifyExec('docker', [ 'image', 'push', taggedImage ]);
-			}
-
-			const imageInfoJSON = await promisifyExec('docker', [ 'image', 'inspect', imageURI ]);
-			const imageInfo = JSON.parse(imageInfoJSON.stdout.join('\n'));
-			const imageDigest = imageInfo[0].RepoDigests[0];
-
-			return(imageDigest);
-		} catch (buildError) {
-			console.log(`Failed to build local Docker image ${imageURI}:`, buildError);
-
-			throw(buildError);
-		} finally {
-			this.clean();
+	_checkImage(prefix: string, imageURI: string, input: GCPDockerImageInput): pulumi.Output<string> {
+		let secretContents;
+		if (input.secrets) {
+			secretContents = this.resolveSecretsObject(input.secrets);
 		}
+
+		const buildDirectory = pulumi.output(this.getBuildDirectory(input.buildDirectory));
+
+		const buildArgs = buildDirectory.apply(directory => {
+			return this.getDockerBuildArgs(input, directory);
+		});
+
+		const image = new LocalDockerImageBuilder(`${prefix}-docker-builder`, {
+			imageURI: imageURI,
+			buildDirectory: buildDirectory,
+			secretContents: secretContents,
+			buildArgs: buildArgs,
+			imageCache: this.imageCache,
+			tags: this.getDockerBuildTags(input),
+			cleanBuildDirectory: true
+		});
+
+		return image.digest;
 	}
 }
 
@@ -426,7 +360,7 @@ export class LocalDockerImage extends BaseDockerImage {
  */
 export class RemoteDockerImage extends BaseDockerImage implements PublicInterface<LocalDockerImage> {
 	private localAsset?: Tarball.GitTarballArchive | Tarball.DirTarballArchive;
-	private async getBuildTarball(input: GCPDockerImageInput['buildDirectory'], cacheID: string) {
+	private getBuildTarball(input: GCPDockerImageInput['buildDirectory'], cacheID: string) {
 		let tarball: Tarball.GitTarballArchive | Tarball.DirTarballArchive;
 		if (typeof input === 'string') {
 			tarball = new Tarball.DirTarballArchive(input, cacheID);
@@ -444,9 +378,7 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 
 	}
 
-	async _checkImage(prefix: string, imageURI: string, input: GCPDockerRemoteImageInput): Promise<string>;
-	async _checkImage(prefix: string, imageURI: string, input: GCPDockerRemoteImageInput): Promise<pulumi.Output<string>>;
-	async _checkImage(prefix: string, imageURI: string, input: GCPDockerRemoteImageInput): Promise<string | pulumi.Output<string>> {
+	_checkImage(prefix: string, imageURI: string, input: GCPDockerRemoteImageInput): pulumi.Output<string> {
 		/**
 		 * Cache ID based on the ImageURI, which includes the version
 		 * info so if it changes the image will be rebuilt
@@ -472,8 +404,7 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 		 * Source tarball for the build, which will be uploaded to
 		 * the bucket and passed to CloudBuild
 		 */
-		const source = await this.getBuildTarball(input.buildDirectory, cacheID);
-		this.localAsset = source;
+		const source = this.getBuildTarball(input.buildDirectory, cacheID);
 
 		const imageSourceObject = new gcp.storage.BucketObject(`${prefix}-cloudbuild-src`, {
 			bucket: input.bucket.name,
@@ -525,7 +456,7 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 			/**
 			 * Serialized form of secrets
 			 */
-			const secrets = await this.resolveSecretsObject(input.secrets);
+			const secrets = this.resolveSecretsObject(input.secrets);
 
 			/**
 			 * An ID to pass to the build, which will be used to create
@@ -639,6 +570,9 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 			}
 		}, { parent: this, dependsOn: imageDependsOn });
 
+		// Clean after cloudBuild has completed
+		buildInfo.results.apply(this.clean.bind(this));
+
 		/**
 		 * Compute the image digest from the build results
 		 */
@@ -664,8 +598,6 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 
 			return(`${imageName}@${imageDigest}`);
 		});
-
-		this.clean();
 
 		return(image);
 	}
@@ -748,9 +680,7 @@ export class DockerImage implements PublicInterface<LocalDockerImage> {
 		this.clean = image.clean;
 	}
 
-	async _checkImage(..._ignore_args: Parameters<LocalDockerImage['_checkImage']>) : Promise<string>;
-	async _checkImage(..._ignore_args: Parameters<LocalDockerImage['_checkImage']>): Promise<pulumi.Output<string>>;
-	async _checkImage(..._ignore_args: Parameters<LocalDockerImage['_checkImage']>): Promise<string | pulumi.Output<string>> {
+	_checkImage(..._ignore_args: Parameters<LocalDockerImage['_checkImage']>): pulumi.Output<string> {
 		throw(new Error('internal function, do not call'));
 	}
 }
