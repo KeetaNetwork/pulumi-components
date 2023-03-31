@@ -326,16 +326,20 @@ export class LocalDockerImage extends BaseDockerImage {
 			secretContents = this.resolveSecretsObject(input.secrets);
 		}
 
-		const buildDirectory = this.getBuildDirectory(input.buildDirectory);
+		const buildDirectory = pulumi.output(this.getBuildDirectory(input.buildDirectory));
+
+		const buildArgs = buildDirectory.apply(directory => {
+			return this.getDockerBuildArgs(input, directory);
+		});
 
 		const image = new LocalDockerImageBuilder(`${prefix}-docker-builder`, {
 			imageURI: imageURI,
 			buildDirectory: buildDirectory,
 			secretContents: secretContents,
-			buildArgs: pulumi.output((async () => this.getDockerBuildArgs(input, await buildDirectory))()),
+			buildArgs: buildArgs,
 			imageCache: this.imageCache,
 			tags: this.getDockerBuildTags(input),
-			skipCleanBuildDirectory: false
+			cleanBuildDirectory: true
 		});
 
 		return image.digest;

@@ -12,14 +12,14 @@ interface LocalBuildInputs {
 	buildArgs?: string[];
 	imageCache?: string;
 	imageURI: string;
-	skipCleanBuildDirectory?: boolean;
+	cleanBuildDirectory?: boolean;
 	tags?: string[];
 }
 
 async function createBuild(inputs: LocalBuildInputs) {
 	const toClean = [];
 
-	if (inputs.skipCleanBuildDirectory !== true) {
+	if (inputs.cleanBuildDirectory === true) {
 		toClean.push(inputs.buildDirectory);
 	}
 
@@ -32,8 +32,8 @@ async function createBuild(inputs: LocalBuildInputs) {
 		}
 
 		/*
-         * Pull the cache image if appropriate
-         */
+		 * Pull the cache image if appropriate
+		 */
 		if (inputs.imageCache) {
 			try {
 				await promisifyExec('docker', [ 'pull', inputs.imageCache ]);
@@ -43,14 +43,18 @@ async function createBuild(inputs: LocalBuildInputs) {
 		}
 
 		/**
-         * Compute the arguments for "docker build"
-         */
-		const buildArgs = [ '-t', inputs.imageURI, ...(inputs.buildArgs || [])];
+		 * Compute the arguments for "docker build"
+		 */
+		const buildArgs = [ '-t', inputs.imageURI];
+		if (inputs.buildArgs) {
+			buildArgs.push(...inputs.buildArgs);
+		}
+
 		const env = { ...process.env };
 
 		/**
-         * Setup a socket for secrets for the build
-         */
+		 * Setup a socket for secrets for the build
+		 */
 		if (inputs.secretContents) {
 			const secretsDir = fs.mkdtempSync('/tmp/secrets-');
 
@@ -66,18 +70,18 @@ async function createBuild(inputs: LocalBuildInputs) {
 		}
 
 		/*
-         * Run "docker build" to build the image
-         */
+		 * Run "docker build" to build the image
+		 */
 		await promisifyExec('docker', ['build', ...buildArgs, inputs.buildDirectory], env);
 
 		/*
-         * Push the image
-         */
+		 * Push the image
+		 */
 		await promisifyExec('docker', [ 'image', 'push', inputs.imageURI ]);
 
 		/**
-         * Add the additional tags and push them
-         */
+		 * Add the additional tags and push them
+		 */
 		for (const taggedImage of inputs.tags ?? []) {
 			await promisifyExec('docker', [ 'tag', inputs.imageURI, taggedImage ]);
 			await promisifyExec('docker', [ 'image', 'push', taggedImage ]);
