@@ -94,6 +94,30 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 		this.registerOutputs({ variableOutput: this.variableOutput });
 	}
 
+	get cloudRunJobVariableOutput(): gcp.types.input.cloudrunv2.JobTemplateTemplateContainerEnv[] {
+		return(this.variableOutput.map(function(variable) {
+			if (!variable.name) {
+				throw new Error('Variable name is required for CloudRunv2 Jobs');
+			}
+
+			let valueSource;
+
+			if (variable.valueFrom) {
+				const secretKeyRef = pulumi.output(variable.valueFrom).apply(function(valueFrom) {
+					return({
+						secret: valueFrom.secretKeyRef.name,
+						version: valueFrom.secretKeyRef.key
+					});
+				});
+
+				valueSource = { secretKeyRef };
+			}
+
+
+			return({ name: variable.name, value: variable.value, valueSource });
+		}));
+	}
+
 	private registerExistingSecret(name: string, secret: EnvironmentGCPSecretData) {
 		const bindingName = normalizeName(this.#prefix, 'non-managed', name, 'iam-binding');
 
