@@ -193,7 +193,7 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 	abstract _checkImage(prefix: string, imageURI: string, input: GCPDockerLocalImageInput | GCPDockerRemoteImageInput): pulumi.Output<string>;
 
 	protected getDockerBuildArgs(input: GCPDockerImageInput, buildDirectory: string) {
-		const args: (pulumi.Output<string> | string)[] = [];
+		const args: pulumi.Input<string>[] = [];
 
 		if (this.imageCache) {
 			args.push('--cache-from', `${this.imageCache}`);
