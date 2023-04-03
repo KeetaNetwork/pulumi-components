@@ -7,12 +7,13 @@ import path from 'path';
 
 import { promisifyExec, hash } from '../utils';
 import type { PublicInterface } from '../utils';
-import type { DeepInput, UnwrapDeepInput } from '../types';
+import type { DeepInput } from '../types';
 import CloudBuild from './gcp/cloudbuild';
 import type { ISecrets } from './gcp/cloudbuild';
 import * as Tarball from './tarball';
 import { GCP_COMPONENT_PREFIX } from './gcp/constants';
 import LocalDockerImageBuilder from './localdocker';
+import type { google } from '@google-cloud/cloudbuild/build/protos/protos';
 
 function updateHashWithSingleFile(fullPath: string, hashState: crypto.Hash) {
 	hashState.update(fs.readFileSync(fullPath));
@@ -114,7 +115,7 @@ interface GCPDockerImageInput {
 	/**
 	 * Additional arguments to pass to as "build-args"
 	 */
-	buildArgs?: { [key: string]: string | undefined };
+	buildArgs?: { [key: string]: pulumi.Input<string> | undefined };
 
 	/**
 	 * Source to build from, either a directory or a git
@@ -192,7 +193,7 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 	abstract _checkImage(prefix: string, imageURI: string, input: GCPDockerLocalImageInput | GCPDockerRemoteImageInput): pulumi.Output<string>;
 
 	protected getDockerBuildArgs(input: GCPDockerImageInput, buildDirectory: string) {
-		const args: string[] = [];
+		const args: pulumi.Input<string>[] = [];
 
 		if (this.imageCache) {
 			args.push('--cache-from', `${this.imageCache}`);
@@ -203,14 +204,16 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 		}
 
 		for (const [ key, value ] of Object.entries(input.buildArgs ?? {})) {
-			args.push('--build-arg', `${key}=${value ?? ''}`);
+			args.push('--build-arg', pulumi.interpolate`${key}=${value ?? ''}`);
 		}
 
 		if (typeof input.buildDirectory !== 'string' && input.buildDirectory.dockerfilePath) {
 			args.push('-f', path.join(buildDirectory, input.buildDirectory.dockerfilePath));
 		}
 
-		return(args);
+		const retval = pulumi.all(args);
+
+		return(retval);
 	}
 
 	protected getDockerBuildTags(input: GCPDockerImageInput) {
@@ -328,7 +331,7 @@ export class LocalDockerImage extends BaseDockerImage {
 
 		const buildDirectory = pulumi.output(this.getBuildDirectory(input.buildDirectory));
 
-		const buildArgs = buildDirectory.apply(directory => {
+		const buildArgs = buildDirectory.apply((directory) => {
 			return this.getDockerBuildArgs(input, directory);
 		});
 
@@ -427,7 +430,7 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 		/**
 		 * Steps to perform to build the image
 		 */
-		const steps: NonNullable<UnwrapDeepInput<ConstructorParameters<typeof CloudBuild>[1]['build']>['steps']> = [];
+		const steps: DeepInput<google.devtools.cloudbuild.v1.IBuildStep>[] = [];
 
 		/*
 		 * Pull the cache image if it is specified
@@ -511,14 +514,16 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 		steps.push({
 			id: 'build-image',
 			name: 'gcr.io/cloud-builders/docker',
-			args: [
-				'build',
-				'-t',
-				this.image,
-				...additionalSecretBuildArgs,
-				...this.getDockerBuildArgs(input, '.'),
-				'.'
-			],
+			args: this.getDockerBuildArgs(input, '.').apply((buildArgs) => {
+				return([
+					'build',
+					'-t',
+					this.image,
+					...additionalSecretBuildArgs,
+					...buildArgs,
+					'.'
+				]);
+			}),
 			env: env,
 			secretEnv: secretEnv
 		});
