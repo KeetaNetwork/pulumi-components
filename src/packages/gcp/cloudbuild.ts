@@ -71,6 +71,22 @@ async function createBuild(inputs: CloudBuildInputs) {
 		if (inputs.temporarySecret !== undefined) {
 			const { secretId, input, secretParent } = inputs.temporarySecret;
 
+			/**
+			 * Life-time of secret (in seconds), we set it to expire
+			 * after this time
+			 */
+			const secretTTL = 300;
+
+			/**
+			 * Do not try to delete the secret after the expiration
+			 * period to avoid conflicting with duplicate builds
+			 */
+			const secretNoDeleteAfter = new Date();
+			secretNoDeleteAfter.setSeconds(secretNoDeleteAfter.getSeconds() + secretTTL + 60);
+
+			/**
+			 * Create a secret to hold the input secrets
+			 */
 			const [ secret ] = await secretClient.createSecret({
 				parent: secretParent ?? `projects/${projectId}`,
 				secretId: secretId,
@@ -78,13 +94,22 @@ async function createBuild(inputs: CloudBuildInputs) {
 					name: secretId,
 					replication: { automatic: {}},
 					ttl: {
-						seconds: 300
+						seconds: secretTTL
 					}
 				}
 			});
 
 			cleanupFunctions.push(async function() {
-				await secretClient.deleteSecret({ name: secret.name });
+				const now = Date.now();
+				if (now > secretNoDeleteAfter.getTime()) {
+					return;
+				}
+
+				try {
+					await secretClient.deleteSecret({ name: secret.name });
+				} catch {
+					/* Ignore failures to delete */
+				}
 			});
 
 			if (inputs.build.serviceAccount) {
