@@ -164,10 +164,13 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 			replication: replicationConfig
 		}, { parent: this, deleteBeforeReplace: true });
 
-		new gcp.secretmanager.SecretVersion(`${secretName}-version`, {
+		const secretVersion = new gcp.secretmanager.SecretVersion(`${secretName}-version`, {
 			secret: secret.id,
 			secretData: pulumi.secret(value)
-		}, { parent: secret });
+		}, {
+			parent: secret,
+			retainOnDelete: true
+		});
 
 		new gcp.secretmanager.SecretIamMember(`${secretName}-iam-binding`, {
 			secretId: secret.secretId,
@@ -179,7 +182,17 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 			name: name,
 			valueFrom: {
 				secretKeyRef: {
-					key: 'latest',
+					key: secretVersion.version.apply(function(_ignored_version) {
+						/*
+						 * We return latest here
+						 * because we want to always
+						 * use the latest version of
+						 * the secret, but want the
+						 * Output to depend on the
+						 * created version
+						 */
+						return('latest');
+					}),
 					name: secret.secretId
 				}
 			}
