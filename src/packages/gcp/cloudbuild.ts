@@ -84,7 +84,11 @@ async function createBuild(inputs: CloudBuildInputs) {
 			});
 
 			cleanupFunctions.push(async function() {
-				await secretClient.deleteSecret({ name: secret.name });
+				try {
+					await secretClient.deleteSecret({ name: secret.name });
+				} catch {
+					/* Ignore failures to delete */
+				}
 			});
 
 			if (inputs.build.serviceAccount) {
