@@ -76,7 +76,7 @@ async function createBuild(inputs: CloudBuildInputs) {
 				secretId: secretId,
 				secret: {
 					name: secretId,
-					replication: { automatic: {} },
+					replication: { automatic: {}},
 					expireTime: {
 						seconds: 300
 					}
