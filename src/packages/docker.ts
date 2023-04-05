@@ -432,20 +432,6 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 		 */
 		const steps: DeepInput<google.devtools.cloudbuild.v1.IBuildStep>[] = [];
 
-		/*
-		 * Pull the cache image if it is specified
-		 */
-		if (this.imageCache) {
-			steps.push({
-				name: 'gcr.io/cloud-builders/docker',
-				args: [
-					'pull',
-					this.imageCache
-				],
-				allowFailure: true
-			});
-		}
-
 		let env: string[] | undefined;
 		let secretEnv: string[] | undefined;
 		const additionalSecretBuildArgs: string[] = [];
@@ -506,6 +492,20 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 					env: secretEnvName
 				}]
 			};
+		}
+
+		/*
+		 * Pull the cache image if it is specified
+		 */
+		if (this.imageCache) {
+			steps.push({
+				name: 'gcr.io/cloud-builders/docker',
+				args: [
+					'pull',
+					this.imageCache
+				],
+				allowFailure: true
+			});
 		}
 
 		/*
