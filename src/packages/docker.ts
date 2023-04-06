@@ -66,7 +66,8 @@ interface GitBuildDirOptions extends BaseBuildDirectoryOptions<'GIT'> {
 }
 
 interface DirectoryBuildDirOptions extends BaseBuildDirectoryOptions<'DIRECTORY'> {
-	excludePatterns?: string[]
+	excludePatterns?: string[];
+	inputCacheTag?: string;
 }
 
 interface GCPDockerImageInput {
@@ -186,6 +187,12 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 	readonly imageCache?: string;
 
 	/**
+	 * Cache tag for generated tarball, which may be used for caching
+	 * tarball creation from directories
+	 */
+	readonly inputCacheTag?: string;
+
+	/**
 	 * Directories to clean after completion
 	 */
 	protected toCleanDirectories: string[] = [];
@@ -294,7 +301,7 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 }
 
 export class LocalDockerImage extends BaseDockerImage {
-	private async getBuildDirectory(input: GCPDockerImageInput['buildDirectory']) {
+	private async getBuildDirectory(input: GCPDockerImageInput['buildDirectory'], cacheID: string) {
 		if (typeof input === 'string') {
 			return input;
 		}
@@ -303,8 +310,7 @@ export class LocalDockerImage extends BaseDockerImage {
 		if (input.type === 'GIT') {
 			tarball = new Tarball.GitTarballArchive(input.directory, input.commitID);
 		} else if (input.type === 'DIRECTORY') {
-			// XXX:TODO Change undefined
-			tarball = new Tarball.DirTarballArchive(input.directory, undefined, input.excludePatterns);
+			tarball = new Tarball.DirTarballArchive(input.directory, cacheID, input.excludePatterns);
 		} else {
 			throw new Error(`Invalid docker buildDirectory input ${JSON.stringify(input)}`);
 		}
@@ -324,12 +330,18 @@ export class LocalDockerImage extends BaseDockerImage {
 	}
 
 	_checkImage(prefix: string, imageURI: string, input: GCPDockerImageInput): pulumi.Output<string> {
+		/**
+		 * Cache ID based on the ImageURI, which includes the version
+		 * info so if it changes the image will be rebuilt
+		 */
+		const cacheID = this.inputCacheTag ?? hash(imageURI, 32);
+
 		let secretContents;
 		if (input.secrets) {
 			secretContents = this.resolveSecretsObject(input.secrets);
 		}
 
-		const buildDirectory = pulumi.output(this.getBuildDirectory(input.buildDirectory));
+		const buildDirectory = pulumi.output(this.getBuildDirectory(input.buildDirectory, cacheID));
 
 		const buildArgs = buildDirectory.apply((directory) => {
 			return this.getDockerBuildArgs(input, directory);
@@ -386,7 +398,7 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 		 * Cache ID based on the ImageURI, which includes the version
 		 * info so if it changes the image will be rebuilt
 		 */
-		const cacheID = hash(imageURI, 32);
+		const cacheID = this.inputCacheTag ?? hash(imageURI, 32);
 
 		/*
 		 * Get project from provider
