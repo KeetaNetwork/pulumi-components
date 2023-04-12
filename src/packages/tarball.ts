@@ -125,7 +125,7 @@ function createTarballFromGit(directory: string, commitID: string = 'HEAD'): { c
 	 * Get the canonical directory name, which is the path to the
 	 * directory within the git repository
 	 */
-	const canonicalDir = child_process.execSync(`git rev-parse --prefix`, {
+	const canonicalDir = child_process.execSync('git rev-parse --prefix', {
 		cwd: directory
 	}).toString().trim();
 	const dirHash = utils.hash(canonicalDir, 32);
