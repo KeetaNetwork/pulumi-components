@@ -66,33 +66,11 @@ export function assertGCPSpannerRegion(region: any): types.GCPSpannerRegion {
 	return region;
 }
 
-export function assertGCPSpannerRegionalInput(region: string): types.GCPSpannerRegionInput {
-	let withoutRegion = region;
-
-	if (withoutRegion.includes('regional-')) {
-		withoutRegion = withoutRegion.replace('regional-', '');
-	}
-
-	return(`regional-${assertGCPSpannerRegion(withoutRegion)}`);
-}
-
-export function assertSpannerMultiRegionRegion(input: any): types.GCPSpannerMultiRegionConfigRegion {
-	for (const regions of Object.values(spannerMultiRegionConfiguration)) {
-		for (const { region } of regions) {
-			if (region === input) {
-				return input;
-			}
-		}
-	}
-
-	throw new Error(`Invalid Spanner multi-region region: ${input}`);
-}
-
-export function isGCPSpannerMultiRegionName(input: any): input is types.GCPSpannerMultiRegionConfigName {
+export function isGCPSpannerMultiRegionName(input: any): input is types.GCPSpannerMultiRegionConfig {
 	return Object.keys(spannerMultiRegionConfiguration).includes(input);
 }
 
-export function assertGCPSpannerMultiRegionName(input: any): types.GCPSpannerMultiRegionConfigName {
+export function assertGCPSpannerMultiRegionName(input: any): types.GCPSpannerMultiRegionConfig {
 	if (!isGCPSpannerMultiRegionName(input)) {
 		throw new Error(`Invalid Spanner multi-region configuration name: ${input}`);
 	}
@@ -100,10 +78,14 @@ export function assertGCPSpannerMultiRegionName(input: any): types.GCPSpannerMul
 	return input;
 }
 
-export function assertGCPSpannerConfigInput(input: any): types.GCPSpannerConfigInput {
+export function assertGCPSpannerConfigInput(input: types.GCPSpannerMultiRegionConfig | types.GCPSpannerRegion): types.GCPSpannerRegionPrefixed | types.GCPSpannerMultiRegionConfig {
 	if (isGCPSpannerMultiRegionName(input)) {
 		return input;
 	}
 
-	return assertGCPSpannerRegionalInput(input);
+	if (isGCPSpannerRegion(input)) {
+		return(`regional-${input}`);
+	}
+
+	throw new Error(`Invalid Spanner configuration input: ${input}`);
 }

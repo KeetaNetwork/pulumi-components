@@ -125,7 +125,7 @@ export const gcpSpannerRegions = [
 ] as const;
 
 export type GCPSpannerRegion = typeof gcpSpannerRegions[number];
-export type GCPSpannerRegionInput = `regional-${GCPSpannerRegion}`;
+export type GCPSpannerRegionPrefixed = `regional-${GCPSpannerRegion}`;
 
 /**
  * Spanner Multi-Region Configurations
@@ -224,12 +224,6 @@ export const spannerMultiRegionConfiguration = {
 	]
 } as const;
 
-
-type SpannerMultiRegionType = typeof spannerMultiRegionConfiguration;
-
-export type GCPSpannerMultiRegionConfigName = keyof SpannerMultiRegionType;
-export type GCPSpannerMultiRegionConfigRegion = SpannerMultiRegionType[GCPSpannerMultiRegionConfigName][number]['region'];
-
-export type GCPSpannerConfigInput = GCPSpannerRegionInput | GCPSpannerMultiRegionConfigName;
+export type GCPSpannerMultiRegionConfig = keyof typeof spannerMultiRegionConfiguration;
 
 export default { GCP_COMPONENT_PREFIX };
