@@ -66,20 +66,20 @@ export function assertGCPSpannerRegion(region: any): types.GCPSpannerRegion {
 	return region;
 }
 
-export function isGCPSpannerMultiRegionName(input: any): input is types.GCPSpannerMultiRegionConfig {
+export function isGCPSpannerMultiRegionConfig(input: any): input is types.GCPSpannerMultiRegionConfig {
 	return Object.keys(spannerMultiRegionConfiguration).includes(input);
 }
 
-export function assertGCPSpannerMultiRegionName(input: any): types.GCPSpannerMultiRegionConfig {
-	if (!isGCPSpannerMultiRegionName(input)) {
+export function assertGCPSpannerMultiRegionConfig(input: any): types.GCPSpannerMultiRegionConfig {
+	if (!isGCPSpannerMultiRegionConfig(input)) {
 		throw new Error(`Invalid Spanner multi-region configuration name: ${input}`);
 	}
 
 	return input;
 }
 
-export function assertGCPSpannerConfigInput(input: types.GCPSpannerMultiRegionConfig | types.GCPSpannerRegion): types.GCPSpannerRegionPrefixed | types.GCPSpannerMultiRegionConfig {
-	if (isGCPSpannerMultiRegionName(input)) {
+export function getGCPSpannerLocationInput(input: types.GCPSpannerMultiRegionConfig | types.GCPSpannerRegion): types.GCPSpannerRegionPrefixed | types.GCPSpannerMultiRegionConfig {
+	if (isGCPSpannerMultiRegionConfig(input)) {
 		return input;
 	}
 
