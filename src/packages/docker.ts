@@ -283,6 +283,10 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 			const imageInfo = pulumi.output(this._checkImage(prefix, imageURI, input));
 
 			BaseDockerImage.AwaitingOutput[imageURI] = imageInfo;
+
+			imageInfo.apply(() => {
+				this.clean();
+			});
 		}
 
 		this.uri = BaseDockerImage.AwaitingOutput[imageURI];
@@ -294,6 +298,10 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 	 * Perform any cleanup required post-deployment
 	 */
 	clean() {
+		if (this.toCleanDirectories === undefined) {
+			return;
+		}
+
 		for (const cleanDir of this.toCleanDirectories) {
 			fs.rmSync(cleanDir, { recursive: true, force: true });
 		}
@@ -301,9 +309,15 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 }
 
 export class LocalDockerImage extends BaseDockerImage {
+	private buildDirectory: string | undefined;
+
 	private async getBuildDirectory(input: GCPDockerImageInput['buildDirectory'], cacheID: string) {
 		if (typeof input === 'string') {
 			return input;
+		}
+
+		if (this.buildDirectory !== undefined) {
+			return(this.buildDirectory);
 		}
 
 		let tarball;
@@ -325,6 +339,8 @@ export class LocalDockerImage extends BaseDockerImage {
 		} catch {
 			throw new Error(`Failed to extract tarball ${tarballPath} to ${tmpDir}`);
 		}
+
+		this.buildDirectory = tmpDir;
 
 		return(tmpDir);
 	}
@@ -587,9 +603,6 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 			}
 		}, { parent: this, dependsOn: imageDependsOn });
 
-		// Clean after cloudBuild has completed
-		buildInfo.results.apply(this.clean.bind(this));
-
 		/**
 		 * Compute the image digest from the build results
 		 */
@@ -694,7 +707,7 @@ export class DockerImage implements PublicInterface<LocalDockerImage> {
 		this.image = image.image;
 		this.imageBase = image.imageBase;
 		this.getProvider = image.getProvider.bind(image);
-		this.clean = image.clean;
+		this.clean = image.clean.bind(image);
 	}
 
 	_checkImage(..._ignore_args: Parameters<LocalDockerImage['_checkImage']>): pulumi.Output<string> {
