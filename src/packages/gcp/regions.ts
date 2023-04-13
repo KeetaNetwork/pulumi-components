@@ -100,7 +100,7 @@ export function assertGCPSpannerMultiRegionName(input: any): types.GCPSpannerMul
 	return input;
 }
 
-export function assertGCPSpannerLocationInput(input: any): types.GCPSpannerConfigInput {
+export function assertGCPSpannerConfigInput(input: any): types.GCPSpannerConfigInput {
 	if (isGCPSpannerMultiRegionName(input)) {
 		return input;
 	}
