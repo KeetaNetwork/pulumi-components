@@ -53,15 +53,20 @@ export function gcpPrimaryZone(region: string): types.GCPZone {
 }
 
 
+export function isGCPSpannerRegion(region: any): region is types.GCPSpannerRegion {
+	return gcpSpannerRegions.includes(region);
+}
+
+
 export function assertGCPSpannerRegion(region: any): types.GCPSpannerRegion {
-	if (!gcpSpannerRegions.includes(region)) {
+	if (!isGCPSpannerRegion(region)) {
 		throw new Error(`Invalid spanner region: ${region}`);
 	}
 
 	return region;
 }
 
-export function toGCPSpannerRegion(region: string): types.GCPSpannerRegionInput {
+export function assertGCPSpannerRegionalInput(region: string): types.GCPSpannerRegionInput {
 	let withoutRegion = region;
 
 	if (withoutRegion.includes('regional-')) {
@@ -71,7 +76,7 @@ export function toGCPSpannerRegion(region: string): types.GCPSpannerRegionInput 
 	return(`regional-${assertGCPSpannerRegion(withoutRegion)}`);
 }
 
-export function assertSpannerMultiRegionRegion(input: any): types.SpannerMultiRegionRegion {
+export function assertSpannerMultiRegionRegion(input: any): types.GCPSpannerMultiRegionConfigRegion {
 	for (const regions of Object.values(spannerMultiRegionConfiguration)) {
 		for (const { region } of regions) {
 			if (region === input) {
@@ -83,10 +88,22 @@ export function assertSpannerMultiRegionRegion(input: any): types.SpannerMultiRe
 	throw new Error(`Invalid Spanner multi-region region: ${input}`);
 }
 
-export function assertSpannerMultiRegionConfigName(input: any): types.SpannerMultiRegionName {
-	if (!Object.keys(spannerMultiRegionConfiguration).includes(input)) {
+export function isGCPSpannerMultiRegionName(input: any): input is types.GCPSpannerMultiRegionName {
+	return Object.keys(spannerMultiRegionConfiguration).includes(input);
+}
+
+export function assertGCPSpannerMultiRegionName(input: any): types.GCPSpannerMultiRegionName {
+	if (!isGCPSpannerMultiRegionName(input)) {
 		throw new Error(`Invalid Spanner multi-region configuration name: ${input}`);
 	}
 
 	return input;
+}
+
+export function assertGCPSpannerLocationInput(input: any): types.GCPSpannerConfigInput {
+	if (isGCPSpannerMultiRegionName(input)) {
+		return input;
+	}
+
+	return assertGCPSpannerRegionalInput(input);
 }

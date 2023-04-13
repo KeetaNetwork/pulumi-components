@@ -226,12 +226,10 @@ export const spannerMultiRegionConfiguration = {
 
 
 type SpannerMultiRegionType = typeof spannerMultiRegionConfiguration;
-export type SpannerMultiRegionName = keyof SpannerMultiRegionType;
 
-export type SpannerMultiRegionRegion = SpannerMultiRegionType[SpannerMultiRegionName][number]['region'];
-export type SpannerConfigRegionType = SpannerMultiRegionType[SpannerMultiRegionName][number]['type'];
+export type GCPSpannerMultiRegionName = keyof SpannerMultiRegionType;
+export type GCPSpannerMultiRegionConfigRegion = SpannerMultiRegionType[GCPSpannerMultiRegionName][number]['region'];
 
-export type SpannerRegionByNameType<N extends SpannerMultiRegionName, T extends SpannerConfigRegionType, O extends boolean = any> = (SpannerMultiRegionType[N][number] & { type: T, optional: O })['region'];
-export type SpannerReadWriteRegionsByName<N extends SpannerMultiRegionName> = SpannerRegionByNameType<N, 'rw', false>;
+export type GCPSpannerConfigInput = GCPSpannerRegionInput | GCPSpannerMultiRegionName;
 
 export default { GCP_COMPONENT_PREFIX };
