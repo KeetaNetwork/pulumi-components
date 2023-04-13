@@ -83,33 +83,10 @@ export function assertSpannerMultiRegionRegion(input: any): types.SpannerMultiRe
 	throw new Error(`Invalid Spanner multi-region region: ${input}`);
 }
 
-
-
 export function assertSpannerMultiRegionConfigName(input: any): types.SpannerMultiRegionName {
 	if (!Object.keys(spannerMultiRegionConfiguration).includes(input)) {
 		throw new Error(`Invalid Spanner multi-region configuration name: ${input}`);
 	}
 
 	return input;
-}
-
-export function assertSpannerMultiRegionInConfig<N extends types.SpannerMultiRegionName, R extends string, T extends types.SpannerConfigRegionType, O extends boolean>(config: N, region: R, type?: T, optional?: O): R extends types.SpannerRegionByNameType<N, T, O> ? R : never {
-	assertSpannerMultiRegionRegion(region);
-
-	for (const configRegion of spannerMultiRegionConfiguration[config]) {
-		if (type && configRegion.type !== type) {
-			throw new Error(`Invalid Spanner multi-region configuration type found (${type}/${configRegion.type}), region: ${region}, config: ${config}`);
-		}
-
-		if (optional !== undefined && configRegion.optional !== optional) {
-			throw new Error(`Invalid Spanner multi-region configuration optional discrepancy found region: ${region}, config: ${config}`);
-		}
-
-		if (region === configRegion.region) {
-			// @ts-ignore
-			return region;
-		}
-	}
-
-	throw new Error(`Invalid Spanner multi-region region: ${config} for region: ${region}`);
 }
