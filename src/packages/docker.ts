@@ -294,6 +294,10 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 	 * Perform any cleanup required post-deployment
 	 */
 	clean() {
+		if (this.toCleanDirectories === undefined) {
+			return;
+		}
+
 		for (const cleanDir of this.toCleanDirectories) {
 			fs.rmSync(cleanDir, { recursive: true, force: true });
 		}
