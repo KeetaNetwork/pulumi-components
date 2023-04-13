@@ -88,11 +88,11 @@ export function assertSpannerMultiRegionRegion(input: any): types.GCPSpannerMult
 	throw new Error(`Invalid Spanner multi-region region: ${input}`);
 }
 
-export function isGCPSpannerMultiRegionName(input: any): input is types.GCPSpannerMultiRegionName {
+export function isGCPSpannerMultiRegionName(input: any): input is types.GCPSpannerMultiRegionConfigName {
 	return Object.keys(spannerMultiRegionConfiguration).includes(input);
 }
 
-export function assertGCPSpannerMultiRegionName(input: any): types.GCPSpannerMultiRegionName {
+export function assertGCPSpannerMultiRegionName(input: any): types.GCPSpannerMultiRegionConfigName {
 	if (!isGCPSpannerMultiRegionName(input)) {
 		throw new Error(`Invalid Spanner multi-region configuration name: ${input}`);
 	}
