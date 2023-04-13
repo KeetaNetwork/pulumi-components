@@ -294,6 +294,12 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 	 * Perform any cleanup required post-deployment
 	 */
 	clean() {
+		/*
+		 * XXX:TODO: This code exists to workaround a bug
+		 *           where `toCleanDirectories` is undefined
+		 *           this should be removed once the bug is
+		 *           fixed
+		 */
 		if (this.toCleanDirectories === undefined) {
 			return;
 		}
