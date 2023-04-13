@@ -61,6 +61,16 @@ export function assertGCPSpannerRegion(region: any): types.GCPSpannerRegion {
 	return region;
 }
 
+export function toGCPSpannerRegion(region: string): types.GCPSpannerRegionInput {
+	let withoutRegion = region;
+
+	if (withoutRegion.includes('regional-')) {
+		withoutRegion = withoutRegion.replace('regional-', '');
+	}
+
+	return(`regional-${assertGCPSpannerRegion(withoutRegion)}`);
+}
+
 export function assertSpannerMultiRegionRegion(input: any): types.SpannerMultiRegionRegion {
 	for (const regions of Object.values(spannerMultiRegionConfiguration)) {
 		for (const { region } of regions) {

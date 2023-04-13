@@ -125,6 +125,7 @@ export const gcpSpannerRegions = [
 ] as const;
 
 export type GCPSpannerRegion = typeof gcpSpannerRegions[number];
+export type GCPSpannerRegionInput = `regional-${GCPSpannerRegion}`;
 
 /**
  * Spanner Multi-Region Configurations
