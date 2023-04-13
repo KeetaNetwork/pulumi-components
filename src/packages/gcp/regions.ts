@@ -1,7 +1,7 @@
-import { gcpRegions, gcpZones } from './constants';
-import type { GCPRegion, GCPZone } from './constants';
+import { gcpRegions, gcpSpannerRegions, gcpZones, spannerMultiRegionConfiguration } from './constants';
+import type * as types from './constants';
 
-export function assertGCPRegion(region: any): GCPRegion {
+export function assertGCPRegion(region: any): types.GCPRegion {
 	if (!gcpRegions.includes(region)) {
 		throw(new Error(`Region ${region} is not a valid GCP region`));
 	}
@@ -9,7 +9,7 @@ export function assertGCPRegion(region: any): GCPRegion {
 	return region;
 }
 
-export function assertGCPZone(zone: any): GCPZone {
+export function assertGCPZone(zone: any): types.GCPZone {
 	if (typeof zone !== 'string') {
 		throw(new Error(`Zone ${zone} is not a string`));
 	}
@@ -28,7 +28,7 @@ export function assertGCPZone(zone: any): GCPZone {
 	 * so we can safely cast it to a GCPZone.
 	 */
 	// eslint-disable-next-line no-type-assertion/no-type-assertion
-	const verifiedZone = zone as GCPZone;
+	const verifiedZone = zone as types.GCPZone;
 
 	/* TypeScript is confused about the type of regionalZones, so we have to
 	 * use a ts-ignore here.
@@ -41,7 +41,7 @@ export function assertGCPZone(zone: any): GCPZone {
 	return(verifiedZone);
 }
 
-export function gcpPrimaryZone(region: string): GCPZone {
+export function gcpPrimaryZone(region: string): types.GCPZone {
 	const zones = gcpZones[assertGCPRegion(region)];
 	if (zones === undefined) {
 		throw(new Error(`Invalid region: ${region}`));
@@ -50,4 +50,52 @@ export function gcpPrimaryZone(region: string): GCPZone {
 	const zone = zones[0];
 
 	return(zone);
+}
+
+
+export function assertGCPSpannerRegion(region: any): types.GCPSpannerRegion {
+	if (!gcpSpannerRegions.includes(region)) {
+		throw new Error(`Invalid spanner region: ${region}`);
+	}
+
+	return region;
+}
+
+export function assertSpannerMultiRegionRegion(input: any): types.SpannerMultiRegionRegion {
+	for (const regions of Object.values(spannerMultiRegionConfiguration)) {
+		for (const { region } of regions) {
+			if (region === input) {
+				return input;
+			}
+		}
+	}
+
+	throw new Error(`Invalid Spanner multi-region region: ${input}`);
+}
+
+
+
+export function assertSpannerMultiRegionConfigName(input: any): types.SpannerMultiRegionName {
+	if (!Object.keys(spannerMultiRegionConfiguration).includes(input)) {
+		throw new Error(`Invalid Spanner multi-region configuration name: ${input}`);
+	}
+
+	return input;
+}
+
+export function assertSpannerMultiRegionInConfig<N extends types.SpannerMultiRegionName, R extends string, T extends types.SpannerConfigRegionType>(config: N, region: R, type?: T): R extends types.SpannerRegionByNameType<N, T> ? R : never {
+	assertSpannerMultiRegionRegion(region);
+
+	for (const configRegion of spannerMultiRegionConfiguration[config]) {
+		if (type && configRegion.type !== type) {
+			throw new Error(`Invalid Spanner multi-region configuration type found (${type}/${configRegion.type}), region: ${region}, config: ${config}`);
+		}
+
+		if (region === configRegion.region) {
+			// @ts-ignore
+			return region;
+		}
+	}
+
+	throw new Error(`Invalid Spanner multi-region region: ${config} for region: ${region}`);
 }

@@ -84,4 +84,153 @@ export const gcpZones = {
 } as const;
 export type GCPZone = typeof gcpZones[GCPRegion][number];
 
+export const gcpSpannerRegions = [
+	'northamerica-northeast1',
+	'northamerica-northeast2',
+	'southamerica-east1',
+	'southamerica-west1',
+	'us-central1',
+	'us-east1',
+	'us-east4',
+	'us-east5',
+	'us-south1',
+	'us-west1',
+	'us-west2',
+	'us-west3',
+	'us-west4',
+	'europe-central2',
+	'europe-north1',
+	'europe-southwest1',
+	'europe-west1',
+	'europe-west2',
+	'europe-west3',
+	'europe-west4',
+	'europe-west6',
+	'europe-west8',
+	'europe-west9',
+	'europe-west12',
+	'asia-east1',
+	'asia-east2',
+	'asia-northeast1',
+	'asia-northeast2',
+	'asia-northeast3',
+	'asia-south1',
+	'asia-south2',
+	'asia-southeast1',
+	'asia-southeast2',
+	'australia-southeast1',
+	'australia-southeast2',
+	'me-central1',
+	'me-west1'
+] as const;
+
+export type GCPSpannerRegion = typeof gcpSpannerRegions[number];
+
+/**
+ * Spanner Multi-Region Configurations
+ * https://cloud.google.com/spanner/docs/instance-configurations#available-configurations-multi-region
+ */
+export const spannerMultiRegionConfiguration = {
+	asia1: [
+		{ type: 'rw', optional: false, region: 'asia-northeast1' },
+		{ type: 'rw', optional: false, region: 'asia-northeast2' },
+		{ type: 'wi', optional: false, region: 'asia-northeast3' }
+	],
+	eur3: [
+		{ type: 'rw', optional: false, region: 'europe-west1' },
+		{ type: 'rw', optional: false, region: 'europe-west2' },
+		{ type: 'wi', optional: false, region: 'europe-north1' }
+	],
+	eur5: [
+		{ type: 'rw', optional: false, region: 'europe-west2' },
+		{ type: 'rw', optional: false, region: 'europe-west1' },
+		{ type: 'wi', optional: false, region: 'europe-west4' }
+	],
+	eur6: [
+		{ type: 'rw', optional: false, region: 'europe-west4' },
+		{ type: 'rw', optional: false, region: 'europe-west3' },
+		{ type: 'wi', optional: false, region: 'europe-west6' },
+		{ type: 'r', optional: true, region: 'us-east1' }
+	],
+	nam3: [
+		{ type: 'rw', optional: false, region: 'us-east4' },
+		{ type: 'rw', optional: false, region: 'us-east1' },
+		{ type: 'wi', optional: false, region: 'us-central1' },
+		{ type: 'r', optional: true, region: 'us-west2' }
+	],
+	nam6: [
+		{ type: 'rw', optional: false, region: 'us-central1' },
+		{ type: 'rw', optional: false, region: 'us-east1' },
+		{ type: 'r', optional: false, region: 'us-west1' },
+		{ type: 'r', optional: false, region: 'us-west2' },
+		{ type: 'wi', optional: false, region: 'us-central2' }
+	],
+	nam7: [
+		{ type: 'rw', optional: false, region: 'us-central1' },
+		{ type: 'rw', optional: false, region: 'us-east4' },
+		{ type: 'wi', optional: false, region: 'us-central2' },
+		{ type: 'r', optional: true, region: 'us-east1' },
+		{ type: 'r', optional: true, region: 'us-south1' },
+		{ type: 'r', optional: true, region: 'europe-west1' }
+	],
+	nam8: [
+		{ type: 'rw', optional: false, region: 'us-west2' },
+		{ type: 'rw', optional: false, region: 'us-west1' },
+		{ type: 'wi', optional: false, region: 'us-west3' }
+	],
+	nam9: [
+		{ type: 'rw', optional: false, region: 'us-east4' },
+		{ type: 'rw', optional: false, region: 'us-central1' },
+		{ type: 'wi', optional: false, region: 'us-east1' },
+		{ type: 'r', optional: false, region: 'us-west1' }
+	],
+	nam10: [
+		{ type: 'rw', optional: false, region: 'us-central1' },
+		{ type: 'rw', optional: false, region: 'us-west3' },
+		{ type: 'wi', optional: false, region: 'us-central2' }
+	],
+	nam11: [
+		{ type: 'rw', optional: false, region: 'us-central1' },
+		{ type: 'rw', optional: false, region: 'us-east1' },
+		{ type: 'wi', optional: false, region: 'us-central1' },
+		{ type: 'r', optional: true, region: 'us-west1' }
+	],
+	nam12: [
+		{ type: 'rw', optional: false, region: 'us-central1' },
+		{ type: 'rw', optional: false, region: 'us-east4' },
+		{ type: 'r', optional: false, region: 'us-west1' },
+		{ type: 'wi', optional: false, region: 'us-central2' }
+	],
+	nam13: [
+		{ type: 'rw', optional: false, region: 'us-central1' },
+		{ type: 'rw', optional: false, region: 'us-central2' },
+		{ type: 'wi', optional: false, region: 'us-west3' }
+	],
+	'nam-eur-asia1': [
+		{ type: 'rw', optional: false, region: 'us-central1' },
+		{ type: 'rw', optional: false, region: 'us-central2' },
+		{ type: 'r', optional: false, region: 'europe-west1' },
+		{ type: 'r', optional: false, region: 'asia-east1' },
+		{ type: 'wi', optional: false, region: 'us-east1' }
+	],
+	'nam-eur-asia3': [
+		{ type: 'rw', optional: false, region: 'us-central1' },
+		{ type: 'rw', optional: false, region: 'us-east1' },
+		{ type: 'r', optional: false, region: 'europe-west1' },
+		{ type: 'r', optional: false, region: 'europe-west4' },
+		{ type: 'r', optional: false, region: 'asia-east1' },
+		{ type: 'wi', optional: false, region: 'us-central2' }
+	]
+} as const;
+
+
+type SpannerMultiRegionType = typeof spannerMultiRegionConfiguration;
+export type SpannerMultiRegionName = keyof SpannerMultiRegionType;
+
+export type SpannerMultiRegionRegion = SpannerMultiRegionType[SpannerMultiRegionName][number]['region'];
+export type SpannerConfigRegionType = SpannerMultiRegionType[SpannerMultiRegionName][number]['type'];
+
+export type SpannerRegionByNameType<N extends SpannerMultiRegionName, T extends SpannerConfigRegionType, O extends boolean = any> = (SpannerMultiRegionType[N][number] & { type: T, optional: O })['region'];
+export type SpannerReadWriteRegionsByName<N extends SpannerMultiRegionName> = SpannerRegionByNameType<N, 'rw', false>;
+
 export default { GCP_COMPONENT_PREFIX };
