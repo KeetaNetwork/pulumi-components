@@ -65,6 +65,14 @@ export function isGCPSpannerRegionalLocationConfig(input: string): input is type
 	return isGCPSpannerRegionName(input.replace('regional-', ''));
 }
 
+export function assertGCPSpannerRegionalLocationConfig(input: any): types.GCPSpannerRegionName {
+	if (!isGCPSpannerRegionName(input)) {
+		throw new Error(`Invalid spanner regional config: ${input}`);
+	}
+
+	return input;
+}
+
 export function assertGCPSpannerRegionName(region: any): types.GCPSpannerRegionName {
 	if (!isGCPSpannerRegionName(region)) {
 		throw new Error(`Invalid spanner region: ${region}`);
