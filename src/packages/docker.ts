@@ -371,6 +371,8 @@ export class LocalDockerImage extends BaseDockerImage {
 			imageCache: this.imageCache,
 			tags: this.getDockerBuildTags(input),
 			cleanBuildDirectory: false
+		}, {
+			parent: this
 		});
 
 		return image.digest;
