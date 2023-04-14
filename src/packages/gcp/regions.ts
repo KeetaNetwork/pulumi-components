@@ -53,39 +53,42 @@ export function gcpPrimaryZone(region: string): types.GCPZone {
 }
 
 
-export function isGCPSpannerRegion(region: any): region is types.GCPSpannerRegion {
+export function isGCPSpannerRegionName(region: any): region is types.GCPSpannerRegionName {
 	return gcpSpannerRegions.includes(region);
 }
 
+export function isGCPSpannerRegionalLocationConfig(input: string): input is types.GCPSpannerRegionalLocationConfig {
+	if (!input.startsWith('regional-')) {
+		return false;
+	}
 
-export function assertGCPSpannerRegion(region: any): types.GCPSpannerRegion {
-	if (!isGCPSpannerRegion(region)) {
+	return isGCPSpannerRegionName(input.replace('regional-', ''));
+}
+
+export function assertGCPSpannerRegionName(region: any): types.GCPSpannerRegionName {
+	if (!isGCPSpannerRegionName(region)) {
 		throw new Error(`Invalid spanner region: ${region}`);
 	}
 
 	return region;
 }
 
-export function isGCPSpannerMultiRegionConfig(input: any): input is types.GCPSpannerMultiRegionConfig {
+export function isGCPSpannerMultiRegionLocationConfig(input: any): input is types.GCPSpannerMultiRegionLocationConfig {
 	return Object.keys(spannerMultiRegionConfiguration).includes(input);
 }
 
-export function assertGCPSpannerMultiRegionConfig(input: any): types.GCPSpannerMultiRegionConfig {
-	if (!isGCPSpannerMultiRegionConfig(input)) {
+export function assertGCPSpannerMultiRegionLocationConfig(input: any): types.GCPSpannerMultiRegionLocationConfig {
+	if (!isGCPSpannerMultiRegionLocationConfig(input)) {
 		throw new Error(`Invalid Spanner multi-region configuration name: ${input}`);
 	}
 
 	return input;
 }
 
-export function getGCPSpannerLocationInput(input: types.GCPSpannerMultiRegionConfig | types.GCPSpannerRegion): types.GCPSpannerRegionPrefixed | types.GCPSpannerMultiRegionConfig {
-	if (isGCPSpannerMultiRegionConfig(input)) {
-		return input;
+export function assertGCPSpannerLocationConfig(input: any): types.GCPSpannerLocationConfig {
+	if (!assertGCPSpannerMultiRegionLocationConfig(input) && !isGCPSpannerRegionalLocationConfig(input)) {
+		throw new Error(`Invalid Spanner configuration input: ${input}`);
 	}
 
-	if (isGCPSpannerRegion(input)) {
-		return(`regional-${input}`);
-	}
-
-	throw new Error(`Invalid Spanner configuration input: ${input}`);
+	return input;
 }

@@ -124,8 +124,8 @@ export const gcpSpannerRegions = [
 	'me-west1'
 ] as const;
 
-export type GCPSpannerRegion = typeof gcpSpannerRegions[number];
-export type GCPSpannerRegionPrefixed = `regional-${GCPSpannerRegion}`;
+export type GCPSpannerRegionName = typeof gcpSpannerRegions[number];
+export type GCPSpannerRegionalLocationConfig = `regional-${GCPSpannerRegionName}`;
 
 /**
  * Spanner Multi-Region Configurations
@@ -224,6 +224,8 @@ export const spannerMultiRegionConfiguration = {
 	]
 } as const;
 
-export type GCPSpannerMultiRegionConfig = keyof typeof spannerMultiRegionConfiguration;
+export type GCPSpannerMultiRegionLocationConfig = keyof typeof spannerMultiRegionConfiguration;
+
+export type GCPSpannerLocationConfig = GCPSpannerMultiRegionLocationConfig | GCPSpannerRegionalLocationConfig;
 
 export default { GCP_COMPONENT_PREFIX };
