@@ -94,7 +94,7 @@ export function assertGCPSpannerMultiRegionLocationConfig(input: any): types.GCP
 }
 
 export function assertGCPSpannerLocationConfig(input: any): types.GCPSpannerLocationConfig {
-	if (!assertGCPSpannerMultiRegionLocationConfig(input) && !isGCPSpannerRegionalLocationConfig(input)) {
+	if (!isGCPSpannerMultiRegionLocationConfig(input) && !isGCPSpannerRegionalLocationConfig(input)) {
 		throw new Error(`Invalid Spanner configuration input: ${input}`);
 	}
 
