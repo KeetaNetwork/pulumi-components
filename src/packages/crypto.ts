@@ -19,14 +19,17 @@ export class ECDsaKeyPair extends pulumi.ComponentResource {
 			ecdsaCurve: args.curve
 		}, { parent: this });
 
-		this.privateKeyDER = this.key.privateKeyPem.apply(privateKeyPem => {
+		const privateDER = this.key.privateKeyPem.apply(function(privateKeyPem) {
 			const privateKey = crypto.createPrivateKey(privateKeyPem);
 			return privateKey.export({ format: 'der', type: 'sec1' }).toString('base64');
 		});
 
-		this.publicKeyDER = this.key.publicKeyPem.apply(publicKeyPem => {
+		const publicDER = this.key.publicKeyPem.apply(function(publicKeyPem) {
 			const publicKey = crypto.createPublicKey(publicKeyPem);
 			return publicKey.export({ format: 'der', type: 'spki' }).toString('base64');
 		});
+
+		this.privateKeyDER = pulumi.secret(privateDER);
+		this.publicKeyDER = pulumi.secret(publicDER);
 	}
 }
