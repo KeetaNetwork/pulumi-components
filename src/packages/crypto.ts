@@ -2,19 +2,19 @@ import * as pulumi from '@pulumi/pulumi';
 import * as tls from '@pulumi/tls';
 import crypto from 'crypto';
 
-interface EcDSAKeyPairArguments {
+interface ECDSAKeyPairArguments {
 	curve: 'P224' | 'P256' | 'P384' | 'P521';
 }
 
-export class ECDsaKeyPair extends pulumi.ComponentResource {
+export class ECDSAKeyPair extends pulumi.ComponentResource {
 	readonly key: tls.PrivateKey;
 	readonly privateKeyDER: pulumi.Output<string>;
 	readonly publicKeyDER: pulumi.Output<string>;
 
-	constructor(name: string, args: EcDSAKeyPairArguments, opts?: pulumi.ComponentResourceOptions) {
+	constructor(name: string, args: ECDSAKeyPairArguments, opts?: pulumi.ComponentResourceOptions) {
 		super('Keeta:Crypto:ECDsaP256KeyPair', name, args, opts);
 
-		this.key = new tls.PrivateKey(`${name}-cssm-keypair`, {
+		this.key = new tls.PrivateKey(`${name}-keypair`, {
 			algorithm: 'ECDSA',
 			ecdsaCurve: args.curve
 		}, { parent: this });
