@@ -1,6 +1,6 @@
 {
   "name": "@keetapay/pulumi-components",
-  "version": "1.0.45",
+  "version": "1.0.46",
   "description": "KeetaPay Pulumi Components",
   "repository": "https://github.com/keetapay/pulumi-components.git",
   "main": "dist/index.js",
@@ -22,6 +22,7 @@
     "@pulumi/command": "0.7.2",
     "@pulumi/gcp": "6.54.0",
     "@pulumi/pulumi": "3.62.0",
+    "@pulumi/tls": "4.10.0",
     "google-auth-library": "8.7.0"
   }
 }
