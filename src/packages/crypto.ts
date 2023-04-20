@@ -12,7 +12,7 @@ export class ECDSAKeyPair extends pulumi.ComponentResource {
 	readonly publicKeyDER: pulumi.Output<string>;
 
 	constructor(name: string, args: ECDSAKeyPairArguments, opts?: pulumi.ComponentResourceOptions) {
-		super('Keeta:Crypto:ECDsaP256KeyPair', name, args, opts);
+		super('Keeta:Crypto:ECDSAKeyPair', name, args, opts);
 
 		this.key = new tls.PrivateKey(`${name}-keypair`, {
 			algorithm: 'ECDSA',
