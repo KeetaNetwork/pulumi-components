@@ -24,7 +24,7 @@ interface SingleDBHost {
 	/**
 	 * CA Certificate PEM
 	 */
-	caTlsCertificate: pulumi.Output<string>;
+	caCertificate: pulumi.Output<string>;
 }
 
 interface DBConnectivityOptions {
@@ -152,9 +152,10 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 	readonly hosts: PerGCPRegion<SingleDBHost> = {};
 	readonly primaryRegion: GCPRegion;
 	readonly connectivity: DBConnectivityOptions;
+	readonly createdVPCConnection?: gcp.servicenetworking.Connection;
 
 	constructor(name: string, args: PostgresCloudSQLArgs, opts?: pulumi.ComponentResourceOptions) {
-		super('Keeta:GCP:CloudSQL', name, args, opts);
+		super('Keeta:GCP:PostgresCloudSQL', name, args, opts);
 
 		this.#prefix = args.prefix ?? name;
 		this.#options = args;
@@ -187,13 +188,13 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 			/**
 			 * Create a private VPC connection for SQL to be able to connect to the subnet
 			 */
-			const privateVpcConnection = new gcp.servicenetworking.Connection(`${this.#prefix}-postgres-vpc-connection`, {
+			this.createdVPCConnection = new gcp.servicenetworking.Connection(`${this.#prefix}-postgres-vpc-connection`, {
 				network: this.#vpcNetwork.id,
 				service: 'servicenetworking.googleapis.com',
 				reservedPeeringRanges: [ privateIpAddress.name ]
 			}, { parent: privateIpAddress });
 
-			masterDependsOn.push(privateVpcConnection);
+			masterDependsOn.push(this.createdVPCConnection);
 		}
 
 		/**
@@ -310,6 +311,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 				ipConfiguration: {
 					ipv4Enabled: false,
 					privateNetwork: this.#vpcNetwork.id,
+					// This is named badly on pulumi's side
 					requireSsl: this.#options.connectivity.tls?.requireClientCertificate
 				},
 				databaseFlags: databaseFlags,
@@ -320,7 +322,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 		this.hosts[region] = {
 			host: instance.firstIpAddress,
 			port: pulumi.output('5432'),
-			caTlsCertificate: instance.serverCaCerts[0].cert,
+			caCertificate: instance.serverCaCerts[0].cert,
 			connectionName: instance.connectionName
 		};
 
