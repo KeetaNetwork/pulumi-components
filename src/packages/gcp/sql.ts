@@ -34,15 +34,29 @@ interface DBConnectivityOutput {
 }
 
 interface DBConnectivityArgs extends Partial<Omit<DBConnectivityOutput, 'username'>>, Pick<DBConnectivityOutput, 'username'> {
+	/**
+	 * Max connections at a single point to the database
+	 */
 	maxConnections?: number;
 
 	tls?: {
+		/**
+		 * Add the SSL parameter to the connection string to require
+		 * @default true
+		 */
 		requireSSLInURL?: boolean;
+		/**
+		 * Whether or not to require a client certificate to connect
+		 * @default false
+		 */
 		requireClientCertificate?: boolean;
 	};
 }
 
 export interface PostgresCloudSQLArgs {
+	/**
+	 * What to prefix the name of created resources with
+	 */
 	prefix?: string;
 
 	/**
@@ -124,26 +138,14 @@ type PostgresURLParams = {
 };
 
 export class PostgresCloudSQL extends pulumi.ComponentResource {
-	/**
-	 * Create a random string to be used as the postgres password
-	 */
-	private makePostgresPassword() {
-		return new random.RandomString(`${this.#prefix}-postgres-password`, {
-			length: 24,
-			special: false,
-			number: true
-		}, { parent: this }).result;
-	}
-
 	#prefix: string;
 	#options: PostgresCloudSQLArgs;
+	#usingReplicas: boolean;
+	#vpcNetwork: VPCNetworkLike;
 
 	readonly hosts: PerGCPRegion<SingleDBHost> = {};
 	readonly primaryRegion: GCPRegion;
-	readonly usingReplicas: boolean;
 	readonly connectivity: DBConnectivityOutput;
-
-	#vpcNetwork: VPCNetworkLike;
 
 	constructor(name: string, args: PostgresCloudSQLArgs, opts?: pulumi.ComponentResourceOptions) {
 		super('Keeta:GCP:CloudSQL', name, args, opts);
@@ -156,12 +158,12 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 
 		this.connectivity = {
 			username: args.connectivity.username,
-			password: args.connectivity?.password ?? this.makePostgresPassword(),
+			password: args.connectivity?.password ?? this.#makePostgresPassword(),
 			databaseName: args.connectivity.databaseName ?? 'main'
 		};
 
 		const replicaRegions = args.replication?.replicaRegions ?? [];
-		this.usingReplicas = replicaRegions.length > 0;
+		this.#usingReplicas = replicaRegions.length > 0;
 
 		/**
 		 * Create a private IP address for the SQL instance use
@@ -198,22 +200,16 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 			dependsOn: [ privateVpcConnection ]
 		});
 
-		this.hosts[this.primaryRegion] = masterDatabase.hostConfig;
-
 		/**
 		 * Loop over replica regions and create instances for each
 		 */
 		for (const region of replicaRegions) {
-			if (this.hosts[region]) {
-				throw new Error(`Region ${region} already exists in the list of hosts (Postgres)`);
-			}
-
 			/**
 			 * Create the replica instance, with the master instance as the parent
 			 */
-			this.hosts[region] = this.createPostgres(`${this.#prefix}-${region}-replica-instance`, region, masterDatabase.instance, {
-				parent: masterDatabase.instance
-			}).hostConfig;
+			this.createPostgres(`${this.#prefix}-${region}-replica-instance`, region, masterDatabase, {
+				parent: masterDatabase
+			});
 		}
 
 		/**
@@ -222,62 +218,76 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 		 */
 		new gcp.sql.Database(`${this.#prefix}-db`, {
 			name: this.connectivity.databaseName,
-			instance: masterDatabase.instance.name,
+			instance: masterDatabase.name,
 			deletionPolicy: 'ABANDON'
-		}, { parent: masterDatabase.instance, protect: args.deletionProtection });
+		}, { parent: masterDatabase, protect: args.deletionProtection });
 
 		new gcp.sql.User(`${this.#prefix}-db-user`, {
-			instance: masterDatabase.instance.name,
+			instance: masterDatabase.name,
 			name: this.connectivity.username,
 			password: this.connectivity.password,
 			deletionPolicy: 'ABANDON'
-		}, { parent: masterDatabase.instance });
+		}, { parent: masterDatabase });
+	}
+
+	/**
+	 * Create a random string to be used as the postgres password
+	 */
+	#makePostgresPassword() {
+		return new random.RandomString(`${this.#prefix}-postgres-password`, {
+			length: 24,
+			special: false,
+			number: true
+		}, { parent: this }).result;
 	}
 
 	createPostgres(name: string, region: GCPRegion, masterInstance?: gcp.sql.DatabaseInstance, options?: pulumi.ComponentResourceOptions) {
+		if (this.hosts[region]) {
+			throw new Error(`Region ${region} already exists in the list of hosts`);
+		}
+
 		let backupConfiguration: NonNullable<pulumi.Unwrap<ConstructorParameters<typeof gcp.sql.DatabaseInstance>[1]['settings']>>['backupConfiguration'];
 
-		const { backups, deletionProtection, tier, replication, connectivity } = this.#options;
-
+		// We can only add backups to the primary region
 		if (region === this.primaryRegion) {
-			if (backups !== undefined) {
+			const backupOptions = this.#options.backups;
+
+			if (backupOptions !== undefined) {
 				backupConfiguration = {
 					enabled: true,
-					pointInTimeRecoveryEnabled: backups.pointInTimeRecovery,
-					startTime: backups.startTime,
-					transactionLogRetentionDays: backups.retentionSettings?.transactionLogRetentionDays
+					pointInTimeRecoveryEnabled: backupOptions.pointInTimeRecovery,
+					startTime: backupOptions.startTime,
+					transactionLogRetentionDays: backupOptions.retentionSettings?.transactionLogRetentionDays
 				};
 
-				if (backups.retentionSettings?.retainCount !== undefined) {
+				if (backupOptions.retentionSettings?.retainCount !== undefined) {
 					backupConfiguration.backupRetentionSettings = {
-						retainedBackups: backups.retentionSettings?.retainCount
+						retainedBackups: backupOptions.retentionSettings?.retainCount
 					};
 				}
 			}
 
-			if (this.usingReplicas) {
-				if (!backupConfiguration?.enabled || !backupConfiguration?.pointInTimeRecoveryEnabled) {
-					throw new Error('Point-in-time recovery must be enabled for backups when using replicas (Postgres)');
-				}
+			if (this.#usingReplicas && !backupConfiguration?.pointInTimeRecoveryEnabled) {
+				throw new Error('Point-in-time recovery must be enabled for backups when using replicas');
 			}
 		}
 
 		let availabilityType = 'ZONAL';
-		if (replication?.multiZone) {
+		if (this.#options.replication?.multiZone) {
 			availabilityType = 'REGIONAL';
-		}
-
-		if (availabilityType !== 'REGIONAL' && this.usingReplicas) {
-			throw new Error('Multi-zone must be enabled when using replicas (Postgres)');
+		} else if (this.#usingReplicas) {
+			throw new Error('Multi-zone (per region) must be enabled when using replicas');
 		}
 
 		const databaseFlags = [];
-		if (connectivity.maxConnections !== undefined) {
+		if (this.#options.connectivity.maxConnections !== undefined) {
 			databaseFlags.push({
 				name: 'max_connections',
-				value: String(connectivity.maxConnections)
+				value: String(this.#options.connectivity.maxConnections)
 			});
 		}
+
+		const deletionProtection = this.#options.deletionProtection;
 
 		const instance = new gcp.sql.DatabaseInstance(name, {
 			region: region,
@@ -286,7 +296,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 			masterInstanceName: masterInstance?.name,
 			settings: {
 				availabilityType: availabilityType,
-				tier: tier,
+				tier: this.#options.tier,
 				ipConfiguration: {
 					ipv4Enabled: false,
 					privateNetwork: this.#vpcNetwork.id,
@@ -295,19 +305,16 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 				databaseFlags: databaseFlags,
 				backupConfiguration: backupConfiguration
 			}
-		}, {
-			protect: deletionProtection,
-			...options
-		});
+		}, { protect: deletionProtection, ...options });
 
-		const hostConfig: SingleDBHost = {
+		this.hosts[region] = {
 			host: instance.firstIpAddress,
 			port: pulumi.output('5432'),
 			tlsCertificate: instance.serverCaCerts[0].cert,
 			connectionName: instance.connectionName
 		};
 
-		return({ hostConfig, instance });
+		return instance;
 	}
 
 	getHost(region: GCPRegion) {
