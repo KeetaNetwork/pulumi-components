@@ -341,15 +341,6 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 			const { username, password, databaseName } = connectivity;
 			const url = new URL(`postgres://${username}:${password}@${host}:${port}/${databaseName}`);
 
-			// Add any additional params
-			for (const [key, value] of Object.entries(resolvedParams ?? {})) {
-				if (value === undefined) {
-					continue;
-				}
-
-				url.searchParams.set(key, String(value));
-			}
-
 			// Default to requiring SSL, unless explicitly set to false
 			let sslMode = 'require';
 			if (this.#options.connectivity.tls?.requireSSLInURL === false) {
@@ -359,6 +350,17 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 			}
 
 			url.searchParams.set('sslmode', sslMode);
+
+			// Add any additional params
+			// These will override any existing params with the same name
+			for (const [key, value] of Object.entries(resolvedParams ?? {})) {
+				if (value === undefined) {
+					url.searchParams.delete(key);
+					continue;
+				}
+
+				url.searchParams.set(key, String(value));
+			}
 
 			return url.toString();
 		});
