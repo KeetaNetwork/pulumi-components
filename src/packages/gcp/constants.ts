@@ -40,6 +40,8 @@ export const gcpRegions = [
 	'us-west4'
 ] as const;
 export type GCPRegion = typeof gcpRegions[number];
+export type PerGCPRegion<T> = { [N in GCPRegion]?: T };
+
 
 /**
  * Zones for each GCP Region for Google Compute Engine
