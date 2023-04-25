@@ -96,7 +96,7 @@ export interface PostgresCloudSQLArgs {
 
 	/**
 	 * Whether or not to create the private services connection/peering between the VPC and Cloud SQL
-	 * @default true
+	 * @default false
 	 */
 	createPeering?: boolean;
 
@@ -173,7 +173,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 
 		const masterDependsOn = [];
 
-		if (this.#options.createPeering !== false) {
+		if (this.#options.createPeering) {
 			/**
 			 * Create a private IP address for the SQL instance use
 			 */
