@@ -230,15 +230,13 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 		 */
 		new gcp.sql.Database(`${this.#prefix}-db`, {
 			name: this.connectivity.databaseName,
-			instance: masterDatabase.name,
-			deletionPolicy: 'ABANDON'
+			instance: masterDatabase.name
 		}, { parent: masterDatabase, protect: args.deletionProtection });
 
 		new gcp.sql.User(`${this.#prefix}-db-user`, {
 			instance: masterDatabase.name,
 			name: this.connectivity.username,
-			password: this.connectivity.password,
-			deletionPolicy: 'ABANDON'
+			password: this.connectivity.password
 		}, { parent: masterDatabase });
 	}
 
