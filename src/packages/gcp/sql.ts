@@ -22,18 +22,18 @@ interface SingleDBHost {
 	connectionName: pulumi.Output<string>;
 
 	/**
-	 * Certificate information
+	 * CA Certificate PEM
 	 */
-	tlsCertificate: pulumi.Output<string>;
+	caTlsCertificate: pulumi.Output<string>;
 }
 
-interface DBConnectivityOutput {
+interface DBConnectivityOptions {
 	username: pulumi.Input<string>;
 	password: pulumi.Input<string>;
 	databaseName: string;
 }
 
-interface DBConnectivityArgs extends Partial<Omit<DBConnectivityOutput, 'username'>>, Pick<DBConnectivityOutput, 'username'> {
+interface DBConnectivityArgs extends Partial<Omit<DBConnectivityOptions, 'username'>>, Pick<DBConnectivityOptions, 'username'> {
 	/**
 	 * Max connections at a single point to the database
 	 */
@@ -94,6 +94,12 @@ export interface PostgresCloudSQLArgs {
 		replicaRegions?: GCPRegion[];
 	}
 
+	/**
+	 * Whether or not to create the private services connection/peering between the VPC and Cloud SQL
+	 * @default true
+	 */
+	createPeering?: boolean;
+
 	backups?: {
 		/**
 		 * Whether or not to enable point in time recovery
@@ -132,7 +138,7 @@ type PostgresURLParams = {
 	[key: string]: string | number | undefined,
 
 	/**
-	 * Postgres Pool Size
+	 * Postgres concurrent connection limit / pool size
 	 */
 	connection_limit?: number
 };
@@ -145,7 +151,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 
 	readonly hosts: PerGCPRegion<SingleDBHost> = {};
 	readonly primaryRegion: GCPRegion;
-	readonly connectivity: DBConnectivityOutput;
+	readonly connectivity: DBConnectivityOptions;
 
 	constructor(name: string, args: PostgresCloudSQLArgs, opts?: pulumi.ComponentResourceOptions) {
 		super('Keeta:GCP:CloudSQL', name, args, opts);
@@ -165,24 +171,30 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 		const replicaRegions = args.replication?.replicaRegions ?? [];
 		this.#usingReplicas = replicaRegions.length > 0;
 
-		/**
-		 * Create a private IP address for the SQL instance use
-		 */
-		const privateIpAddress = new gcp.compute.GlobalAddress(`${this.#prefix}-postgres-private-ip`, {
-			purpose: 'VPC_PEERING',
-			addressType: 'INTERNAL',
-			prefixLength: 16,
-			network: this.#vpcNetwork.id
-		}, { parent: this });
+		const masterDependsOn = [];
 
-		/**
-		 * Create a private VPC connection for SQL to be able to connect to the subnet
-		 */
-		const privateVpcConnection = new gcp.servicenetworking.Connection(`${this.#prefix}-postgres-vpc-connection`, {
-			network: this.#vpcNetwork.id,
-			service: 'servicenetworking.googleapis.com',
-			reservedPeeringRanges: [privateIpAddress.name]
-		}, { parent: privateIpAddress });
+		if (this.#options.createPeering !== false) {
+			/**
+			 * Create a private IP address for the SQL instance use
+			 */
+			const privateIpAddress = new gcp.compute.GlobalAddress(`${this.#prefix}-postgres-private-ip`, {
+				purpose: 'VPC_PEERING',
+				addressType: 'INTERNAL',
+				prefixLength: 16,
+				network: this.#vpcNetwork.id
+			}, { parent: this });
+
+			/**
+			 * Create a private VPC connection for SQL to be able to connect to the subnet
+			 */
+			const privateVpcConnection = new gcp.servicenetworking.Connection(`${this.#prefix}-postgres-vpc-connection`, {
+				network: this.#vpcNetwork.id,
+				service: 'servicenetworking.googleapis.com',
+				reservedPeeringRanges: [ privateIpAddress.name ]
+			}, { parent: privateIpAddress });
+
+			masterDependsOn.push(privateVpcConnection);
+		}
 
 		/**
 		 * Create Postgres instance/database/user
@@ -197,7 +209,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 		 */
 		const masterDatabase = this.createPostgres(`${this.#prefix}-master-instance`, this.primaryRegion, undefined, {
 			parent: this,
-			dependsOn: [ privateVpcConnection ]
+			dependsOn: masterDependsOn
 		});
 
 		/**
@@ -310,7 +322,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 		this.hosts[region] = {
 			host: instance.firstIpAddress,
 			port: pulumi.output('5432'),
-			tlsCertificate: instance.serverCaCerts[0].cert,
+			caTlsCertificate: instance.serverCaCerts[0].cert,
 			connectionName: instance.connectionName
 		};
 
@@ -327,13 +339,13 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 		return host;
 	}
 
-	getHostCidrRange(region: GCPRegion) {
+	getHostCIDR(region: GCPRegion) {
 		const { host } = this.getHost(region);
 		return pulumi.interpolate`${host}/32`;
 	}
 
 	getPrimaryHostCIDR() {
-		return this.getHostCidrRange(this.primaryRegion);
+		return this.getHostCIDR(this.primaryRegion);
 	}
 
 	getPrimaryHost() {
@@ -343,7 +355,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 	getPrimaryHostURL(additionalParams?: pulumi.Input<PostgresURLParams>) {
 		const selectedHost = this.getHost(this.primaryRegion);
 
-		return pulumi.all([selectedHost, this.connectivity, additionalParams]).apply(([selected, connectivity, resolvedParams]) => {
+		const combined = pulumi.all([selectedHost, this.connectivity, additionalParams]).apply(([selected, connectivity, resolvedParams]) => {
 			const { host, port } = selected;
 			const { username, password, databaseName } = connectivity;
 			const url = new URL(`postgres://${username}:${password}@${host}:${port}/${databaseName}`);
@@ -371,5 +383,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 
 			return url.toString();
 		});
+
+		return pulumi.secret(combined);
 	}
 }
