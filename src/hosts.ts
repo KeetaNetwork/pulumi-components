@@ -10,7 +10,11 @@ function getAndAddDomainFromHostTLS(url: string) {
 	const foundDomainResp = execSync(`echo '' | openssl s_client -connect ${parsed.host} -starttls ${starttls} 2>/dev/null | openssl x509 -ext subjectAltName -noout | awk '/DNS:/{ sub(/[[:space:]]*DNS:/, ""); print; }'`);
 	const foundDomain = foundDomainResp.toString().trim();
 
-	execSync(`echo '${parsed.hostname} ${foundDomain} # Added by Jester' | tee -a /etc/hosts`);
+	if (!foundDomain || foundDomain === '') {
+		throw new Error('Could not find domain from TLS certificate');
+	}
+
+	execSync(`echo '${parsed.hostname} ${foundDomain} # Added Automatically by @keetapay/pulumi-components' | tee -a /etc/hosts`);
 
 	return foundDomain;
 }
