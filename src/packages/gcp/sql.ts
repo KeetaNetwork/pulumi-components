@@ -55,7 +55,7 @@ interface DBFlags {
 	log_disconnections?: boolean;
 
 	/**
-	 * Causes the duration of every completed statement to be logged. 
+	 * Causes the duration of every completed statement to be logged.
 	 */
 	log_duration?: boolean;
 
