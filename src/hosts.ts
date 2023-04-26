@@ -24,7 +24,7 @@ function getAndAddDomainFromHostTLS(url: string) {
 				throw new Error('Could not find domain from TLS certificate');
 			}
 
-			if (foundDomain.includes(' ') || foundDomain.includes('\n')) {
+			if (foundDomain.includes(' ')) {
 				throw new Error('Found multiple domains in TLS certificate, this is currently not supported');
 			}
 
