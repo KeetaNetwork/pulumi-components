@@ -33,12 +33,44 @@ interface DBConnectivityOptions {
 	databaseName: string;
 }
 
-interface DBConnectivityArgs extends Partial<Omit<DBConnectivityOptions, 'username'>>, Pick<DBConnectivityOptions, 'username'> {
+interface DBFlags {
 	/**
 	 * Max connections at a single point to the database
 	 */
-	maxConnections?: number;
+	max_connections?: number;
 
+	/**
+	 * Causes checkpoints and restart-points to be logged in the server log.
+	 */
+	log_checkpoints?: boolean;
+
+	/**
+	 * Causes each attempted connection to the server to be logged, as well as successful completion of both client authentication (if necessary) and authorization
+	 */
+	log_connections?: boolean;
+
+	/**
+	 * Causes session terminations to be logged.
+	 */
+	log_disconnections?: boolean;
+
+	/**
+	 * Causes the duration of every completed statement to be logged. 
+	 */
+	log_duration?: boolean;
+
+	/**
+	 * Controls whether a log message is produced when a session waits longer than deadlock_timeout to acquire a lock
+	 */
+	log_lock_waits?: boolean;
+
+	/**
+	 * Controls logging of temporary file names and sizes.
+	 */
+	log_temp_files?: number;
+}
+
+interface DBConnectivityArgs extends Partial<Omit<DBConnectivityOptions, 'username'>>, Pick<DBConnectivityOptions, 'username'> {
 	tls?: {
 		/**
 		 * Add the SSL parameter to the connection string to require
@@ -132,6 +164,11 @@ export interface PostgresCloudSQLArgs {
 	 * Specify a username and optionally override a password to use when creating the database user
 	 */
 	connectivity: DBConnectivityArgs;
+
+	/**
+	 * Flags to pass to the database
+	 */
+	flags?: DBFlags;
 }
 
 type PostgresURLParams = {
@@ -291,10 +328,15 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 		}
 
 		const databaseFlags = [];
-		if (this.#options.connectivity.maxConnections !== undefined) {
+
+		for (const [key, value] of Object.entries(this.#options.flags ?? {})) {
+			if (value === undefined) {
+				continue;
+			}
+
 			databaseFlags.push({
-				name: 'max_connections',
-				value: String(this.#options.connectivity.maxConnections)
+				name: key,
+				value: String(value)
 			});
 		}
 
