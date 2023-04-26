@@ -4,6 +4,10 @@ const foundHostCache: { [key: string]: string } = {};
 
 const maxAttempts = 5;
 
+/**
+ * Get and add the domain from the TLS certificate to the hosts file
+ * Note: This only works when the protocols that use starttls
+ */
 function getAndAddDomainFromHostTLS(url: string) {
 	const parsed = new URL(url);
 
@@ -18,6 +22,10 @@ function getAndAddDomainFromHostTLS(url: string) {
 
 			if (!foundDomain || foundDomain === '') {
 				throw new Error('Could not find domain from TLS certificate');
+			}
+
+			if (foundDomain.includes(' ')) {
+				throw new Error('Found multiple domains in TLS certificate, this is currently not supported');
 			}
 
 			execSync(`echo '${parsed.hostname} ${foundDomain} # Added Automatically by @keetapay/pulumi-components' | tee -a /etc/hosts`);
