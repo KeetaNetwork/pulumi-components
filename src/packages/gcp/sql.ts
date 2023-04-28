@@ -459,9 +459,9 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 	}
 
 	getPrimaryHostURL(additionalParams?: pulumi.Input<PostgresURLParams>) {
-		const primaryDBInfoPromise = this.getHost(this.primaryRegion);
+		const primaryDBInfoPulumiOutput = this.getHost(this.primaryRegion);
 
-		const combined = pulumi.all([primaryDBInfoPromise, this.username, this.password, this.databaseName, additionalParams]).apply(([primaryDBInfo, username, password, databaseName, resolvedParams]) => {
+		const combined = pulumi.all([primaryDBInfoPulumiOutput, this.username, this.password, this.databaseName, additionalParams]).apply(([primaryDBInfo, username, password, databaseName, resolvedParams]) => {
 			const { host, port } = primaryDBInfo;
 			const url = new URL(`postgres://${username}:${password}@${host}:${port}/${databaseName}`);
 
