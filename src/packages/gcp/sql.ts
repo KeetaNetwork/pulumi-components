@@ -22,15 +22,9 @@ interface SingleDBHost {
 	connectionName: pulumi.Output<string>;
 
 	/**
-	 * CA Certificate PEM
+	 * CA Certificate for the database (in PEM format)
 	 */
 	caCertificate: pulumi.Output<string>;
-}
-
-interface DBConnectivityOptions {
-	username: pulumi.Input<string>;
-	password: pulumi.Input<string>;
-	databaseName: string;
 }
 
 interface DBFlags {
@@ -70,21 +64,6 @@ interface DBFlags {
 	log_temp_files?: number;
 }
 
-interface DBConnectivityArgs extends Partial<Omit<DBConnectivityOptions, 'username'>>, Pick<DBConnectivityOptions, 'username'> {
-	tls?: {
-		/**
-		 * Add the SSL parameter to the connection string to require
-		 * @default true
-		 */
-		requireSSLInURL?: boolean;
-		/**
-		 * Whether or not to require a client certificate to connect
-		 * @default false
-		 */
-		requireClientCertificate?: boolean;
-	};
-}
-
 export interface PostgresCloudSQLArgs {
 	/**
 	 * What to prefix the name of created resources with
@@ -97,7 +76,9 @@ export interface PostgresCloudSQLArgs {
 	vpcNetwork: VPCNetworkLike;
 
 	/**
-	 * The region to deploy cloud sql and its dependencies to
+	 * The region to deploy cloud sql and its dependencies to, if multiple
+	 * regions are specified in @see replication.replicaRegions, this will
+	 * be the region that the master instance is created in
 	 */
 	region: GCPRegion;
 
@@ -161,14 +142,41 @@ export interface PostgresCloudSQLArgs {
 	}
 
 	/**
-	 * Specify a username and optionally override a password to use when creating the database user
-	 */
-	connectivity: DBConnectivityArgs;
-
-	/**
 	 * Flags to pass to the database
 	 */
 	flags?: DBFlags;
+
+	/**
+	 * TLS Options
+	 */
+	tls?: {
+		/**
+		 * Add the SSL parameter to the connection string to require
+		 * @default true
+		 */
+		requireSSLInURL?: boolean;
+
+		/**
+		 * Whether or not to require a client certificate to connect
+		 * @default false
+		 */
+		requireClientCertificate?: boolean;
+	};
+
+	/**
+	 * Username to create for the database
+	 */
+	username?: pulumi.Input<string>;
+
+	/**
+	 * Password to use when connecting to the database
+	 */
+	password?: pulumi.Input<string>;
+
+	/**
+	 * Name of the datbase to create
+	 */
+	databaseName?: pulumi.Input<string>;
 }
 
 type PostgresURLParams = {
@@ -188,8 +196,32 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 
 	readonly hosts: PerGCPRegion<SingleDBHost> = {};
 	readonly primaryRegion: GCPRegion;
-	readonly connectivity: DBConnectivityOptions;
-	readonly createdVPCConnection?: gcp.servicenetworking.Connection;
+
+	/* XXX:TODO: Should add the rest of the args here as well... */
+	/**
+	 * Username to use when connecting to the database
+	 */
+	readonly username: pulumi.Output<string>;
+
+	/**
+	 * Password to use when connecting to the database
+	 */
+	readonly password: pulumi.Output<string>;
+
+	/**
+	 * Name of the database created
+	 */
+	readonly databaseName: pulumi.Output<string>;
+
+	/**
+	 * IP of the master database
+	 */
+	readonly masterHost: pulumi.Output<string>;
+
+	/**
+	 * Port of the master database
+	 */
+	readonly masterPort: pulumi.Output<string>;
 
 	constructor(name: string, args: PostgresCloudSQLArgs, opts?: pulumi.ComponentResourceOptions) {
 		super('Keeta:GCP:PostgresCloudSQL', name, args, opts);
@@ -200,17 +232,20 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 		this.#vpcNetwork = args.vpcNetwork;
 		this.primaryRegion = args.region;
 
-		this.connectivity = {
-			username: args.connectivity.username,
-			password: args.connectivity?.password ?? this.#makePostgresPassword(),
-			databaseName: args.connectivity.databaseName ?? 'main'
-		};
-
 		const replicaRegions = args.replication?.replicaRegions ?? [];
 		this.#usingReplicas = replicaRegions.length > 0;
 
-		const masterDependsOn = [];
+		/**
+		 * Ensure that the replica regions is sane
+		 */
+		if (replicaRegions.includes(this.primaryRegion)) {
+			throw new Error('Primary region cannot be included in the list of regions (Postgres)');
+		}
 
+		/**
+		 * A list of dependencies that must be created prior to creating the master instance
+		 */
+		const masterDependsOn = [];
 		if (this.#options.createPeering) {
 			/**
 			 * Create a private IP address for the SQL instance use
@@ -225,27 +260,20 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 			/**
 			 * Create a private VPC connection for SQL to be able to connect to the subnet
 			 */
-			this.createdVPCConnection = new gcp.servicenetworking.Connection(`${this.#prefix}-postgres-vpc-connection`, {
+			const vpcConnection = new gcp.servicenetworking.Connection(`${this.#prefix}-postgres-vpc-connection`, {
 				network: this.#vpcNetwork.id,
 				service: 'servicenetworking.googleapis.com',
 				reservedPeeringRanges: [ privateIpAddress.name ]
 			}, { parent: privateIpAddress });
 
-			masterDependsOn.push(this.createdVPCConnection);
-		}
-
-		/**
-		 * Create Postgres instance/database/user
-		 */
-		if (replicaRegions.includes(this.primaryRegion)) {
-			throw new Error('Primary region cannot be included in the list of regions (Postgres)');
+			masterDependsOn.push(vpcConnection);
 		}
 
 		/**
 		 * Create the master database instance
 		 * This will be created no matter what replication is set to
 		 */
-		const masterDatabase = this.createPostgres(`${this.#prefix}-master-instance`, this.primaryRegion, undefined, {
+		const masterDatabase = this.createPostgres(`${this.#prefix}-master`, this.primaryRegion, undefined, {
 			parent: this,
 			dependsOn: masterDependsOn
 		});
@@ -257,7 +285,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 			/**
 			 * Create the replica instance, with the master instance as the parent
 			 */
-			this.createPostgres(`${this.#prefix}-${region}-replica-instance`, region, masterDatabase, {
+			this.createPostgres(`${this.#prefix}-${region}-replica`, region, masterDatabase, {
 				parent: masterDatabase
 			});
 		}
@@ -266,16 +294,35 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 		 * Create the database and user
 		 * These will replicate to all instances from master
 		 */
-		new gcp.sql.Database(`${this.#prefix}-db`, {
-			name: this.connectivity.databaseName,
+		const db = new gcp.sql.Database(`${this.#prefix}-db`, {
+			name: args.databaseName,
 			instance: masterDatabase.name
-		}, { parent: masterDatabase, protect: args.deletionProtection });
+		}, {
+			parent: masterDatabase,
+			protect: args.deletionProtection
+		});
+		this.databaseName = db.name;
 
-		new gcp.sql.User(`${this.#prefix}-db-user`, {
+		/**
+		 * Use the user-defined password or generate one
+		 */
+		let password = args.password;
+		if (password === undefined) {
+			password = this.#makePostgresPassword();
+		}
+
+		const user = new gcp.sql.User(`${this.#prefix}-db-user`, {
 			instance: masterDatabase.name,
-			name: this.connectivity.username,
-			password: this.connectivity.password
-		}, { parent: masterDatabase });
+			name: args.username,
+			password: password
+		}, {
+			parent: masterDatabase
+		});
+		this.username = user.name;
+		this.password = pulumi.secret(pulumi.output(password));
+
+		this.masterHost = this.getPrimaryHostIP();
+		this.masterPort = this.getPrimaryHost().port;
 	}
 
 	/**
@@ -289,11 +336,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 		}, { parent: this }).result;
 	}
 
-	createPostgres(name: string, region: GCPRegion, masterInstance?: gcp.sql.DatabaseInstance, options?: pulumi.ComponentResourceOptions) {
-		if (this.hosts[region]) {
-			throw new Error(`Region ${region} already exists in the list of hosts`);
-		}
-
+	private getBackupConfiguration(region: GCPRegion) {
 		let backupConfiguration: NonNullable<pulumi.Unwrap<ConstructorParameters<typeof gcp.sql.DatabaseInstance>[1]['settings']>>['backupConfiguration'];
 
 		// We can only add backups to the primary region
@@ -319,6 +362,16 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 				throw new Error('Point-in-time recovery must be enabled for backups when using replicas');
 			}
 		}
+
+		return(backupConfiguration);
+	}
+
+	createPostgres(name: string, region: GCPRegion, masterInstance?: gcp.sql.DatabaseInstance, options?: pulumi.ComponentResourceOptions) {
+		if (this.hosts[region]) {
+			throw new Error(`Region ${region} already exists in the list of hosts`);
+		}
+
+		const backupConfiguration = this.getBackupConfiguration(region);
 
 		let availabilityType = 'ZONAL';
 		if (this.#options.replication?.multiZone) {
@@ -354,7 +407,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 					ipv4Enabled: false,
 					privateNetwork: this.#vpcNetwork.id,
 					// This is named badly on pulumi's side
-					requireSsl: this.#options.connectivity.tls?.requireClientCertificate
+					requireSsl: this.#options.tls?.requireClientCertificate
 				},
 				databaseFlags: databaseFlags,
 				backupConfiguration: backupConfiguration
@@ -381,30 +434,40 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 		return host;
 	}
 
-	getHostCIDR(region: GCPRegion) {
-		const { host } = this.getHost(region);
-		return pulumi.interpolate`${host}/32`;
+	getHostIP(region: GCPRegion) {
+		const hostInfo = this.getHost(region);
+		const host =  hostInfo.host;
+		return(host);
 	}
 
-	getPrimaryHostCIDR() {
-		return this.getHostCIDR(this.primaryRegion);
+	getHostCIDR(region: GCPRegion) {
+		const hostInfo = this.getHost(region);
+		const host =  hostInfo.host;
+		return(pulumi.interpolate`${host}/32`);
 	}
 
 	getPrimaryHost() {
-		return this.getHost(this.primaryRegion);
+		return(this.getHost(this.primaryRegion));
+	}
+
+	getPrimaryHostIP() {
+		return(this.getHostIP(this.primaryRegion));
+	}
+
+	getPrimaryHostCIDR() {
+		return(this.getHostCIDR(this.primaryRegion));
 	}
 
 	getPrimaryHostURL(additionalParams?: pulumi.Input<PostgresURLParams>) {
-		const selectedHost = this.getHost(this.primaryRegion);
+		const primaryDBInfoPromise = this.getHost(this.primaryRegion);
 
-		const combined = pulumi.all([selectedHost, this.connectivity, additionalParams]).apply(([selected, connectivity, resolvedParams]) => {
-			const { host, port } = selected;
-			const { username, password, databaseName } = connectivity;
+		const combined = pulumi.all([primaryDBInfoPromise, this.username, this.password, this.databaseName, additionalParams]).apply(([primaryDBInfo, username, password, databaseName, resolvedParams]) => {
+			const { host, port } = primaryDBInfo;
 			const url = new URL(`postgres://${username}:${password}@${host}:${port}/${databaseName}`);
 
 			// Default to requiring SSL, unless explicitly set to false
 			let sslMode = 'require';
-			if (this.#options.connectivity.tls?.requireSSLInURL === false) {
+			if (this.#options.tls?.requireSSLInURL === false) {
 				sslMode = 'prefer';
 			} else {
 				url.searchParams.set('sslaccept', 'strict');
@@ -426,6 +489,6 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 			return url.toString();
 		});
 
-		return pulumi.secret(combined);
+		return combined;
 	}
 }
