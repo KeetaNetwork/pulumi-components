@@ -1,34 +1,40 @@
 import { execSync } from 'child_process';
+import { X509Certificate } from 'crypto';
 
 const foundHostCache: { [key: string]: string } = {};
 
 const maxAttempts = 5;
 
 /**
- * Get and add the domain from the TLS certificate to the hosts file
- * Note: This only works when the protocols that use starttls
+ * Get the Subject Alternative Name from the TLS certificate
+ * that a TLS Server presents when you connect to it
  */
-function getAndAddDomainFromHostTLS(url: string) {
-	const parsed = new URL(url);
+function getHostSAN(url: URL) {
+	const protocol = url.protocol.split(':')[0];
 
-	const starttls = parsed.protocol.split(':')[0];
+	let startTLSCommand: string;
+	let connectTo: string;
+	switch (protocol) {
+		case 'https':
+			startTLSCommand = '';
+			connectTo = `${url.hostname}:${url.port || 443}`;
+			break;
+		default:
+			startTLSCommand = `-starttls ${protocol}`;
+			connectTo = url.host;
+			break;
+	}
 
 	let error;
-
 	for (let attempt = 0; attempt < maxAttempts; attempt++) {
 		try {
-			const foundDomainResp = execSync(`echo '' | openssl s_client -connect ${parsed.host} -starttls ${starttls} 2>/dev/null | openssl x509 -ext subjectAltName -noout | awk '/DNS:/{ sub(/[[:space:]]*DNS:/, ""); print; }'`);
-			const foundDomain = foundDomainResp.toString().trim();
+			const foundCert = execSync(`echo '' | openssl s_client -connect ${connectTo} ${startTLSCommand} 2>/dev/null | openssl x509`).toString('utf8');
+			const cert = new X509Certificate(foundCert);
+			const foundDomain = cert.subjectAltName?.replace(/, .*$/, '').replace(/^DNS:/, '');
 
 			if (!foundDomain || foundDomain === '') {
 				throw new Error('Could not find domain from TLS certificate');
 			}
-
-			if (foundDomain.includes(' ')) {
-				throw new Error('Found multiple domains in TLS certificate, this is currently not supported');
-			}
-
-			execSync(`echo '${parsed.hostname} ${foundDomain} # Added Automatically by @keetapay/pulumi-components' | tee -a /etc/hosts`);
 
 			return foundDomain;
 		} catch (e) {
@@ -37,6 +43,20 @@ function getAndAddDomainFromHostTLS(url: string) {
 	}
 
 	throw error;
+}
+
+/**
+ * Get and add the domain from the TLS certificate to the hosts file
+ * Note: This only works when the protocols that use starttls or https
+ */
+function getAndAddDomainFromHostTLS(url: string) {
+	const parsed = new URL(url);
+
+	const foundDomain = getHostSAN(parsed);
+
+	execSync(`echo '${parsed.hostname} ${foundDomain} # Added Automatically by @keetapay/pulumi-components' | tee -a /etc/hosts`);
+
+	return(foundDomain);
 }
 
 export function addSubjectAlternativeToHosts(url: string) {

@@ -36,27 +36,27 @@ interface DBFlags {
 	/**
 	 * Causes checkpoints and restart-points to be logged in the server log.
 	 */
-	log_checkpoints?: boolean;
+	log_checkpoints?: 'on' | 'off';
 
 	/**
 	 * Causes each attempted connection to the server to be logged, as well as successful completion of both client authentication (if necessary) and authorization
 	 */
-	log_connections?: boolean;
+	log_connections?: 'on' | 'off';
 
 	/**
 	 * Causes session terminations to be logged.
 	 */
-	log_disconnections?: boolean;
+	log_disconnections?: 'on' | 'off';
 
 	/**
 	 * Causes the duration of every completed statement to be logged.
 	 */
-	log_duration?: boolean;
+	log_duration?: 'on' | 'off';
 
 	/**
 	 * Controls whether a log message is produced when a session waits longer than deadlock_timeout to acquire a lock
 	 */
-	log_lock_waits?: boolean;
+	log_lock_waits?: 'on' | 'off';
 
 	/**
 	 * Controls logging of temporary file names and sizes.
