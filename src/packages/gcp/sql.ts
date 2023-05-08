@@ -299,9 +299,9 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 			});
 		}
 
-		let deletionPolicy = 'ABANDON';
-		if (!args.abandonOnDelete) {
-			deletionPolicy = 'DELETE';
+		let deletionPolicy;
+		if (args.abandonOnDelete !== false) {
+			deletionPolicy = 'ABANDON';
 		}
 
 		/**
