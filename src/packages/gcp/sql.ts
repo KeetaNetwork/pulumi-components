@@ -299,7 +299,8 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 			instance: masterDatabase.name
 		}, {
 			parent: masterDatabase,
-			protect: args.deletionProtection
+			protect: args.deletionProtection,
+			deletedWith: masterDatabase
 		});
 		this.databaseName = db.name;
 
@@ -316,7 +317,8 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 			name: args.username,
 			password: password
 		}, {
-			parent: masterDatabase
+			parent: masterDatabase,
+			deletedWith: masterDatabase
 		});
 		this.username = user.name;
 		this.password = pulumi.secret(pulumi.output(password));
