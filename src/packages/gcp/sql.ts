@@ -180,7 +180,9 @@ export interface PostgresCloudSQLArgs {
 
 	/**
 	 * @summary Whether to abandon the database and user when the instance is deleted.
-	 * @description This fixes an issue where postgres entities cannot be deleted if they have been granted roles, causing a circular dependency
+	 * @description
+	 * 	This fixes an issue where postgres entities cannot be deleted if they have been granted roles, causing a circular dependency
+	 * 	This does not abandon instances, so instances will not be leaked, and deleting an instance will always delete the user/databases within it
 	 * @default true
 	 */
 	abandonOnDelete?: boolean;
