@@ -177,6 +177,12 @@ export interface PostgresCloudSQLArgs {
 	 * Name of the datbase to create
 	 */
 	databaseName?: pulumi.Input<string>;
+
+	/**
+	 * @summary Weather to set deletionPolicy = ABANDON
+	 * @default true
+	 */
+	abandonOnDelete?: boolean;
 }
 
 type PostgresURLParams = {
@@ -290,13 +296,19 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 			});
 		}
 
+		let deletionPolicy = 'ABANDON';
+		if (!args.abandonOnDelete) {
+			deletionPolicy = 'DELETE';
+		}
+
 		/**
 		 * Create the database and user
 		 * These will replicate to all instances from master
 		 */
 		const db = new gcp.sql.Database(`${this.#prefix}-db`, {
 			name: args.databaseName,
-			instance: masterDatabase.name
+			instance: masterDatabase.name,
+			deletionPolicy: deletionPolicy
 		}, {
 			parent: masterDatabase,
 			protect: args.deletionProtection
@@ -314,7 +326,8 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 		const user = new gcp.sql.User(`${this.#prefix}-db-user`, {
 			instance: masterDatabase.name,
 			name: args.username,
-			password: password
+			password: password,
+			deletionPolicy: deletionPolicy
 		}, {
 			parent: masterDatabase
 		});
