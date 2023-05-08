@@ -179,7 +179,8 @@ export interface PostgresCloudSQLArgs {
 	databaseName?: pulumi.Input<string>;
 
 	/**
-	 * @summary Weather to set deletionPolicy = ABANDON
+	 * @summary Whether to abandon the database and user when the instance is deleted.
+	 * @description This fixes an issue where postgres entities cannot be deleted if they have been granted roles, causing a circular dependency
 	 * @default true
 	 */
 	abandonOnDelete?: boolean;
