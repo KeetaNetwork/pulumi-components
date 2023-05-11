@@ -67,7 +67,7 @@ interface DBFlags {
 	 * Set to mod to log all Data definition language (DDL) statements, plus data-modifying statements such as INSERT, UPDATE, DELETE, TRUNCATE
 	 * @default none
 	 */
-	log_statement: 'none' | 'ddl' | 'mod' | 'all';
+	log_statement?: 'none' | 'ddl' | 'mod' | 'all';
 }
 
 export interface PostgresCloudSQLArgs {
