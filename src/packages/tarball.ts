@@ -46,14 +46,16 @@ function createTarballFromDir(directory: string, cacheID?: string, excludePatter
 	}
 
 	/**
+	 * Create a list of files to exclude from the tarball
+	 */
+	const excludeFlags = excludePatterns.map(function(pattern) {
+		return(`--exclude=${pattern}`);
+	});
+
+	/**
 	 * Create the tarball
 	 * --no-xattrs will remove macOS added extended attributes
 	 */
-
-	const excludeFlags = excludePatterns.map(function(pattern) {
-		return(`--exclude='${pattern}'`);
-	});
-
 	const createResults = child_process.spawnSync('tar', [
 		'-C', directory,
 		...excludeFlags,
