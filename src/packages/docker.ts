@@ -161,6 +161,11 @@ interface GCPDockerRemoteImageInput extends GCPDockerImageInput {
 	 * and other resources
 	 */
 	provider: gcp.Provider | Pick<gcp.Provider, 'project'>;
+
+	/**
+	 * Machine Type information
+	 */
+	machineType?: keyof typeof google.devtools.cloudbuild.v1.BuildOptions.MachineType;
 }
 
 abstract class BaseDockerImage extends pulumi.ComponentResource {
@@ -589,8 +594,7 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 				steps: steps,
 				options: {
 					logging: 'CLOUD_LOGGING_ONLY',
-					/* XXX:TODO: Make this configurable */
-					machineType: 'E2_HIGHCPU_8',
+					machineType: input.machineType ?? 'E2_HIGHCPU_8',
 					requestedVerifyOption: 'VERIFIED',
 					sourceProvenanceHash: [
 						CloudBuild.HashType.SHA256
