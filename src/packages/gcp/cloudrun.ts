@@ -125,9 +125,11 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 			throw new Error('Cannot create a secret binding without providing serviceAccounts and RegionName to EnvVariables()');
 		}
 
-		new gcp.secretmanager.SecretIamMember(bindingName, {
+		const serviceAccount = this.serviceAccount;
+
+		const binding = new gcp.secretmanager.SecretIamMember(bindingName, {
 			secretId: secret.name,
-			member: this.serviceAccount,
+			member: serviceAccount,
 			role: 'roles/secretmanager.secretAccessor'
 		}, { parent: this });
 
@@ -136,7 +138,9 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 			valueFrom: {
 				secretKeyRef: {
 					key: secret.version ?? 'latest',
-					name: secret.name
+					name: pulumi.all([secret.name, binding.id]).apply(function([secretName]) {
+						return(secretName);
+					})
 				}
 			}
 		});
@@ -172,7 +176,7 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 			retainOnDelete: true
 		});
 
-		new gcp.secretmanager.SecretIamMember(`${secretName}-iam-binding`, {
+		const binding = new gcp.secretmanager.SecretIamMember(`${secretName}-iam-binding`, {
 			secretId: secret.secretId,
 			member: this.serviceAccount,
 			role: 'roles/secretmanager.secretAccessor'
@@ -193,7 +197,9 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 						 */
 						return('latest');
 					}),
-					name: secret.secretId
+					name: pulumi.all([secret.secretId, binding.id]).apply(function([secretName]) {
+						return(secretName);
+					})
 				}
 			}
 		});
