@@ -197,8 +197,8 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 						 */
 						return('latest');
 					}),
-					name: pulumi.all([secret.secretId, binding.id]).apply(function([secretName]) {
-						return(secretName);
+					name: pulumi.all([secret.secretId, binding.id]).apply(function([newSecretId]) {
+						return(newSecretId);
 					})
 				}
 			}
