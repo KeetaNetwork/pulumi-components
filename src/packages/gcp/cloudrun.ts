@@ -125,11 +125,9 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 			throw new Error('Cannot create a secret binding without providing serviceAccounts and RegionName to EnvVariables()');
 		}
 
-		const serviceAccount = this.serviceAccount;
-
 		const binding = new gcp.secretmanager.SecretIamMember(bindingName, {
 			secretId: secret.name,
-			member: serviceAccount,
+			member: this.serviceAccount,
 			role: 'roles/secretmanager.secretAccessor'
 		}, { parent: this });
 
