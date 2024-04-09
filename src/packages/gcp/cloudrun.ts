@@ -19,7 +19,11 @@ interface EnvironmentVariables {
 interface CloudRunEnvManagerInput {
 	variables: EnvironmentVariables;
 	serviceAccount?: pulumi.Input<string>;
-	secretRegionName?: pulumi.Input<GCPRegion>;
+
+	/**
+	 * If not supplied, automatic replication will be used
+	 */
+	secretRegionName?: pulumi.Input<GCPRegion> | pulumi.Input<GCPRegion>[];
 	prefix?: string;
 }
 
@@ -42,7 +46,7 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 	readonly variables: EnvironmentVariables;
 	readonly variableOutput: gcp.types.input.cloudrun.ServiceTemplateSpecContainerEnv[] = [];
 	readonly serviceAccount?: pulumi.Input<string>;
-	readonly secretRegionName?: pulumi.Input<GCPRegion>;
+	readonly secretRegionName?: pulumi.Input<GCPRegion> | pulumi.Input<GCPRegion>[];
 
 	constructor(name: string, input: CloudRunEnvManagerInput, opts?: pulumi.CustomResourceOptions) {
 		super(`${GCP_COMPONENT_PREFIX}:CloudRunEnvManager`, name, input, { ...opts });
@@ -147,16 +151,23 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 	private makeSecretVariable(name: string, value: pulumi.Input<string>) {
 		const secretName = normalizeName(this.#prefix, name);
 
-		if (!this.serviceAccount || !this.secretRegionName) {
-			throw new Error('Cannot create secret without providing serviceAccount and RegionName to EnvVariables()');
+		if (!this.serviceAccount) {
+			throw new Error('Cannot create secret without providing serviceAccount to EnvVariables()');
 		}
 
 		let replicationConfig: gcp.secretmanager.SecretArgs['replication'] = { automatic: true };
 
 		if (this.secretRegionName) {
+			let regionNames = this.secretRegionName;
+			if (!Array.isArray(regionNames)) {
+				regionNames = [regionNames];
+			}
+
 			replicationConfig = {
 				userManaged: {
-					replicas: [{ location: this.secretRegionName }]
+					replicas: regionNames.map(function(regionName) {
+						return({ location: regionName });
+					})
 				}
 			};
 		}
