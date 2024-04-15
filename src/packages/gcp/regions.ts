@@ -1,4 +1,5 @@
 import { gcpRegions, gcpSpannerRegions, gcpZones, spannerMultiRegionConfiguration } from './constants';
+import { hash } from '../../utils';
 import type * as types from './constants';
 
 export function assertGCPRegion(region: any): types.GCPRegion {
@@ -52,6 +53,18 @@ export function gcpPrimaryZone(region: string): types.GCPZone {
 	return(zone);
 }
 
+export function gcpRandomZone(key: string, region: string): types.GCPZone {
+	const zones = gcpZones[assertGCPRegion(region)];
+	if (zones === undefined) {
+		throw(new Error(`Invalid region: ${region}`));
+	}
+
+	const randomHash = hash(key);
+	const randomIndex = Number((BigInt(`0x${randomHash}`) % BigInt(zones.length)).toString());
+	const zone = zones[randomIndex];
+
+	return(zone);
+}
 
 export function isGCPSpannerRegionName(region: any): region is types.GCPSpannerRegionName {
 	return gcpSpannerRegions.includes(region);
