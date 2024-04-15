@@ -51,9 +51,9 @@ export function nonNullable<T>(input: T | undefined | null): T {
 }
 
 export function hash(input: string, length?: number): string;
-export function hash(input: pulumi.Output<string>, length?: number): pulumi.Output<string>;
-export function hash(input: string | pulumi.Output<string>, length?: number): string | pulumi.Output<string>;
-export function hash(input: string | pulumi.Output<string>, length: number = 8): string | pulumi.Output<string> {
+export function hash(input: Promise<string> | pulumi.Output<string>, length?: number): pulumi.Output<string>;
+export function hash(input: pulumi.Input<string>, length?: number): string | pulumi.Output<string>;
+export function hash(input: pulumi.Input<string>, length: number = 8): string | pulumi.Output<string> {
 	const hashFunction = crypto.createHash('sha256');
 
 	if (typeof(input) === 'string') {
@@ -61,8 +61,12 @@ export function hash(input: string | pulumi.Output<string>, length: number = 8):
 		const hashValue = hashFunction.digest('hex');
 		const truncatedHashValue = hashValue.slice(0, length);
 		return(truncatedHashValue);
-	} else {
+	} else if ('apply' in input) {
 		return(input.apply(function(realInput) {
+			return(hash(realInput, length));
+		}));
+	} else {
+		return(pulumi.output(input).apply(function(realInput) {
 			return(hash(realInput, length));
 		}));
 	}
