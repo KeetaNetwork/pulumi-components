@@ -87,3 +87,29 @@ export function inputApply<InnerType, InputType extends pulumi.Input<InnerType>,
 	const retval = output.apply(callback);
 	return(retval);
 }
+
+/**
+ * Create a resource name that fits within a defined length
+ *
+ * It will be constructed by hashing the prefix, then including as much of it
+ * can as well as 6 characters of the hash, and the entire suffix
+ *
+ * For example:
+ *    Prefix = 'my-very-long-prefix', Suffix = 'vm', MaxLength = 12
+ *    Result = 'my-abcdef-vm'
+ *
+ * @param prefix Prefix to include as much of as possible and hash
+ * @param suffix Suffix to always include
+ * @param maxLength The maximum length to acheive
+ */
+export function generateName(prefix: string, suffix: string, maxLength: number) {
+	prefix = normalizeName(prefix);
+	const prefixMaxLength = maxLength - suffix.length - 1;
+
+	let realPrefix: string = prefix;
+	if (realPrefix.length > prefixMaxLength) {
+		realPrefix = realPrefix.slice(0, prefixMaxLength - 1 - 6) + hash(realPrefix, 6);
+	}
+
+	return(`${realPrefix}-${suffix}`);
+}
