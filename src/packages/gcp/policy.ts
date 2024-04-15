@@ -11,7 +11,7 @@ export interface PolicyDataBinding {
 	addMembers(role: string, members: pulumi.Input<string>[]): void;
 }
 
-class PolicyBindingBase {
+export class PolicyBindingBase {
 	private members: { [role: string]: pulumi.Input<string>[] } = {};
 
 	addMembers(role: string, members: pulumi.Input<string>[]) {
