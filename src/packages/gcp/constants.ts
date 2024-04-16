@@ -80,11 +80,23 @@ export const gcpZones = {
 	'us-east5': ['us-east5-a', 'us-east5-b', 'us-east5-c'],
 	'us-south1': ['us-south1-a', 'us-south1-b', 'us-south1-c'],
 	'us-west1': ['us-west1-a', 'us-west1-b', 'us-west1-c'],
-	'us-west2': ['us-west2-a', 'us-west2-b', 'us-west2-c', 'us-west3-a'],
-	'us-west3': ['us-west3-b', 'us-west3-c'],
+	'us-west2': ['us-west2-a', 'us-west2-b', 'us-west2-c'],
+	'us-west3': ['us-west3-a', 'us-west3-b', 'us-west3-c'],
 	'us-west4': ['us-west4-a', 'us-west4-b', 'us-west4-c']
 } as const;
 export type GCPZone = typeof gcpZones[GCPRegion][number];
+
+/**
+ * Create a static type check that every zone in the gcpZones object is prefixed with the region name
+ */
+type _ignore_static_check_zones1 = {
+	[K in GCPRegion]: typeof gcpZones[K][number] extends `${K}-${string}` ? true : false;
+};
+type _ignore_static_check_zones2 = {
+	[K in GCPRegion]: true;
+};
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _ignore_static_check_zone1: _ignore_static_check_zones1 extends _ignore_static_check_zones2 ? true : false = true;
 
 export const gcpSpannerRegions = [
 	'northamerica-northeast1',
