@@ -73,7 +73,7 @@ export function addGooglePrivateIPAccessNetwork(name: string, state: Set<gcp.com
 		new gcp.compute.Route(`${name}-route-gcp-range1`, {
 			network: network.id,
 			destRange: '199.36.153.4/30',
-			priority: 1,
+			priority: 999,
 			nextHopGateway: 'default-internet-gateway'
 		}, {
 			parent: network
