@@ -21,7 +21,7 @@ type GooglePrivateIPAccessArgs = {
 	/**
 	 * Common GCP configuration
 	 */
-	gcp: {
+	gcp?: {
 		/**
 		 * Configuration for the firewall rules created by this module
 		 */
@@ -61,7 +61,7 @@ export function addGooglePrivateIPAccessNetwork(name: string, state: Set<gcp.com
 		}),
 		destinationRanges: ['199.36.153.4/30', '34.126.0.0/18'],
 		priority: 900,
-		...args.gcp.firewallConfig
+		...args.gcp?.firewallConfig
 	}, {
 		parent: network
 	});
