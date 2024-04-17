@@ -104,7 +104,7 @@ export function addGooglePrivateIPAccessNetwork(name: string, state: Set<gcp.com
  * @param state The state to apply
  * @param parent The parent resource for the resources
  */
-export function applyGooglePrivateIPAccess(name: string, state: Set<gcp.compute.Network>, parent?: pulumi.ComponentResource) {
+export function applyGooglePrivateIPAccess(name: string, state: Set<gcp.compute.Network>, parent?: pulumi.Resource) {
 	/*
 	 * If there are no networks to apply Google Private IP Access to, then
 	 * we can skip this step
