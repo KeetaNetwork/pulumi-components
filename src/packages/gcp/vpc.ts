@@ -142,9 +142,8 @@ export function applyGooglePrivateIPAccess(name: string, state: Set<gcp.compute.
 	const zones = Object.fromEntries(zoneNames.map(function(zoneName): [typeof zoneName, { zone: gcp.dns.ManagedZone, name: string; }] {
 		const zoneNameSanitized = zoneName.replace(/\./g, '-').replace(/-$/, '');
 
-		const resourceName = `${name}-dns-zone-${zoneNameSanitized}`;
+		const resourceName = generateName(`${name}-${zoneNameSanitized}`, 'dns-zone', 63 - 8);
 		const zone = new gcp.dns.ManagedZone(resourceName, {
-			name: generateName(resourceName, 'zone', 63),
 			description: `Private DNS Zone for Private IP access to Google APIs (${zoneName})`,
 			dnsName: zoneName,
 			visibility: 'private',
