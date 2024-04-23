@@ -1,5 +1,6 @@
 import type * as pulumi from '@pulumi/pulumi';
 import * as gcp from '@pulumi/gcp';
+import { generateName } from '../../utils';
 
 type GooglePrivateIPAccessArgs = {
 	/**
@@ -141,7 +142,9 @@ export function applyGooglePrivateIPAccess(name: string, state: Set<gcp.compute.
 	const zones = Object.fromEntries(zoneNames.map(function(zoneName): [typeof zoneName, { zone: gcp.dns.ManagedZone, name: string; }] {
 		const zoneNameSanitized = zoneName.replace(/\./g, '-').replace(/-$/, '');
 
-		const zone = new gcp.dns.ManagedZone(`${name}-dns-zone-${zoneNameSanitized}`, {
+		const resourceName = `${name}-dns-zone-${zoneNameSanitized}`;
+		const zone = new gcp.dns.ManagedZone(resourceName, {
+			name: generateName(resourceName, 'zone', 63),
 			description: `Private DNS Zone for Private IP access to Google APIs (${zoneName})`,
 			dnsName: zoneName,
 			visibility: 'private',
@@ -161,7 +164,7 @@ export function applyGooglePrivateIPAccess(name: string, state: Set<gcp.compute.
 		}
 
 		return([zoneName, {
-			zone,
+			zone: zone,
 			name: zoneNameSanitized
 		}]);
 	}));
