@@ -43,13 +43,13 @@ type GooglePrivateIPAccessArgs = {
  * @param state The state to mutate
  * @param args The arguments for the Google Private IP Access
  */
-export function addGooglePrivateIPAccessNetwork(name: string, state: Set<gcp.compute.Network>, args: GooglePrivateIPAccessArgs) {
+export function addGooglePrivateIPAccessNetwork(name: string, state: Set<gcp.compute.Network>, args: GooglePrivateIPAccessArgs, opts?: pulumi.CustomResourceOptions) {
 	const network = args.network;
 
 	/*
 	 * Allow HTTPS outbound to GCP via Private IP Access
 	 */
-	new gcp.compute.Firewall(`${name}-firewall-gcp-out`, {
+	const firewall = new gcp.compute.Firewall(`${name}-firewall-gcp-out`, {
 		description: 'Allow HTTPS outbound to GCP (Restricted)',
 		network: network.id,
 		direction: 'EGRESS',
@@ -64,35 +64,45 @@ export function addGooglePrivateIPAccessNetwork(name: string, state: Set<gcp.com
 		priority: 900,
 		...args.gcp?.firewallConfig
 	}, {
-		parent: network
+		parent: network,
+		...opts
 	});
 
+	const routes: gcp.compute.Route[] = [];
 	if (args.includeRoute === true) {
 		/*
 		 * Route to GCP via Private IP Access
 		 */
-		new gcp.compute.Route(`${name}-route-gcp-range1`, {
+		const route1 = new gcp.compute.Route(`${name}-route-gcp-range1`, {
 			network: network.id,
 			destRange: '199.36.153.4/30',
 			priority: 999,
 			nextHopGateway: 'default-internet-gateway'
 		}, {
-			parent: network
+			parent: network,
+			...opts
 		});
+		routes.push(route1);
 
-		new gcp.compute.Route(`${name}-route-gcp-range2`, {
+		const route2 = new gcp.compute.Route(`${name}-route-gcp-range2`, {
 			network: network.id,
 			destRange: '34.126.0.0/18',
 			priority: 1,
 			nextHopGateway: 'default-internet-gateway'
 		}, {
-			parent: network
+			parent: network,
+			...opts
 		});
+		routes.push(route2);
 	}
 
 	state.add(network);
 
-	return(state);
+	return({
+		state: state,
+		firewalls: [firewall],
+		routes: routes
+	});
 }
 
 /**
