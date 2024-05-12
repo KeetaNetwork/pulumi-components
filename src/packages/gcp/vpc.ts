@@ -1,4 +1,4 @@
-import type * as pulumi from '@pulumi/pulumi';
+import * as pulumi from '@pulumi/pulumi';
 import * as gcp from '@pulumi/gcp';
 import { generateName } from '../../utils';
 
@@ -181,6 +181,7 @@ export function applyGooglePrivateIPAccess(name: string, state: Set<gcp.compute.
 	/**
 	 * Create the DNS entries in each zone to resolve to the restricted IPs
 	 */
+	const rrsets: gcp.dns.RecordSet[] = [];
 	for (const [zoneName, zoneInfo] of Object.entries(zones)) {
 		let mainDNSEntryName = zoneName;
 
@@ -204,8 +205,9 @@ export function applyGooglePrivateIPAccess(name: string, state: Set<gcp.compute.
 		}, {
 			parent: zone
 		});
+		rrsets.push(mainDNSEntryForZone);
 
-		new gcp.dns.RecordSet(`${name}-dns-rr-${zoneNameSanitized}-cname`, {
+		const rrset = new gcp.dns.RecordSet(`${name}-dns-rr-${zoneNameSanitized}-cname`, {
 			managedZone: zone.name,
 			name: `*.${zoneName}`,
 			type: 'CNAME',
@@ -213,10 +215,26 @@ export function applyGooglePrivateIPAccess(name: string, state: Set<gcp.compute.
 		}, {
 			parent: mainDNSEntryForZone
 		});
+		rrsets.push(rrset);
 	}
 
 	state.clear();
 
-	return(state);
+	return({
+		/**
+		 * State object (empty)
+		 */
+		state: state,
+
+		/**
+		 * Waitable for the DNS records to be created -- it resolves
+		 * to an empty string after all DNS records have been created
+		 */
+		waitable: pulumi.all(rrsets.map(function(rrset) {
+			return(rrset.id);
+		})).apply(function() {
+			return('');
+		})
+	});
 }
 
