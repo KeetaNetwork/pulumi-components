@@ -119,6 +119,11 @@ interface GCPDockerImageInput {
 	buildArgs?: { [key: string]: pulumi.Input<string> | undefined };
 
 	/**
+	 * Target to build
+	 */
+	buildTarget?: string;
+
+	/**
 	 * Source to build from, either a directory or a git
 	 * working copy and optional commit
 	 */
@@ -213,6 +218,10 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 
 		if (input.platform) {
 			args.push('--platform', input.platform);
+		}
+
+		if (input.buildTarget) {
+			args.push('--target', input.buildTarget);
 		}
 
 		for (const [ key, value ] of Object.entries(input.buildArgs ?? {})) {
