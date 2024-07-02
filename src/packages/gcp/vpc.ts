@@ -1,6 +1,7 @@
 import * as pulumi from '@pulumi/pulumi';
 import * as gcp from '@pulumi/gcp';
 import { generateName } from '../../utils';
+import type { GCPCommonOptions } from './common';
 
 type GooglePrivateIPAccessArgs = {
 	/**
@@ -22,12 +23,7 @@ type GooglePrivateIPAccessArgs = {
 	/**
 	 * Common GCP configuration
 	 */
-	gcp?: {
-		/**
-		 * Configuration for the firewall rules created by this module
-		 */
-		firewallConfig?: Partial<ConstructorParameters<typeof gcp.compute.Firewall>[1]>;
-	};
+	gcp?: Partial<Pick<GCPCommonOptions, 'firewallConfig'>>;
 };
 
 /**
@@ -76,7 +72,7 @@ export function addGooglePrivateIPAccessNetwork(name: string, state: Set<gcp.com
 		const route1 = new gcp.compute.Route(`${name}-route-gcp-range1`, {
 			network: network.id,
 			destRange: '199.36.153.4/30',
-			priority: 999,
+			priority: 950,
 			nextHopGateway: 'default-internet-gateway'
 		}, {
 			parent: network,
@@ -87,7 +83,7 @@ export function addGooglePrivateIPAccessNetwork(name: string, state: Set<gcp.com
 		const route2 = new gcp.compute.Route(`${name}-route-gcp-range2`, {
 			network: network.id,
 			destRange: '34.126.0.0/18',
-			priority: 1,
+			priority: 950,
 			nextHopGateway: 'default-internet-gateway'
 		}, {
 			parent: network,
