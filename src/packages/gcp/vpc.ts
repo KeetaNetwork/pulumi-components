@@ -165,7 +165,9 @@ export function applyGooglePrivateIPAccess(name: string, state: Set<gcp.compute.
 				})
 			}
 		}, {
-			parent: mainDNSZone ?? parent
+			parent: mainDNSZone ?? parent,
+			replaceOnChanges: ['privateVisibilityConfig'],
+			deleteBeforeReplace: true
 		});
 
 		if (zoneName === 'googleapis.com.') {
