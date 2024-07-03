@@ -155,7 +155,9 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 			throw new Error('Cannot create secret without providing serviceAccount to EnvVariables()');
 		}
 
-		let replicationConfig: gcp.secretmanager.SecretArgs['replication'] = { automatic: true };
+		let replicationConfig: gcp.secretmanager.SecretArgs['replication'] = {
+			auto: {}
+		};
 
 		if (this.secretRegionName) {
 			let regionNames = this.secretRegionName;
