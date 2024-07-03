@@ -73,13 +73,24 @@ interface ContainerMIGOptions {
 			}[]>;
 		}[];
 	};
+
+	/**
+	 * HTTP Server Port
+	 */
+	httpPort?: pulumi.Input<number>;
 }
 
 export class ContainerMIG extends pulumi.ComponentResource {
 	private static defaultCOSImage?: ReturnType<typeof gcp.compute.getImage>;
+	instanceGroupManager: gcp.compute.RegionInstanceGroupManager;
+	subnetwork: ContainerMIGOptions['subnetwork'];
+	serviceAccount: ContainerMIGOptions['serviceAccount'];
 
 	constructor(name: string, options: ContainerMIGOptions, args?: pulumi.CustomResourceOptions) {
 		super('Keeta:GCP:ContainerMIG', name, options, args);
+
+		this.subnetwork = options.subnetwork;
+		this.serviceAccount = options.serviceAccount;
 
 		/**
 		 * The "Container OS" image to use for the instances, if not
@@ -310,10 +321,14 @@ export class ContainerMIG extends pulumi.ComponentResource {
 		/**
 		 * Create the instance manager (the resource which constructs the instances from the templates)
 		 */
-		new gcp.compute.RegionInstanceGroupManager(`${name}-mig`, {
+		const igm = new gcp.compute.RegionInstanceGroupManager(`${name}-mig`, {
 			baseInstanceName: baseInstanceName,
 			region: region,
 			targetSize: options.count ?? 1,
+			namedPorts: [{
+				name: 'http',
+				port: options.httpPort ?? 8080
+			}],
 			updatePolicy: {
 				mostDisruptiveAllowedAction: 'REPLACE',
 				/*
@@ -337,5 +352,7 @@ export class ContainerMIG extends pulumi.ComponentResource {
 				...policyChangeToDependOn
 			]
 		});
+
+		this.instanceGroupManager = igm;
 	}
 }
