@@ -43,6 +43,11 @@ interface ContainerMIGOptions {
 	machineType?: pulumi.Input<string>;
 
 	/**
+	 * Network tags to apply to the VMs
+	 */
+	tags?: pulumi.Input<string[]>;
+
+	/**
 	 * Description to provide to the VMs and to the Managed Instance Group (MIG)
 	 */
 	description?: pulumi.Input<string>;
@@ -163,6 +168,7 @@ export class ContainerMIG extends pulumi.ComponentResource {
 		const instanceTemplate = new gcp.compute.InstanceTemplate(`${name}-mig-template`, {
 			machineType: options.machineType ?? 'e2-medium',
 			region: region,
+			tags: options.tags,
 			disks: [{
 				sourceImage: cosImage,
 
