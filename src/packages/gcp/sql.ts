@@ -192,6 +192,11 @@ export interface PostgresCloudSQLArgs {
 	 * @default true
 	 */
 	abandonOnDelete?: boolean;
+
+	/**
+	 * Query Insights options
+	 */
+	insightsConfig?: NonNullable<pulumi.Unwrap<ConstructorParameters<typeof gcp.sql.DatabaseInstance>[1]['settings']>>['insightsConfig'];
 }
 
 type PostgresURLParams = {
@@ -431,10 +436,18 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 					ipv4Enabled: false,
 					privateNetwork: this.#vpcNetwork.id,
 					// This is named badly on pulumi's side
-					requireSsl: this.#options.tls?.requireClientCertificate
+					requireSsl: this.#options.tls?.requireClientCertificate,
+					sslMode: 'ENCRYPTED_ONLY'
 				},
 				databaseFlags: databaseFlags,
-				backupConfiguration: backupConfiguration
+				backupConfiguration: backupConfiguration,
+				insightsConfig: this.#options.insightsConfig ?? {
+					queryInsightsEnabled: false,
+					queryPlansPerMinute: 0,
+					queryStringLength: 0,
+					recordApplicationTags: false,
+					recordClientAddress: false
+				}
 			}
 		}, { protect: deletionProtection, ...options });
 
