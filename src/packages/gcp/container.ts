@@ -31,6 +31,12 @@ interface ContainerMIGOptions {
 	common: ContainerMIGCommonOptions;
 
 	/**
+	 * Zone to deploy the VMs to -- if this is specified it will create a
+	 * zonal instance group manager instead of a regional one
+	 */
+	zone?: pulumi.Input<string>;
+
+	/**
 	 * Container OS (COS) Image to use for VMs.
 	 *
 	 * Default is the latest stable COS image
@@ -68,6 +74,14 @@ interface ContainerMIGOptions {
 	 */
 	containerSpec: {
 		containers: {
+			/**
+			 * Artifact Registry to use for the image -- used for
+			 * granting access to the image to the service account
+			 *
+			 * Ignored if `common.gcp.changeRegistryIAMPolicy` is
+			 * specified
+			 */
+			registry?: Pick<gcp.artifactregistry.Repository, 'id'>;
 			image: pulumi.Input<string>;
 			name: pulumi.Input<string>;
 			restartPolicy: 'Always';
@@ -83,11 +97,20 @@ interface ContainerMIGOptions {
 	 * HTTP Server Port
 	 */
 	httpPort?: pulumi.Input<number>;
+
+	/**
+	 * Enable SSH on the VM -- if this is enabled the container will not be
+	 * able to listen on port 22 (since the VM's ssh daemon will already be
+	 * listening on that port)
+	 *
+	 * Default is false
+	 */
+	enableVMSSH?: boolean;
 }
 
 export class ContainerMIG extends pulumi.ComponentResource {
 	private static defaultCOSImage?: ReturnType<typeof gcp.compute.getImage>;
-	instanceGroupManager: gcp.compute.RegionInstanceGroupManager;
+	instanceGroupManager: gcp.compute.RegionInstanceGroupManager | gcp.compute.InstanceGroupManager;
 	subnetwork: ContainerMIGOptions['subnetwork'];
 	serviceAccount: ContainerMIGOptions['serviceAccount'];
 
@@ -165,6 +188,53 @@ export class ContainerMIG extends pulumi.ComponentResource {
 			return(serviceAccountResolved.email);
 		});
 
+		/**
+		 * Compute a list of images specified
+		 */
+		const images = options.containerSpec.containers.map(function(container) {
+			return(container.image);
+		});
+
+		/**
+		 * Compute a list of registry IDs specified, and remove that
+		 * from the containerSpec
+		 */
+		const registries = options.containerSpec.containers.map(function(container) {
+			return(container.registry);
+		}).filter(function(registry): registry is NonNullable<typeof registry> {
+			return(registry !== undefined);
+		});
+
+		/**
+		 * Remove the registry from the container spec
+		 */
+		const containerSpec = {
+			...options.containerSpec,
+			containers: options.containerSpec.containers.map(function(container) {
+				// eslint-disable-next-line @typescript-eslint/no-unused-vars
+				const { registry: _ignore_registry, ...newContainerSpec } = container;
+				return(newContainerSpec);
+			})
+		};
+
+		/**
+		 * Run commands to execute on the VMs when they start up
+		 */
+		const runCommands: string[] = [];
+		if (options.enableVMSSH !== true) {
+			/*
+			 * Disable SSH on the VM (unless the user has explicitly
+			 * requested it)
+			 */
+			runCommands.push('mount --bind /dev/null /usr/sbin/sshd');
+			runCommands.push('systemctl disable sshd');
+			runCommands.push('systemctl stop sshd');
+			runCommands.push('pkill -9 -x sshd');
+		}
+
+		/**
+		 * Create the Managed Instance Group Template, from which each instance will be created
+		 */
 		const instanceTemplate = new gcp.compute.InstanceTemplate(`${name}-mig-template`, {
 			machineType: options.machineType ?? 'e2-medium',
 			region: region,
@@ -220,15 +290,10 @@ export class ContainerMIG extends pulumi.ComponentResource {
 				 * Container Specification for the container
 				 */
 				'gce-container-declaration': pulumi.jsonStringify({
-					spec: options.containerSpec
+					spec: containerSpec
 				}),
 				'user-data': '#cloud-config\n' + JSON.stringify({
-					'runcmd': [
-						'mount --bind /dev/null /usr/sbin/sshd',
-						'systemctl disable sshd',
-						'systemctl stop sshd',
-						'pkill -9 -x sshd'
-					]
+					'runcmd': runCommands
 				}),
 				'google-logging-enabled': 'true',
 				'block-project-ssh-keys': 'TRUE'
@@ -238,13 +303,6 @@ export class ContainerMIG extends pulumi.ComponentResource {
 			}
 		}, {
 			parent: this
-		});
-
-		/**
-		 * Compute a list of images specified
-		 */
-		const images = options.containerSpec.containers.map(function(container) {
-			return(container.image);
 		});
 
 		/*
@@ -264,18 +322,35 @@ export class ContainerMIG extends pulumi.ComponentResource {
 			}
 		} else {
 			/**
-			 * Grant access to the image to the service account -- this assumes the old
-			 * Container Registry and needs to be updated to the Artifact Registry
+			 * Grant access to the image to the service account
+			 * to the old Container Registry
 			 */
-			const policyResource = new gcp.storage.BucketIAMMember(`${name}-iam`, {
+			const oldPolicyResource = new gcp.storage.BucketIAMMember(`${name}-iam`, {
 				bucket: `artifacts.${options.common.gcp.project}.appspot.com`,
 				member: pulumi.interpolate`serviceAccount:${serviceAccount}`,
 				role: 'roles/storage.objectViewer'
 			}, {
 				parent: this
 			});
+			policyChangeToDependOn.push(oldPolicyResource);
 
-			policyChangeToDependOn.push(policyResource);
+			/**
+			 * Grant access to the image to the service account
+			 * to the new Artifact Registry
+			 */
+			let registryIndex = 0;
+			for (const registry of registries) {
+				registryIndex++;
+
+				const policyResource = new gcp.artifactregistry.RepositoryIamMember(`${name}-ar-${registryIndex}-iam`, {
+					repository: registry.id,
+					member: pulumi.interpolate`serviceAccount:${serviceAccount}`,
+					role: 'roles/artifactregistry.reader'
+				}, {
+					parent: this
+				});
+				policyChangeToDependOn.push(policyResource);
+			}
 		}
 
 		/**
@@ -324,12 +399,11 @@ export class ContainerMIG extends pulumi.ComponentResource {
 		 */
 		const baseInstanceName = generateName(name, 'mig-base', 45);
 
-		/**
+		/*
 		 * Create the instance manager (the resource which constructs the instances from the templates)
 		 */
-		const igm = new gcp.compute.RegionInstanceGroupManager(`${name}-mig`, {
+		const igmBaseArgs = {
 			baseInstanceName: baseInstanceName,
-			region: region,
 			targetSize: options.count ?? 1,
 			namedPorts: [{
 				name: 'http',
@@ -343,21 +417,46 @@ export class ContainerMIG extends pulumi.ComponentResource {
 				 * ensure that the disk does not fill up
 				 */
 				minimalAction: 'REPLACE',
-				type: 'PROACTIVE',
-				maxUnavailableFixed: pulumi.output(region).apply(function(regionResolvedInput) {
-					const regionResolved = components.gcp.regions.assertGCPRegion(regionResolvedInput);
-					return(components.gcp.constants.gcpZones[regionResolved].length);
-				})
+				type: 'PROACTIVE'
 			},
 			versions: [{
 				instanceTemplate: instanceTemplate.selfLink
 			}]
-		}, {
-			parent: this,
-			dependsOn: [
-				...policyChangeToDependOn
-			]
-		});
+		} satisfies Omit<ConstructorParameters<typeof gcp.compute.RegionInstanceGroupManager>[1], 'region'> | Omit<ConstructorParameters<typeof gcp.compute.InstanceGroupManager>[1], 'zone'>;
+
+		let igm: gcp.compute.RegionInstanceGroupManager | gcp.compute.InstanceGroupManager;
+		if ('zone' in options) {
+			igm = new gcp.compute.InstanceGroupManager(`${name}-mig`, {
+				...igmBaseArgs,
+				zone: options.zone,
+				updatePolicy:{
+					...igmBaseArgs.updatePolicy,
+					maxUnavailablePercent: 100
+				}
+			}, {
+				parent: this,
+				dependsOn: [
+					...policyChangeToDependOn
+				]
+			});
+		} else {
+			igm = new gcp.compute.RegionInstanceGroupManager(`${name}-mig`, {
+				...igmBaseArgs,
+				region: region,
+				updatePolicy: {
+					...igmBaseArgs.updatePolicy,
+					maxUnavailableFixed: pulumi.output(region).apply(function(regionResolvedInput) {
+						const regionResolved = components.gcp.regions.assertGCPRegion(regionResolvedInput);
+						return(components.gcp.constants.gcpZones[regionResolved].length);
+					})
+				}
+			}, {
+				parent: this,
+				dependsOn: [
+					...policyChangeToDependOn
+				]
+			});
+		}
 
 		this.instanceGroupManager = igm;
 	}
