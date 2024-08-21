@@ -211,10 +211,11 @@ export class ContainerMIG extends pulumi.ComponentResource {
 		const containerSpec = {
 			...options.containerSpec,
 			containers: options.containerSpec.containers.map(function(container) {
-				const { registry, ...containerSpec } = container;
-				return(containerSpec);
+				// eslint-disable-next-line @typescript-eslint/no-unused-vars
+				const { registry: _ignore_registry, ...newContainerSpec } = container;
+				return(newContainerSpec);
 			})
-		}
+		};
 
 		/**
 		 * Run commands to execute on the VMs when they start up
