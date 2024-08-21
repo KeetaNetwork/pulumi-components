@@ -295,9 +295,7 @@ export class InternalLoadBalancer extends pulumi.ComponentResource {
 		new gcp.compute.Firewall(`${name}-ilb-in`, {
 			description: `Inbound firewall rule for the ${args.baseDescription}`,
 			direction: 'INGRESS',
-			network: pulumi.output(args.target.subnetwork).apply(function(subnetwork) {
-				return(subnetwork.network);
-			}),
+			network: pulumi.output(args.target.subnetwork).network,
 			allows: [{
 				protocol: 'tcp',
 				ports: ['8080', '80', '443']
