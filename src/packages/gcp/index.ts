@@ -6,4 +6,5 @@ export * as regions from './regions';
 export * as policy from './policy';
 export * as sql from './sql';
 export * as vpc from './vpc';
+export * as lb from './lb';
 export * as common from './common';
