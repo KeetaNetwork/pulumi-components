@@ -163,6 +163,17 @@ function createBackendSecurityPolicy(name: string, allowedSources: LoadBalancerA
 				});
 			}
 
+			rules.push({
+				priority: 2147483647,
+				action: 'deny',
+				match: {
+					config: {
+						srcIpRanges: ['*']
+					},
+					versionedExpr: 'SRC_IPS_V1'
+				}
+			});
+
 			return(rules);
 		})(),
 		...args
