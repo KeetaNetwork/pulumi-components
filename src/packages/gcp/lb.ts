@@ -165,7 +165,7 @@ function createBackendSecurityPolicy(name: string, allowedSources: LoadBalancerA
 
 			rules.push({
 				priority: 2147483647,
-				action: 'deny',
+				action: 'deny(403)',
 				match: {
 					config: {
 						srcIpRanges: ['*']
