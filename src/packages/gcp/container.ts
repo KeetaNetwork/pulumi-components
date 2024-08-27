@@ -113,6 +113,7 @@ export class ContainerMIG extends pulumi.ComponentResource {
 	instanceGroupManager: gcp.compute.RegionInstanceGroupManager | gcp.compute.InstanceGroupManager;
 	subnetwork: ContainerMIGOptions['subnetwork'];
 	serviceAccount: ContainerMIGOptions['serviceAccount'];
+	readonly type = 'MIG' as const;
 
 	constructor(name: string, options: ContainerMIGOptions, args?: pulumi.CustomResourceOptions) {
 		super('Keeta:GCP:ContainerMIG', name, options, args);

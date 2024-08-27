@@ -1,5 +1,6 @@
 import * as pulumi from '@pulumi/pulumi';
 import * as gcp from '@pulumi/gcp';
+import * as utils from '../../utils';
 
 import type { GCPCommonOptions } from './common';
 import type { ContainerMIG } from './container';
@@ -39,7 +40,11 @@ type LoadBalancerArgs = {
 	/**
 	 * Target for the Internal Load Balancer
 	 */
-	target: Pick<ContainerMIG, 'instanceGroupManager' | 'serviceAccount' | 'subnetwork'>;
+	target: Pick<ContainerMIG, 'instanceGroupManager' | 'serviceAccount' | 'subnetwork' | 'type'> | {
+		type: 'NEG';
+		host: pulumi.Input<string>;
+		port?: pulumi.Input<number>;
+	};
 
 	/**
 	 * Limit IPs that can access the Load Balancer
@@ -157,6 +162,17 @@ function createBackendSecurityPolicy(name: string, allowedSources: LoadBalancerA
 					}
 				});
 			}
+
+			rules.push({
+				priority: 2147483647,
+				action: 'deny(403)',
+				match: {
+					config: {
+						srcIpRanges: ['*']
+					},
+					versionedExpr: 'SRC_IPS_V1'
+				}
+			});
 
 			return(rules);
 		})(),
@@ -289,6 +305,10 @@ export class InternalLoadBalancer extends pulumi.ComponentResource {
 			certificateID = cert.id;
 		} else {
 			throw(new Error('Internal Load Balancer requires either a domain name or an SSL certificate name (or both)'));
+		}
+
+		if (args.target.type === 'NEG') {
+			throw(new Error('Internal Load Balancer does not support Network Endpoint Groups (currently)'));
 		}
 
 		const backendSecurityPolicy = createBackendSecurityPolicy(`${name}-ext-be-sp`, args.allowedSources, undefined, {
@@ -454,6 +474,56 @@ export class ExternalLoadBalancer extends pulumi.ComponentResource {
 			throw(new Error('External Load Balancer requires either a domain name or an SSL certificate name (or both)'));
 		}
 
+		let targetBackendGroup;
+		let targetBackendHealthCheck;
+		let targetBackendProtocol;
+		const targetBackendCustomHeaders: pulumi.Input<string>[] = [];
+		if (args.target.type === 'NEG') {
+			const targetInfo = {
+				port: args.target.port ?? 443,
+				fqdn: args.target.host
+			};
+			const targetHash = pulumi.output(targetInfo).apply(function(info) {
+				return(utils.hash(JSON.stringify(info)));
+			});
+
+			/*
+			 * Because the endpoint group cannot have more than one
+			 * endpoint, we create one for each target -- this will
+			 * ensure that the endpoint group is constructed when
+			 * the endpoint group changes (e.g. if the target changes)
+			 *
+			 * The alternative is to have the endpoint be deleted
+			 * before being replaced, which would cause a small
+			 * amount of downtime
+			 */
+			const endpointGroup = new gcp.compute.GlobalNetworkEndpointGroup(`${name}-ext-be-neg`, {
+				description: pulumi.interpolate`Network Endpoint Group for the ${args.baseDescription} (target ${targetHash})`,
+				networkEndpointType: 'INTERNET_FQDN_PORT'
+			}, {
+				parent: this,
+				replaceOnChanges: ['description']
+			});
+
+			const endpoint = new gcp.compute.GlobalNetworkEndpoint(`${name}-ext-be-ne`, {
+				globalNetworkEndpointGroup: endpointGroup.id,
+				...targetInfo
+			}, {
+				parent: this
+			});
+
+			targetBackendGroup = endpointGroup.id;
+			targetBackendHealthCheck = undefined;
+			targetBackendProtocol = 'HTTPS';
+			targetBackendCustomHeaders.push(pulumi.interpolate`host:${args.target.host}`);
+
+			toDependOn.push(endpoint);
+		} else {
+			targetBackendGroup = args.target.instanceGroupManager.instanceGroup;
+			targetBackendHealthCheck = args.healthCheck.selfLink;
+			targetBackendProtocol = 'HTTP';
+		}
+
 		const backendSecurityPolicy = createBackendSecurityPolicy(`${name}-ext-be-sp`, args.allowedSources, undefined, {
 			parent: this
 		});
@@ -461,17 +531,20 @@ export class ExternalLoadBalancer extends pulumi.ComponentResource {
 		const backend = new gcp.compute.BackendService(`${name}-ext-be`, {
 			backends: [{
 				description: `Backend for the ${args.baseDescription}`,
-				group: args.target.instanceGroupManager.instanceGroup
+				group: targetBackendGroup
 			}],
-			healthChecks: args.healthCheck.selfLink,
+			protocol: targetBackendProtocol,
+			healthChecks: targetBackendHealthCheck,
 			loadBalancingScheme: 'EXTERNAL_MANAGED',
+			customRequestHeaders: targetBackendCustomHeaders,
 			logConfig: {
 				enable: loggingEnabled
 			},
 			securityPolicy: backendSecurityPolicy?.id,
 			...args.backendConfig
 		}, {
-			parent: this
+			parent: this,
+			dependsOn: toDependOn.splice(0)
 		});
 
 		const urlMap = new gcp.compute.URLMap(`${name}-ext-map`, {
@@ -500,31 +573,33 @@ export class ExternalLoadBalancer extends pulumi.ComponentResource {
 			dependsOn: toDependOn.splice(0)
 		});
 
-		/*
-		 * Firewall to allow traffic from the LB inbound
-		 * https://cloud.google.com/load-balancing/docs/firewall-rules
-		 */
-		new gcp.compute.Firewall(`${name}-lb-in`, {
-			description: `Inbound firewall rule for the ${args.baseDescription} from LB`,
-			direction: 'INGRESS',
-			network: pulumi.output(args.target.subnetwork).network,
-			allows: [{
-				protocol: 'tcp',
-				ports: ['8080']
-			}],
-			targetServiceAccounts: pulumi.output(args.target.serviceAccount).apply(function(serviceAccount) {
-				if (gcp.serviceaccount.Account.isInstance(serviceAccount)) {
-					return([serviceAccount.email]);
-				} else {
-					return([serviceAccount]);
-				}
-			}),
-			sourceRanges: ['35.191.0.0/16', '130.211.0.0/22'],
-			priority: 900,
-			...args.common.gcp.firewallConfig
-		}, {
-			parent: lb
-		});
+		if (args.target.type === 'MIG') {
+			/*
+			 * Firewall to allow traffic from the LB inbound
+			 * https://cloud.google.com/load-balancing/docs/firewall-rules
+			 */
+			new gcp.compute.Firewall(`${name}-lb-in`, {
+				description: `Inbound firewall rule for the ${args.baseDescription} from LB`,
+				direction: 'INGRESS',
+				network: pulumi.output(args.target.subnetwork).network,
+				allows: [{
+					protocol: 'tcp',
+					ports: ['8080']
+				}],
+				targetServiceAccounts: pulumi.output(args.target.serviceAccount).apply(function(serviceAccount) {
+					if (gcp.serviceaccount.Account.isInstance(serviceAccount)) {
+						return([serviceAccount.email]);
+					} else {
+						return([serviceAccount]);
+					}
+				}),
+				sourceRanges: ['35.191.0.0/16', '130.211.0.0/22'],
+				priority: 900,
+				...args.common.gcp.firewallConfig
+			}, {
+				parent: lb
+			});
+		}
 
 		this.lb = lb;
 		this.backend = backend;
