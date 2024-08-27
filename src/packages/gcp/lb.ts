@@ -438,7 +438,7 @@ export class ExternalLoadBalancer extends pulumi.ComponentResource {
 			 */
 			const endpointGroup = new gcp.compute.GlobalNetworkEndpointGroup(`${name}-ext-be-neg`, {
 				description: pulumi.interpolate`Network Endpoint Group for the ${args.baseDescription} (target ${targetHash})`,
-				networkEndpointType: 'INTERNET_FQDN_PORT',
+				networkEndpointType: 'INTERNET_FQDN_PORT'
 			}, {
 				parent: this,
 				replaceOnChanges: ['description']
