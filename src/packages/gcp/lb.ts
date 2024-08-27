@@ -45,86 +45,131 @@ type LoadBalancerArgs = {
 		host: pulumi.Input<string>;
 		port?: pulumi.Input<number>;
 	};
+
+	/**
+	 * Limit IPs that can access the Load Balancer
+	 *
+	 * (If not specified, the default is to allow all IPs)
+	 */
+	allowedSources?: pulumi.Input<string>[];
+
+	/**
+	 * Backend Service for the External Load Balancer
+	 * configuration options
+	 */
+	backendConfig?: Omit<NonNullable<ConstructorParameters<typeof gcp.compute.BackendService>[1]>, 'backends' | 'loadBalancingScheme'>;
 };
 
 type InternalLoadBalancerArgs = LoadBalancerArgs & {
-	config: {
-		/**
-		 * Subnetwork to use for the Internal Load Balancer
-		 */
-		subnetwork: gcp.compute.Subnetwork;
+	/**
+	 * Subnetwork to use for the Internal Load Balancer
+	 */
+	subnetwork: gcp.compute.Subnetwork;
 
-		/**
-		 * Proxy-only Subnetwork CIDR to use for the Internal
-		 * Load Balancer.  It must be supplied in order to create
-		 * the appropriate firewall rules.
-		 *
-		 * If "createProxySubnetwork" is specified as true then
-		 * this will be used to create the proxy-only subnetwork.
-		 *
-		 * Proxy-only subnetworks are used by GCP for internal cross-region
-		 * load balancing and are an artifact of this process -- only one
-		 * should be created per subnetwork.
-		 */
-		proxySubnetworkCIDR: pulumi.Input<string>;
+	/**
+	 * Proxy-only Subnetwork CIDR to use for the Internal
+	 * Load Balancer.  It must be supplied in order to create
+	 * the appropriate firewall rules.
+	 *
+	 * If "createProxySubnetwork" is specified as true then
+	 * this will be used to create the proxy-only subnetwork.
+	 *
+	 * Proxy-only subnetworks are used by GCP for internal cross-region
+	 * load balancing and are an artifact of this process -- only one
+	 * should be created per subnetwork.
+	 */
+	proxySubnetworkCIDR: pulumi.Input<string>;
 
-		/**
-		 * Specify whether or not to create the proxy-only
-		 * subnetwork
-		 *
-		 * Proxy-only subnetworks are used by GCP for internal cross-region
-		 * load balancing and are an artifact of this process -- only one
-		 * should be created per subnetwork.
-		 *
-		 * Default is false
-		 */
-		createProxySubnetwork?: boolean;
+	/**
+	 * Specify whether or not to create the proxy-only
+	 * subnetwork
+	 *
+	 * Proxy-only subnetworks are used by GCP for internal cross-region
+	 * load balancing and are an artifact of this process -- only one
+	 * should be created per subnetwork.
+	 *
+	 * Default is false
+	 */
+	createProxySubnetwork?: boolean;
 
-		/**
-		 * IP Address to use for the Internal Load Balancer,
-		 * if not supplied one will be created
-		 */
-		ip?: pulumi.Input<string> | gcp.compute.Address;
+	/**
+	 * IP Address to use for the Internal Load Balancer,
+	 * if not supplied one will be created
+	 */
+	ip?: pulumi.Input<string> | gcp.compute.Address;
 
-		/**
-		 * Domain name to use for the SSL certificates and DNS
-		 * entries (must be supplied if "sslCertificateName"
-		 * is not)
-		 */
-		domainName?: pulumi.Input<string>;
+	/**
+	 * Domain name to use for the SSL certificates and DNS
+	 * entries (must be supplied if "sslCertificateName"
+	 * is not)
+	 */
+	domainName?: pulumi.Input<string>;
 
-		/**
-		 * Name of the SSL certificate to use (if not
-		 * supplied, one will be created using DNS validation
-		 * of the domain name specified in "domainName")
-		 */
-		sslCertificateName?: pulumi.Input<string>;
-	};
+	/**
+	 * Name of the SSL certificate to use (if not
+	 * supplied, one will be created using DNS validation
+	 * of the domain name specified in "domainName")
+	 */
+	sslCertificateName?: pulumi.Input<string>;
 };
 
 type ExternalLoadBalancerArgs = LoadBalancerArgs & {
-	config: {
-		/**
-		 * IP Address to use for the Internal Load Balancer,
-		 * if not supplied one will be created
-		 */
-		ip?: pulumi.Input<string> | gcp.compute.GlobalAddress;
+	/**
+	 * IP Address to use for the Internal Load Balancer,
+	 * if not supplied one will be created
+	 */
+	ip?: pulumi.Input<string> | gcp.compute.GlobalAddress;
 
-		/**
-		 * Domain name to use for the SSL certificates and DNS
-		 * entries (must be supplied if "sslCertificateName"
-		 * is not)
-		 */
-		domainName?: pulumi.Input<string>;
+	/**
+	 * Domain name to use for the SSL certificates and DNS
+	 * entries (must be supplied if "sslCertificateName"
+	 * is not)
+	 */
+	domainName?: pulumi.Input<string>;
 
-		/**
-		 * Name of the SSL certificate to use (if not
-		 * supplied, one will be created using DNS validation
-		 * of the domain name specified in "domainName")
-		 */
-		sslCertificateName?: pulumi.Input<string>;
-	};
+	/**
+	 * Name of the SSL certificate to use (if not
+	 * supplied, one will be created using DNS validation
+	 * of the domain name specified in "domainName")
+	 */
+	sslCertificateName?: pulumi.Input<string>;
 };
+
+/**
+ * Construct a Security Policy for the Backend Service based on the allowed sources
+ */
+function createBackendSecurityPolicy(name: string, allowedSources: LoadBalancerArgs['allowedSources'], args?: Omit<NonNullable<ConstructorParameters<typeof gcp.compute.SecurityPolicy>[1]>, 'rules'>, opts?: ConstructorParameters<typeof gcp.compute.SecurityPolicy>[2]) {
+	if (allowedSources === undefined) {
+		return(undefined);
+	}
+
+	const backendSecurityPolicy = new gcp.compute.SecurityPolicy(name, {
+		rules: (function() {
+			const rules: NonNullable<NonNullable<ConstructorParameters<typeof gcp.compute.SecurityPolicy>[1]>['rules']> = [];
+
+			const sources = [...allowedSources];
+			let offset = -1;
+			while (sources.length > 0) {
+				offset++;
+				rules.push({
+					priority: 1000 + offset,
+					action: 'allow',
+					match: {
+						config: {
+							srcIpRanges: sources.splice(0, 10)
+						},
+						versionedExpr: 'SRC_IPS_V1'
+					}
+				});
+			}
+
+			return(rules);
+		})(),
+		...args
+	}, opts);
+
+	return(backendSecurityPolicy);
+}
 
 
 /**
@@ -136,7 +181,7 @@ export class InternalLoadBalancer extends pulumi.ComponentResource {
 
 	constructor(name: string, args: InternalLoadBalancerArgs, opts?: pulumi.ComponentResourceOptions) {
 		super('keeta:lb:InternalLoadBalancer', name, args, opts);
-		const config = args.config;
+		const config = args;
 
 		/**
 		 * Load Balancer logging
@@ -147,7 +192,7 @@ export class InternalLoadBalancer extends pulumi.ComponentResource {
 		 * Region (must be the same for the Managed Instance Group,
 		 * the Load Balancer, and the Subnet)
 		 */
-		const region = args.config.subnetwork.region;
+		const region = config.subnetwork.region;
 
 		/**
 		 * Subnetwork the Load Balancer will be deployed into
@@ -251,24 +296,29 @@ export class InternalLoadBalancer extends pulumi.ComponentResource {
 			throw(new Error('Internal Load Balancer requires either a domain name or an SSL certificate name (or both)'));
 		}
 
-		let backend;
 		if (args.target.type === 'NEG') {
 			throw(new Error('Internal Load Balancer does not support Network Endpoint Groups (currently)'));
-		} else {
-			backend = new gcp.compute.BackendService(`${name}-be`, {
-				backends: [{
-					description: `Backend for the ${args.baseDescription}`,
-					group: args.target.instanceGroupManager.instanceGroup
-				}],
-				healthChecks: args.healthCheck.selfLink,
-				loadBalancingScheme: 'INTERNAL_MANAGED',
-				logConfig: {
-					enable: loggingEnabled
-				}
-			}, {
-				parent: this
-			});
 		}
+
+		const backendSecurityPolicy = createBackendSecurityPolicy(`${name}-ext-be-sp`, args.allowedSources, undefined, {
+			parent: this
+		});
+
+		const backend = new gcp.compute.BackendService(`${name}-be`, {
+			backends: [{
+				description: `Backend for the ${args.baseDescription}`,
+				group: args.target.instanceGroupManager.instanceGroup
+			}],
+			healthChecks: args.healthCheck.selfLink,
+			loadBalancingScheme: 'INTERNAL_MANAGED',
+			logConfig: {
+				enable: loggingEnabled
+			},
+			securityPolicy: backendSecurityPolicy?.id,
+			...args.backendConfig
+		}, {
+			parent: this
+		});
 
 		const urlMap = new gcp.compute.URLMap(`${name}-map`, {
 			description: `URL Map for the ${args.baseDescription}`,
@@ -352,7 +402,7 @@ export class ExternalLoadBalancer extends pulumi.ComponentResource {
 	constructor(name: string, args: ExternalLoadBalancerArgs, opts?: pulumi.ComponentResourceOptions) {
 		super('keeta:lb:ExternalLoadBalancer', name, args, opts);
 
-		const config = args.config;
+		const config = args;
 
 		/**
 		 * Load Balancer logging
@@ -463,6 +513,10 @@ export class ExternalLoadBalancer extends pulumi.ComponentResource {
 			targetBackendProtocol = 'HTTP';
 		}
 
+		const backendSecurityPolicy = createBackendSecurityPolicy(`${name}-ext-be-sp`, args.allowedSources, undefined, {
+			parent: this
+		});
+
 		const backend = new gcp.compute.BackendService(`${name}-ext-be`, {
 			backends: [{
 				description: `Backend for the ${args.baseDescription}`,
@@ -474,7 +528,9 @@ export class ExternalLoadBalancer extends pulumi.ComponentResource {
 			customRequestHeaders: targetBackendCustomHeaders,
 			logConfig: {
 				enable: loggingEnabled
-			}
+			},
+			securityPolicy: backendSecurityPolicy?.id,
+			...args.backendConfig
 		}, {
 			parent: this,
 			dependsOn: toDependOn.splice(0)
