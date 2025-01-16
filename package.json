@@ -1,8 +1,8 @@
 {
-	"name": "@keetapay/pulumi-components",
+	"name": "@keetanetwork/pulumi-components",
 	"version": "1.0.76",
-	"description": "KeetaPay Pulumi Components",
-	"repository": "https://github.com/keetapay/pulumi-components.git",
+	"description": "KeetaNetwork Pulumi Components",
+	"repository": "https://github.com/keetanetwork/pulumi-components.git",
 	"main": "dist/index.js",
 	"author": "@ezraripps",
 	"license": "ISC",
@@ -12,7 +12,7 @@
 		"eslint": "eslint"
 	},
 	"devDependencies": {
-		"@keetapay/eslint-config-typescript": "1.0.2",
+		"@keetanetwork/eslint-config-typescript": "npm:@keetapay/eslint-config-typescript@1.0.2",
 		"eslint": "8.33.0",
 		"typescript": "4.9.5"
 	},
