@@ -54,7 +54,7 @@ function getAndAddDomainFromHostTLS(url: string) {
 
 	const foundDomain = getHostSAN(parsed);
 
-	execSync(`echo '${parsed.hostname} ${foundDomain} # Added Automatically by @keetapay/pulumi-components' | tee -a /etc/hosts`);
+	execSync(`echo '${parsed.hostname} ${foundDomain} # Added Automatically by @keetanetwork/pulumi-components' | tee -a /etc/hosts`);
 
 	return(foundDomain);
 }
