@@ -77,7 +77,7 @@ function createTarballFromDir(directory: string, cacheID?: string, excludePatter
 	/**
 	 * Verify that the created tarball is valid
 	 */
-	const checkResults = child_process.spawnSync('/bin/bash', ['-c', `tar -ztf ${tarballTmpPath} > /dev/null`]);
+	const checkResults = child_process.spawnSync('bash', ['-c', `tar -ztf ${tarballTmpPath} > /dev/null`]);
 	if (checkResults.status !== 0) {
 		throw new Error(`tar failed: ${checkResults.stderr.toString()}`);
 	}
