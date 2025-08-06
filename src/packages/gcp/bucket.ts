@@ -79,36 +79,36 @@ export class GoogleCloudFolderWithArgs extends pulumi.ComponentResource {
 		const ext = path.extname(fileName).toLowerCase();
 		switch (ext) {
 			case '.html':
-				return'text/html';
+				return('text/html');
 			case '.css':
-				return'text/css';
+				return('text/css');
 			case '.js':
-				return'application/javascript';
+				return('application/javascript');
 			case '.json':
-				return'application/json';
+				return('application/json');
 			case '.png':
-				return'image/png';
+				return('image/png');
 			case '.jpg':
 			case '.jpeg':
-				return'image/jpeg';
+				return('image/jpeg');
 			case '.gif':
-				return'image/gif';
+				return('image/gif');
 			case '.svg':
-				return'image/svg+xml';
+				return('image/svg+xml');
 			case '.woff2':
-				return'font/woff2';
+				return('font/woff2');
 			case '.woff':
-				return'font/woff';
+				return('font/woff');
 			case '.md':
-				return'text/markdown';
+				return('text/markdown');
 			case '.ts':
-				return'application/typescript';
+				return('application/typescript');
 			case '.txt':
-				return'text/plain';
+				return('text/plain');
 			case '.xml':
-				return'application/xml';
+				return('application/xml');
 			default:
-				return'application/octet-stream';
+				return('application/octet-stream');
 		}
 	}
 
