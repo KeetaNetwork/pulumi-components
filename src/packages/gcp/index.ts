@@ -8,3 +8,4 @@ export * as sql from './sql';
 export * as vpc from './vpc';
 export * as lb from './lb';
 export * as common from './common';
+export * as bucket from './bucket';
