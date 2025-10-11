@@ -35,9 +35,9 @@ type BuildOutput = Awaited<ReturnType<typeof createBuild>>;
 type PulumiBuildOutput = DeepOutput<BuildOutput>;
 
 async function createBuild(inputs: CloudBuildInputs) {
-	// eslint-disable-next-line @typescript-eslint/no-var-requires, no-type-assertion/no-type-assertion
+	// eslint-disable-next-line @typescript-eslint/consistent-type-assertions
 	const cloudbuild = require('@google-cloud/cloudbuild').default as typeof cloudbuildTypeImport;
-	// eslint-disable-next-line @typescript-eslint/no-var-requires, no-type-assertion/no-type-assertion
+	// eslint-disable-next-line @typescript-eslint/consistent-type-assertions
 	const secretManager = require('@google-cloud/secret-manager').default as typeof secretManagerTypeImport;
 
 	const projectId = inputs.projectId;
@@ -115,7 +115,7 @@ async function createBuild(inputs: CloudBuildInputs) {
 			if (inputs.build.serviceAccount) {
 				const serviceAccountEmail = inputs.build.serviceAccount.split('/serviceAccounts/')[1];
 				if (!serviceAccountEmail) {
-					throw new Error(`Invalid service account: ${inputs.build.serviceAccount}, should match /projects/**/serviceAccounts/email@...`);
+					throw(new Error(`Invalid service account: ${inputs.build.serviceAccount}, should match /projects/**/serviceAccounts/email@...`));
 				}
 
 				await secretClient.setIamPolicy({
@@ -181,14 +181,14 @@ async function createBuild(inputs: CloudBuildInputs) {
 	}
 
 	if (error) {
-		throw error;
+		throw(error);
 	}
 
 	if (!retval) {
-		throw new Error('retval is undefined, could not make build');
+		throw(new Error('retval is undefined, could not make build'));
 	}
 
-	return retval;
+	return(retval);
 }
 
 const cloudbuildProvider: pulumi.dynamic.ResourceProvider = {

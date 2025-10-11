@@ -259,7 +259,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 		 * Ensure that the replica regions is sane
 		 */
 		if (replicaRegions.includes(this.primaryRegion)) {
-			throw new Error('Primary region cannot be included in the list of regions (Postgres)');
+			throw(new Error('Primary region cannot be included in the list of regions (Postgres)'));
 		}
 
 		/**
@@ -358,11 +358,11 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 	 * Create a random string to be used as the postgres password
 	 */
 	#makePostgresPassword() {
-		return new random.RandomString(`${this.#prefix}-postgres-password`, {
+		return(new random.RandomString(`${this.#prefix}-postgres-password`, {
 			length: 24,
 			special: false,
 			number: true
-		}, { parent: this }).result;
+		}, { parent: this }).result);
 	}
 
 	private getBackupConfiguration(region: GCPRegion) {
@@ -388,7 +388,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 			}
 
 			if (this.#usingReplicas && !backupConfiguration?.pointInTimeRecoveryEnabled) {
-				throw new Error('Point-in-time recovery must be enabled for backups when using replicas');
+				throw(new Error('Point-in-time recovery must be enabled for backups when using replicas'));
 			}
 		}
 
@@ -397,7 +397,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 
 	createPostgres(name: string, region: GCPRegion, masterInstance?: gcp.sql.DatabaseInstance, options?: pulumi.ComponentResourceOptions) {
 		if (this.hosts[region]) {
-			throw new Error(`Region ${region} already exists in the list of hosts`);
+			throw(new Error(`Region ${region} already exists in the list of hosts`));
 		}
 
 		const backupConfiguration = this.getBackupConfiguration(region);
@@ -406,7 +406,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 		if (this.#options.replication?.multiZone) {
 			availabilityType = 'REGIONAL';
 		} else if (this.#usingReplicas) {
-			throw new Error('Multi-zone (per region) must be enabled when using replicas');
+			throw(new Error('Multi-zone (per region) must be enabled when using replicas'));
 		}
 
 		const databaseFlags = [];
@@ -458,17 +458,17 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 			connectionName: instance.connectionName
 		};
 
-		return instance;
+		return(instance);
 	}
 
 	getHost(region: GCPRegion) {
 		const host = this.hosts[this.primaryRegion];
 
 		if (!host) {
-			throw new Error(`Host does not exist: ${region}`);
+			throw(new Error(`Host does not exist: ${region}`));
 		}
 
-		return host;
+		return(host);
 	}
 
 	getHostIP(region: GCPRegion) {
@@ -523,9 +523,9 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 				url.searchParams.set(key, String(value));
 			}
 
-			return url.toString();
+			return(url.toString());
 		});
 
-		return combined;
+		return(combined);
 	}
 }

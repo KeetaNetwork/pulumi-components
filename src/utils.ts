@@ -6,7 +6,7 @@ export type PublicInterface<T> = Pick<T, keyof T>;
 
 export function normalizeName(...args: string[]) {
 	const joined = args.join('-').toLowerCase();
-	return joined.replace(/\.|_/g, '-');
+	return(joined.replace(/\.|_/g, '-'));
 }
 
 interface ExecResponse {
@@ -16,7 +16,7 @@ interface ExecResponse {
 }
 
 export function promisifyExec(script: string, args: string[] = [], env?: NodeJS.ProcessEnv): Promise<ExecResponse> {
-	return new Promise(function(resolve, reject) {
+	return(new Promise(function(resolve, reject) {
 		const child = spawn(script, args, {
 			env: env
 		});
@@ -39,7 +39,7 @@ export function promisifyExec(script: string, args: string[] = [], env?: NodeJS.
 
 			resolve(resp);
 		});
-	});
+	}));
 }
 
 export function nonNullable<T>(input: T | undefined | null): T {

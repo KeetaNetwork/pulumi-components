@@ -92,7 +92,7 @@ async function createBuild(inputs: LocalBuildInputs) {
 		const imageDigest = imageInfo[0].RepoDigests[0];
 
 		if (typeof imageDigest !== 'string') {
-			throw new Error('Failed to get image digest, it is not a string');
+			throw(new Error('Failed to get image digest, it is not a string'));
 		}
 
 		return({ digest: imageDigest });

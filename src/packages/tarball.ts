@@ -71,7 +71,7 @@ function createTarballFromDir(directory: string, cacheID?: string, excludePatter
 		}
 	});
 	if (createResults.status !== 0) {
-		throw new Error(`tar failed: ${createResults.stderr.toString()}`);
+		throw(new Error(`tar failed: ${createResults.stderr.toString()}`));
 	}
 
 	/**
@@ -79,7 +79,7 @@ function createTarballFromDir(directory: string, cacheID?: string, excludePatter
 	 */
 	const checkResults = child_process.spawnSync('bash', ['-c', `tar -ztf ${tarballTmpPath} > /dev/null`]);
 	if (checkResults.status !== 0) {
-		throw new Error(`tar failed: ${checkResults.stderr.toString()}`);
+		throw(new Error(`tar failed: ${checkResults.stderr.toString()}`));
 	}
 
 	fs.renameSync(tarballTmpPath, tarballPath);
@@ -109,7 +109,7 @@ function createTarballFromGit(directory: string, commitID: string = 'HEAD'): { c
 	}
 
 	if (!commit) {
-		throw new Error(`Could not find commit ${commitID}`);
+		throw(new Error(`Could not find commit ${commitID}`));
 	}
 
 	/**
@@ -164,7 +164,7 @@ function createTarballFromGit(directory: string, commitID: string = 'HEAD'): { c
 		}
 	});
 	if (createResults.status !== 0) {
-		throw new Error(`tar failed: ${createResults.stderr.toString()}`);
+		throw(new Error(`tar failed: ${createResults.stderr.toString()}`));
 	}
 
 	/**
@@ -172,7 +172,7 @@ function createTarballFromGit(directory: string, commitID: string = 'HEAD'): { c
 	 */
 	const checkResults = child_process.spawnSync('tar', ['-ztf', tarballTmpPath]);
 	if (checkResults.status !== 0) {
-		throw new Error(`tar failed: ${checkResults.stderr.toString()}`);
+		throw(new Error(`tar failed: ${checkResults.stderr.toString()}`));
 	}
 
 	fs.renameSync(tarballTmpPath, tarballPath);
