@@ -13,15 +13,18 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v1
+      - name: Read Node Version
+        run: echo "NODE_VERSION=$(jq -crM .engines.node < package.json)" >> $GITHUB_OUTPUT
+        shell: bash
+        id: node_version
+
+      - name: Use Node.js ${{ steps.node_version.outputs.NODE_VERSION }}
+        uses: actions/setup-node@v4
         with:
-          node-version: 18.18.2
-          registry-url: 'https://npm.pkg.github.com'
-
-      - name: Write private key to .npmrc file
-        run: echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
+          node-version: '${{ steps.node_version.outputs.NODE_VERSION }}'
+          cache: 'npm'
 
       - name: Install Packages
         run: npm install
@@ -33,7 +36,7 @@ jobs:
         run: npm run tsc
 
       - name: Check version changes
-        uses: EndBug/version-check@v1
+        uses: EndBug/version-check@v2
         id: check
         with:
           token: ${{ secrets.GITHUB_TOKEN }}

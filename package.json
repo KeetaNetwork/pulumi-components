@@ -27,5 +27,8 @@
 	},
 	"peerDependencies": {
 		"@pulumi/pulumi": "3.122.0"
+	},
+	"engines": {
+		"node": "20.18.0"
 	}
 }
