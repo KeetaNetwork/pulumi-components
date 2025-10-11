@@ -36,7 +36,7 @@ jobs:
         run: npm run tsc
 
       - name: Check version changes
-        uses: EndBug/version-check@v2
+        uses: EndBug/version-check@36ff30f37c7deabe56a30caa043d127be658c425
         id: check
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
