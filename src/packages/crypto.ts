@@ -21,12 +21,12 @@ export class ECDSAKeyPair extends pulumi.ComponentResource {
 
 		const privateDER = this.key.privateKeyPem.apply(function(privateKeyPem) {
 			const privateKey = crypto.createPrivateKey(privateKeyPem);
-			return privateKey.export({ format: 'der', type: 'sec1' }).toString('base64');
+			return(privateKey.export({ format: 'der', type: 'sec1' }).toString('base64'));
 		});
 
 		const publicDER = this.key.publicKeyPem.apply(function(publicKeyPem) {
 			const publicKey = crypto.createPublicKey(publicKeyPem);
-			return publicKey.export({ format: 'der', type: 'spki' }).toString('base64');
+			return(publicKey.export({ format: 'der', type: 'spki' }).toString('base64'));
 		});
 
 		this.privateKeyDER = pulumi.secret(privateDER);

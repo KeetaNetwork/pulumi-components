@@ -101,7 +101,7 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 	get cloudRunJobVariableOutput(): gcp.types.input.cloudrunv2.JobTemplateTemplateContainerEnv[] {
 		return(this.variableOutput.map(function(variable) {
 			if (!variable.name) {
-				throw new Error('Variable name is required for CloudRunv2 Jobs');
+				throw(new Error('Variable name is required for CloudRunv2 Jobs'));
 			}
 
 			let valueSource;
@@ -126,7 +126,7 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 		const bindingName = normalizeName(this.#prefix, 'non-managed', name, 'iam-binding');
 
 		if (!this.serviceAccount) {
-			throw new Error('Cannot create a secret binding without providing serviceAccounts and RegionName to EnvVariables()');
+			throw(new Error('Cannot create a secret binding without providing serviceAccounts and RegionName to EnvVariables()'));
 		}
 
 		const binding = new gcp.secretmanager.SecretIamMember(bindingName, {
@@ -152,7 +152,7 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 		const secretName = normalizeName(this.#prefix, name);
 
 		if (!this.serviceAccount) {
-			throw new Error('Cannot create secret without providing serviceAccount to EnvVariables()');
+			throw(new Error('Cannot create secret without providing serviceAccount to EnvVariables()'));
 		}
 
 		let replicationConfig: gcp.secretmanager.SecretArgs['replication'] = {
