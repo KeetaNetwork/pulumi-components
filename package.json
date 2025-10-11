@@ -9,7 +9,7 @@
 	"scripts": {
 		"tsc": "tsc",
 		"prepare": "tsc",
-		"eslint": "eslint --config .eslint.config.mjs src"
+		"eslint": "eslint --config .eslint.config.mjs"
 	},
 	"devDependencies": {
 		"@keetanetwork/eslint-config-typescript": "1.4.7",
