@@ -42,8 +42,8 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           diff-search: true
 
-      - name: Publish Package
+      - name: Publish Package to Github
         if: steps.check.outputs.changed == 'true'
-        run: npm publish
+        run: npm publish --registry=https://npm.pkg.github.com/
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
