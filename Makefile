@@ -55,7 +55,7 @@ test: node_modules
 
 # Run linting
 do-lint: node_modules
-	npm run eslint -- src
+	npm run eslint -- -c .eslint.config.mjs src
 
 # This is a synthetic target that creates a distributable
 # package for this project.

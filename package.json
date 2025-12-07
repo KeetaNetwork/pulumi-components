@@ -19,7 +19,7 @@
 		"make:do-npm-pack": "make do-npm-pack"
 	},
 	"engines": {
-		"node": ">=16.0.0"
+		"node": "~20.18.0"
 	},
 	"devDependencies": {
 		"@keetanetwork/eslint-config-typescript": "1.4.7",
