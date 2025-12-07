@@ -75,7 +75,7 @@ export class GoogleCloudFolderWithArgs extends pulumi.ComponentResource {
 		return(files);
 	}
 
-	private static getComputedContentTypeFromFilename(this: void, fileName: string): string {
+	private static getComputedContentTypeFromFilename(fileName: string): string {
 		const ext = path.extname(fileName).toLowerCase();
 		switch (ext) {
 			case '.html':
@@ -122,7 +122,7 @@ export class GoogleCloudFolderWithArgs extends pulumi.ComponentResource {
 
 		this.bucket = pulumi.output(args.bucketName);
 		this.path = pulumi.output(args.path);
-		this.computeContentType = args.computeContentType ?? GoogleCloudFolderWithArgs.getComputedContentTypeFromFilename;
+		this.computeContentType = args.computeContentType ?? ((fileName: string) => GoogleCloudFolderWithArgs.getComputedContentTypeFromFilename(fileName));
 
 		const objects: gcp.storage.BucketObject[] = [];
 		for (const file of files) {

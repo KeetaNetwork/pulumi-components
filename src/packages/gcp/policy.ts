@@ -117,7 +117,8 @@ export class ProjectPolicyBinding extends PolicyBindingBase implements PolicyDat
 				return(basePolicyDataString);
 			}
 
-			const basePolicyData = JSON.parse(basePolicyDataString);
+			// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+			const basePolicyData: { auditConfigs?: unknown } = JSON.parse(basePolicyDataString);
 
 			basePolicyData.auditConfigs = this.auditConfigs;
 

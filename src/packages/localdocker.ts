@@ -88,8 +88,9 @@ async function createBuild(inputs: LocalBuildInputs) {
 		}
 
 		const imageInfoJSON = await promisifyExec('docker', [ 'image', 'inspect', inputs.imageURI ]);
-		const imageInfo = JSON.parse(imageInfoJSON.stdout.join('\n'));
-		const imageDigest = imageInfo[0].RepoDigests[0];
+		// eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+		const imageInfo = JSON.parse(imageInfoJSON.stdout.join('\n')) as { RepoDigests: unknown[] }[];
+		const imageDigest = imageInfo[0]?.RepoDigests?.[0];
 
 		if (typeof imageDigest !== 'string') {
 			throw(new Error('Failed to get image digest, it is not a string'));

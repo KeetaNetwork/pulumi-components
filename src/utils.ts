@@ -24,7 +24,7 @@ export function promisifyExec(script: string, args: string[] = [], env?: NodeJS.
 		const resp: ExecResponse = { exitCode: null, stdout: [], stderr: [] };
 
 		for (const type of ['stderr', 'stdout'] as const) {
-			child[type].on('data', function(data) {
+			child[type].on('data', function(data: Buffer) {
 				resp[type].push(data.toString());
 			});
 		}
@@ -33,7 +33,7 @@ export function promisifyExec(script: string, args: string[] = [], env?: NodeJS.
 			resp.exitCode = exitCode;
 
 			if (exitCode !== 0) {
-				reject(resp);
+				reject(new Error(`Command failed with exit code ${exitCode}`));
 				return;
 			}
 

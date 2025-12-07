@@ -35,9 +35,9 @@ type BuildOutput = Awaited<ReturnType<typeof createBuild>>;
 type PulumiBuildOutput = DeepOutput<BuildOutput>;
 
 async function createBuild(inputs: CloudBuildInputs) {
-	// eslint-disable-next-line no-type-assertion/no-type-assertion
+	// eslint-disable-next-line @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-member-access
 	const cloudbuild = require('@google-cloud/cloudbuild').default as typeof cloudbuildTypeImport;
-	// eslint-disable-next-line no-type-assertion/no-type-assertion
+	// eslint-disable-next-line @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-member-access
 	const secretManager = require('@google-cloud/secret-manager').default as typeof secretManagerTypeImport;
 
 	const projectId = inputs.projectId;
@@ -65,7 +65,7 @@ async function createBuild(inputs: CloudBuildInputs) {
 	const cleanupFunctions = [];
 
 	let retval;
-	let error: any;
+	let error: unknown;
 
 	try {
 		if (inputs.temporarySecret !== undefined) {
@@ -181,7 +181,10 @@ async function createBuild(inputs: CloudBuildInputs) {
 	}
 
 	if (error) {
-		throw(error);
+		if (error instanceof Error) {
+			throw(error);
+		}
+		throw(new Error('Build failed with unknown error'));
 	}
 
 	if (!retval) {
