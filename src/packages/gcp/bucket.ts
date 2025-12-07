@@ -75,7 +75,8 @@ export class GoogleCloudFolderWithArgs extends pulumi.ComponentResource {
 		return(files);
 	}
 
-	private static getComputedContentTypeFromFilename(fileName: string): string {
+	// eslint-disable-next-line @typescript-eslint/no-invalid-void-type
+	private static getComputedContentTypeFromFilename(this: void, fileName: string): string {
 		const ext = path.extname(fileName).toLowerCase();
 		switch (ext) {
 			case '.html':

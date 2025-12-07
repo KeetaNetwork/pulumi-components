@@ -2,7 +2,10 @@ import { gcpRegions, gcpSpannerRegions, gcpZones, spannerMultiRegionConfiguratio
 import { hash } from '../../utils';
 import type * as types from './constants';
 
-export function assertGCPRegion(region: string): types.GCPRegion {
+export function assertGCPRegion(region: unknown): types.GCPRegion {
+	if (typeof region !== 'string') {
+		throw(new TypeError(`Region must be a string, got ${typeof region}`));
+	}
 	const validRegions: readonly string[] = gcpRegions;
 	if (!validRegions.includes(region)) {
 		throw(new Error(`Region ${region} is not a valid GCP region`));
@@ -12,9 +15,9 @@ export function assertGCPRegion(region: string): types.GCPRegion {
 	return(region as types.GCPRegion);
 }
 
-export function assertGCPZone(zone: string): types.GCPZone {
+export function assertGCPZone(zone: unknown): types.GCPZone {
 	if (typeof zone !== 'string') {
-		throw(new Error(`Zone ${zone} is not a string`));
+		throw(new TypeError(`Zone must be a string, got ${typeof zone}`));
 	}
 
 	const maybeRegion = zone.split('-').slice(0, 2).join('-');
@@ -81,7 +84,10 @@ export function isGCPSpannerRegionalLocationConfig(input: string): input is type
 	return(isGCPSpannerRegionName(input.replace('regional-', '')));
 }
 
-export function assertGCPSpannerRegionalLocationConfig(input: string): types.GCPSpannerRegionName {
+export function assertGCPSpannerRegionalLocationConfig(input: unknown): types.GCPSpannerRegionName {
+	if (typeof input !== 'string') {
+		throw(new TypeError(`Input must be a string, got ${typeof input}`));
+	}
 	if (!isGCPSpannerRegionName(input)) {
 		throw(new Error(`Invalid spanner regional config: ${input}`));
 	}
@@ -89,7 +95,10 @@ export function assertGCPSpannerRegionalLocationConfig(input: string): types.GCP
 	return(input);
 }
 
-export function assertGCPSpannerRegionName(region: string): types.GCPSpannerRegionName {
+export function assertGCPSpannerRegionName(region: unknown): types.GCPSpannerRegionName {
+	if (typeof region !== 'string') {
+		throw(new TypeError(`Region must be a string, got ${typeof region}`));
+	}
 	if (!isGCPSpannerRegionName(region)) {
 		throw(new Error(`Invalid spanner region: ${region}`));
 	}
@@ -101,7 +110,10 @@ export function isGCPSpannerMultiRegionLocationConfig(input: string): input is t
 	return(Object.keys(spannerMultiRegionConfiguration).includes(input));
 }
 
-export function assertGCPSpannerMultiRegionLocationConfig(input: string): types.GCPSpannerMultiRegionLocationConfig {
+export function assertGCPSpannerMultiRegionLocationConfig(input: unknown): types.GCPSpannerMultiRegionLocationConfig {
+	if (typeof input !== 'string') {
+		throw(new TypeError(`Input must be a string, got ${typeof input}`));
+	}
 	if (!isGCPSpannerMultiRegionLocationConfig(input)) {
 		throw(new Error(`Invalid Spanner multi-region configuration name: ${input}`));
 	}
@@ -109,7 +121,10 @@ export function assertGCPSpannerMultiRegionLocationConfig(input: string): types.
 	return(input);
 }
 
-export function assertGCPSpannerLocationConfig(input: string): types.GCPSpannerLocationConfig {
+export function assertGCPSpannerLocationConfig(input: unknown): types.GCPSpannerLocationConfig {
+	if (typeof input !== 'string') {
+		throw(new TypeError(`Input must be a string, got ${typeof input}`));
+	}
 	if (!isGCPSpannerMultiRegionLocationConfig(input) && !isGCPSpannerRegionalLocationConfig(input)) {
 		throw(new Error(`Invalid Spanner configuration input: ${input}`));
 	}
