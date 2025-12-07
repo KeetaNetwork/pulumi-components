@@ -241,7 +241,7 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 
 	protected getDockerBuildTags(input: GCPDockerImageInput) {
 		if (!input.tags || input.tags.length === 0) {
-			return([]);
+			return(pulumi.output([]));
 		}
 
 		return(this.imageBase.apply((imageBaseName) => {
