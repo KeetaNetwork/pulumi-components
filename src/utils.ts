@@ -117,3 +117,27 @@ export function generateName(prefix: string, suffix: string, maxLength: number) 
 
 	return(`${realPrefix}-${suffix}`);
 }
+
+/**
+ * Create a hash with an optional letter prefix
+ * @param data Data to hash
+ * @param length Length of the hash to return
+ * @param addPrefix Whether to add a letter prefix (true), a custom prefix (string), or no prefix (false)
+ * @returns Hash string (lowercase)
+ */
+export function hashWithPrefix(data: string, length = 20, addPrefix: boolean | string = true): string {
+	const hashValue = hash(data, length);
+
+	let hashPrefix = '';
+	if (addPrefix === true) {
+		// Find the first letter in the hash to use as prefix
+		const letterMatches = hashValue.match(/[A-Za-z]/g);
+		const firstChar = (letterMatches ?? ['a'])[0];
+		hashPrefix = firstChar;
+	} else if (typeof addPrefix === 'string') {
+		hashPrefix = addPrefix;
+	}
+
+	const combined = `${hashPrefix}${hashValue}`;
+	return combined.substring(0, length).toLowerCase();
+}

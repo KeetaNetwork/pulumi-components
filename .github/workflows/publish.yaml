@@ -20,17 +20,16 @@ jobs:
           node-version: 18.18.2
           registry-url: 'https://npm.pkg.github.com'
 
-      - name: Write private key to .npmrc file
-        run: echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
-
       - name: Install Packages
-        run: npm install
+        run: make node_modules
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Lint
-        run: npm run eslint src
+        run: make do-lint
 
       - name: Build
-        run: npm run tsc
+        run: make dist
 
       - name: Check version changes
         uses: EndBug/version-check@v1
@@ -41,6 +40,6 @@ jobs:
 
       - name: Publish Package
         if: steps.check.outputs.changed == 'true'
-        run: npm publish
+        run: cd dist && npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -435,9 +435,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 				ipConfiguration: {
 					ipv4Enabled: false,
 					privateNetwork: this.#vpcNetwork.id,
-					// This is named badly on pulumi's side
-					requireSsl: this.#options.tls?.requireClientCertificate,
-					sslMode: 'ENCRYPTED_ONLY'
+					sslMode: this.#options.tls?.requireClientCertificate ? 'TRUSTED_CLIENT_CERTIFICATE_REQUIRED' : 'ENCRYPTED_ONLY'
 				},
 				databaseFlags: databaseFlags,
 				backupConfiguration: backupConfiguration,
