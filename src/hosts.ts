@@ -33,16 +33,16 @@ function getHostSAN(url: URL) {
 			const foundDomain = cert.subjectAltName?.replace(/, .*$/, '').replace(/^DNS:/, '');
 
 			if (!foundDomain || foundDomain === '') {
-				throw new Error('Could not find domain from TLS certificate');
+				throw(new Error('Could not find domain from TLS certificate'));
 			}
 
-			return foundDomain;
+			return(foundDomain);
 		} catch (e) {
 			error = e;
 		}
 	}
 
-	throw error;
+	throw(error);
 }
 
 /**
@@ -71,5 +71,5 @@ export function addSubjectAlternativeToHosts(url: string) {
 
 	parsed.host = foundHostCache[updateKey];
 
-	return parsed.toString();
+	return(parsed.toString());
 }

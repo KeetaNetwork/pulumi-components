@@ -72,7 +72,7 @@ export class GoogleCloudFolderWithArgs extends pulumi.ComponentResource {
 				files.push(file);
 			}
 		}
-		return files;
+		return(files);
 	}
 
 	private static getComputedContentTypeFromFilename(this: void, fileName: string): string {
@@ -155,7 +155,7 @@ export class GoogleCloudFolderWithArgs extends pulumi.ComponentResource {
 
 		if (args.deleteAfterUpload) {
 			pulumi.all(objects.map(function(object) {
-				return object.urn;
+				return(object.urn);
 			})).apply(function() {
 				fs.rmSync(args.path, {
 					recursive: true
