@@ -72,9 +72,10 @@ export class GoogleCloudFolderWithArgs extends pulumi.ComponentResource {
 				files.push(file);
 			}
 		}
-		return files;
+		return(files);
 	}
 
+	// eslint-disable-next-line @typescript-eslint/no-invalid-void-type
 	private static getComputedContentTypeFromFilename(this: void, fileName: string): string {
 		const ext = path.extname(fileName).toLowerCase();
 		switch (ext) {
@@ -122,7 +123,7 @@ export class GoogleCloudFolderWithArgs extends pulumi.ComponentResource {
 
 		this.bucket = pulumi.output(args.bucketName);
 		this.path = pulumi.output(args.path);
-		this.computeContentType = args.computeContentType ?? GoogleCloudFolderWithArgs.getComputedContentTypeFromFilename;
+		this.computeContentType = args.computeContentType ?? ((fileName: string) => GoogleCloudFolderWithArgs.getComputedContentTypeFromFilename(fileName));
 
 		const objects: gcp.storage.BucketObject[] = [];
 		for (const file of files) {
@@ -155,7 +156,7 @@ export class GoogleCloudFolderWithArgs extends pulumi.ComponentResource {
 
 		if (args.deleteAfterUpload) {
 			pulumi.all(objects.map(function(object) {
-				return object.urn;
+				return(object.urn);
 			})).apply(function() {
 				fs.rmSync(args.path, {
 					recursive: true

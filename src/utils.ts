@@ -6,7 +6,7 @@ export type PublicInterface<T> = Pick<T, keyof T>;
 
 export function normalizeName(...args: string[]) {
 	const joined = args.join('-').toLowerCase();
-	return joined.replace(/\.|_/g, '-');
+	return(joined.replace(/\.|_/g, '-'));
 }
 
 interface ExecResponse {
@@ -16,7 +16,7 @@ interface ExecResponse {
 }
 
 export function promisifyExec(script: string, args: string[] = [], env?: NodeJS.ProcessEnv): Promise<ExecResponse> {
-	return new Promise(function(resolve, reject) {
+	return(new Promise(function(resolve, reject) {
 		const child = spawn(script, args, {
 			env: env
 		});
@@ -24,7 +24,7 @@ export function promisifyExec(script: string, args: string[] = [], env?: NodeJS.
 		const resp: ExecResponse = { exitCode: null, stdout: [], stderr: [] };
 
 		for (const type of ['stderr', 'stdout'] as const) {
-			child[type].on('data', function(data) {
+			child[type].on('data', function(data: Buffer) {
 				resp[type].push(data.toString());
 			});
 		}
@@ -33,13 +33,13 @@ export function promisifyExec(script: string, args: string[] = [], env?: NodeJS.
 			resp.exitCode = exitCode;
 
 			if (exitCode !== 0) {
-				reject(resp);
+				reject(new Error(`Command failed with exit code ${exitCode}`));
 				return;
 			}
 
 			resolve(resp);
 		});
-	});
+	}));
 }
 
 export function nonNullable<T>(input: T | undefined | null): T {
@@ -139,5 +139,5 @@ export function hashWithPrefix(data: string, length = 20, addPrefix: boolean | s
 	}
 
 	const combined = `${hashPrefix}${hashValue}`;
-	return combined.substring(0, length).toLowerCase();
+	return(combined.substring(0, length).toLowerCase());
 }

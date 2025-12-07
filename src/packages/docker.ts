@@ -47,7 +47,7 @@ export function getFileResourceIdentifier(computeFrom: string): string {
 
 	updateHashWithMultipleFiles(computeFrom, hashState);
 
-	return hashState.digest('hex');
+	return(hashState.digest('hex'));
 }
 
 interface SecretsInput {
@@ -253,11 +253,11 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 	}
 
 	protected resolveSecretsObject(secrets: SecretsInput) {
-		return pulumi.secret(secrets).apply(function(unwrapped) {
-			return Object.entries(unwrapped).map(function([key, value]) {
+		return(pulumi.secret(secrets).apply(function(unwrapped) {
+			return(Object.entries(unwrapped).map(function([key, value]) {
 				return(`${key}=${value}`);
-			}).join('\n');
-		});
+			}).join('\n'));
+		}));
 	}
 
 	constructor(prefix: string, input: GCPDockerImageInput, opts?: pulumi.CustomResourceOptions) {
@@ -280,7 +280,7 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 				}
 				break;
 			default:
-				throw new Error(`Invalid docker versioning input ${JSON.stringify(input.versioning)}`);
+				throw(new Error(`Invalid docker versioning input ${JSON.stringify(input.versioning)}`));
 		}
 
 		this.imageBase = registryUrlOutput.apply((registryUrl) => {
@@ -288,7 +288,7 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 			if (!registryUrl.endsWith('/')) {
 				forwardSlash = '/';
 			}
-			return`${registryUrl}${forwardSlash}${input.imageName}`;
+			return(`${registryUrl}${forwardSlash}${input.imageName}`);
 		});
 
 		this.image = this.imageBase.apply(imageBaseName => `${imageBaseName}:${versionIdentifier}`);
@@ -309,7 +309,7 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 				});
 			}
 
-			return BaseDockerImage.AwaitingOutput[imageURI];
+			return(BaseDockerImage.AwaitingOutput[imageURI]);
 		}).apply(u => u);
 
 		this.registerOutputs({ uri: this.uri });
@@ -334,7 +334,7 @@ export class LocalDockerImage extends BaseDockerImage {
 
 	private async getBuildDirectory(input: GCPDockerImageInput['buildDirectory'], cacheID: string) {
 		if (typeof input === 'string') {
-			return input;
+			return(input);
 		}
 
 		if (this.buildDirectory !== undefined) {
@@ -347,7 +347,7 @@ export class LocalDockerImage extends BaseDockerImage {
 		} else if (input.type === 'DIRECTORY') {
 			tarball = new Tarball.DirTarballArchive(input.directory, cacheID, input.excludePatterns);
 		} else {
-			throw new Error(`Invalid docker buildDirectory input ${JSON.stringify(input)}`);
+			throw(new Error(`Invalid docker buildDirectory input ${JSON.stringify(input)}`));
 		}
 
 		const tarballPath = await tarball.path;
@@ -358,7 +358,7 @@ export class LocalDockerImage extends BaseDockerImage {
 		try {
 			await promisifyExec('tar', [ '-zxf', tarballPath, '-C', tmpDir ]);
 		} catch {
-			throw new Error(`Failed to extract tarball ${tarballPath} to ${tmpDir}`);
+			throw(new Error(`Failed to extract tarball ${tarballPath} to ${tmpDir}`));
 		}
 
 		this.buildDirectory = tmpDir;
@@ -381,7 +381,7 @@ export class LocalDockerImage extends BaseDockerImage {
 		const buildDirectory = pulumi.output(this.getBuildDirectory(input.buildDirectory, cacheID));
 
 		const buildArgs = buildDirectory.apply((directory) => {
-			return this.getDockerBuildArgs(input, directory);
+			return(this.getDockerBuildArgs(input, directory));
 		});
 
 		const image = new LocalDockerImageBuilder(`${prefix}-docker-builder`, {
@@ -396,7 +396,7 @@ export class LocalDockerImage extends BaseDockerImage {
 			parent: this
 		});
 
-		return image.digest;
+		return(image.digest);
 	}
 }
 
@@ -423,7 +423,7 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 		} else if (input.type === 'GIT') {
 			tarball = new Tarball.GitTarballArchive(input.directory, input.commitID);
 		} else {
-			throw new Error(`Unknown buildDirectory input: ${JSON.stringify(input)}`);
+			throw(new Error(`Unknown buildDirectory input: ${JSON.stringify(input)}`));
 		}
 
 		this.localAsset = tarball;
@@ -599,7 +599,7 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 				});
 			}
 
-			return finalSteps;
+			return(finalSteps);
 		});
 
 		const allImages = pulumi.all([this.image, taggedImagesOutput]).apply(([imageStr, tags]) => [
@@ -710,7 +710,7 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 			}
 		}
 
-		return createdBindings;
+		return(createdBindings);
 	}
 }
 

@@ -22,7 +22,7 @@ type LoadBalancerArgs = {
 	 * Configuration for managing DNS entries
 	 */
 	dns?: {
-		addEntry: (name: pulumi.Input<string>, kind: string, data: pulumi.Input<string>) => pulumi.Resource | void;
+		addEntry: (name: pulumi.Input<string>, kind: string, data: pulumi.Input<string>) => pulumi.Resource | undefined;
 	};
 
 	/**
