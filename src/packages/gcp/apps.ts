@@ -1,0 +1,1173 @@
+import * as pulumi from '@pulumi/pulumi';
+import * as gcp from '@pulumi/gcp';
+import type { GCPCommonOptions } from './common';
+import type { GCPRegion } from './constants';
+import { GoogleCloudFolderWithArgs } from './bucket';
+import { EnvManager } from './cloudrun';
+import { PostgresCloudSQL } from './sql';
+import { ContainerMIG } from './container';
+import * as components from '../docker';
+import { generateName } from '../../utils';
+
+export interface IPv4AddressConfig {
+	ipv4: pulumi.Input<string>;
+	ipv6?: pulumi.Input<string>;
+}
+
+export interface IPv6AddressConfig {
+	ipv4?: pulumi.Input<string>;
+	ipv6: pulumi.Input<string>;
+}
+
+export type IPAddressConfig = pulumi.Input<string> | IPv4AddressConfig | IPv6AddressConfig;
+
+interface SSLCertificateConfig {
+	sslCertificate: Pick<gcp.compute.ManagedSslCertificate, 'id'>;
+	domains?: never;
+	protectCert?: never;
+}
+
+interface DomainsConfig {
+	domains: pulumi.Input<string[]>;
+	protectCert?: boolean;
+	sslCertificate?: never;
+}
+
+export type SSLConfig = SSLCertificateConfig | DomainsConfig;
+
+/**
+ * Load balancer configuration that can be shared between components
+ */
+export interface LoadBalancerConfig {
+	/**
+	 * Domain configuration
+	 */
+	domain: pulumi.Input<string>;
+
+	/**
+	 * DNS zone for creating DNS records (optional)
+	 */
+	dnsZoneId?: pulumi.Input<string>;
+
+	/**
+	 * IP address configuration
+	 */
+	ipAddress?: IPAddressConfig;
+
+	/**
+	 * SSL certificate configuration
+	 */
+	ssl: SSLConfig;
+
+	/**
+	 * Routing configuration for static paths
+	 */
+	routing?: {
+		/**
+		 * Static paths to serve (e.g., ['/assets/', '/icons/'])
+		 */
+		staticPaths?: string[];
+
+		/**
+		 * Static files to serve (e.g., ['/favicon.svg'])
+		 */
+		staticFiles?: string[];
+	};
+}
+
+/**
+ * Result of creating a load balancer
+ */
+interface LoadBalancerResources {
+	urlMap: gcp.compute.URLMap;
+	httpsProxy: gcp.compute.TargetHttpsProxy;
+	forwardingRules: gcp.compute.GlobalForwardingRule[];
+	ips: pulumi.Output<string[]>;
+}
+
+/**
+ * Route rule configuration for URL map
+ */
+interface RouteRuleConfig {
+	priority: number;
+	matchRules: {
+		prefixMatch?: string;
+		fullPathMatch?: string;
+		pathTemplateMatch?: string;
+	}[];
+	service: pulumi.Input<string>;
+	routeAction?: {
+		urlRewrite?: {
+			pathTemplateRewrite?: string;
+		};
+	};
+}
+
+/**
+ * Parse IP address configuration into structured format
+ */
+function parseIPAddresses(
+	name: string,
+	ipAddress: IPAddressConfig | undefined
+): { kind: 'ipv4' | 'ipv6' | ''; ip: pulumi.Input<string> }[] {
+	const ipAddresses: { kind: 'ipv4' | 'ipv6' | ''; ip: pulumi.Input<string> }[] = [];
+
+	if (ipAddress === undefined) {
+		ipAddresses.push(
+			{
+				kind: 'ipv4',
+				ip: new gcp.compute.GlobalAddress(`${name}-ipv4`, {
+					addressType: 'EXTERNAL',
+					ipVersion: 'IPV4'
+				}).address
+			},
+			{
+				kind: 'ipv6',
+				ip: new gcp.compute.GlobalAddress(`${name}-ipv6`, {
+					addressType: 'EXTERNAL',
+					ipVersion: 'IPV6'
+				}).address
+			}
+		);
+	} else if (typeof ipAddress === 'object' && ('ipv4' in ipAddress || 'ipv6' in ipAddress)) {
+		if ('ipv4' in ipAddress && ipAddress.ipv4) {
+			ipAddresses.push({ kind: 'ipv4', ip: ipAddress.ipv4 });
+		}
+		if ('ipv6' in ipAddress && ipAddress.ipv6) {
+			ipAddresses.push({ kind: 'ipv6', ip: ipAddress.ipv6 });
+		}
+	} else {
+		ipAddresses.push({ kind: '', ip: ipAddress });
+	}
+
+	return(ipAddresses);
+}
+
+/**
+ * Create a load balancer with URL map, HTTPS proxy, and forwarding rules
+ */
+function createLoadBalancer(
+	name: string,
+	config: LoadBalancerConfig,
+	routeRules: RouteRuleConfig[],
+	defaultService: pulumi.Input<string>
+): LoadBalancerResources {
+	// Create URL map with routing rules
+	const urlMap = new gcp.compute.URLMap(`${name}-url-map`, {
+		defaultService,
+		pathMatchers: [{
+			name: 'all',
+			defaultService,
+			routeRules
+		}],
+		hostRules: [{
+			hosts: ['*'],
+			pathMatcher: 'all'
+		}]
+	});
+
+	// Create or use existing SSL certificate
+	let sslCertificate: Pick<gcp.compute.ManagedSslCertificate, 'id'>;
+	if ('sslCertificate' in config.ssl && config.ssl.sslCertificate) {
+		sslCertificate = config.ssl.sslCertificate;
+	} else {
+		sslCertificate = new gcp.compute.ManagedSslCertificate(`${name}-cert`, {
+			managed: {
+				domains: config.ssl.domains
+			}
+		}, {
+			protect: config.ssl.protectCert,
+			deleteBeforeReplace: true
+		});
+	}
+
+	// Create HTTPS proxy
+	const httpsProxy = new gcp.compute.TargetHttpsProxy(`${name}-https-proxy`, {
+		urlMap: urlMap.id,
+		sslCertificates: [sslCertificate.id]
+	});
+
+	// Parse IP addresses
+	const ipAddresses = parseIPAddresses(name, config.ipAddress);
+	const forwardingRules: gcp.compute.GlobalForwardingRule[] = [];
+
+	// Create forwarding rules and DNS records
+	for (const ipConfig of ipAddresses) {
+		const ruleName = `${name}-fr-${ipConfig.kind}`.replace(/-$/, '');
+		const rule = new gcp.compute.GlobalForwardingRule(ruleName, {
+			ipAddress: ipConfig.ip,
+			target: httpsProxy.id,
+			portRange: '443',
+			loadBalancingScheme: 'EXTERNAL_MANAGED',
+			ipProtocol: 'TCP'
+		}, {
+			deleteBeforeReplace: true
+		});
+		forwardingRules.push(rule);
+
+		// Create DNS records if zone ID provided
+		if (config.dnsZoneId && ipConfig.kind !== '') {
+			new gcp.dns.RecordSet(`${name}-dns-${ipConfig.kind}`, {
+				name: pulumi.output(config.domain).apply(d => d.endsWith('.') ? d : `${d}.`),
+				type: ipConfig.kind === 'ipv4' ? 'A' : 'AAAA',
+				ttl: 300,
+				managedZone: config.dnsZoneId,
+				rrdatas: [ipConfig.ip]
+			});
+		}
+	}
+
+	const ips = pulumi.all(forwardingRules.map(fr => fr.ipAddress)).apply(ips =>
+		ips.filter((ip): ip is string => ip !== undefined)
+	);
+
+	return({
+		urlMap,
+		httpsProxy,
+		forwardingRules,
+		ips
+	});
+}
+
+/**
+ * Configuration for a Static Web Application (SPA)
+ * Deploys static files to GCS bucket with a backend bucket (for use in load balancer)
+ */
+export interface StaticWebAppArgs {
+	/**
+	 * Path to the directory containing static files
+	 */
+	staticFilesPath: string;
+
+	/**
+	 * Optional bucket configuration
+	 */
+	bucketConfig?: Partial<gcp.storage.BucketArgs>;
+
+	/**
+	 * Optional filter for files to upload
+	 */
+	fileFilter?: (file: string) => boolean;
+
+	/**
+	 * Cache control options for uploaded files
+	 */
+	cacheControl?: {
+		/**
+		 * Cache duration for index.html (default: 10 seconds)
+		 */
+		indexTTL?: number;
+
+		/**
+		 * Cache duration for hashed assets (default: 1 day)
+		 */
+		assetsTTL?: number;
+
+		/**
+		 * Cache duration for other files (default: 5 minutes)
+		 */
+		defaultTTL?: number;
+	};
+
+	/**
+	 * Optional load balancer configuration
+	 * If provided, creates a complete HTTPS load balancer for standalone SPA deployment
+	 * If not provided, only creates backend bucket for use in composed deployments
+	 */
+	loadBalancer?: LoadBalancerConfig;
+}
+
+/**
+ * Static Web Application Component
+ * Deploys a SPA to GCS bucket with backend bucket ready for load balancer
+ * Optionally creates a full HTTPS load balancer if loadBalancer config is provided
+ */
+export class StaticWebApp extends pulumi.ComponentResource {
+	readonly bucket: gcp.storage.Bucket;
+	readonly backendBucket: gcp.compute.BackendBucket;
+	readonly urlMap?: gcp.compute.URLMap;
+	readonly httpsProxy?: gcp.compute.TargetHttpsProxy;
+	readonly forwardingRules?: gcp.compute.GlobalForwardingRule[];
+	readonly ips?: pulumi.Output<string[]>;
+
+	constructor(name: string, args: StaticWebAppArgs, opts?: pulumi.ComponentResourceOptions) {
+		super('Keeta:GCP:StaticWebApp', name, args, opts);
+
+		const bucket = new gcp.storage.Bucket(`${name}-bucket`, {
+			location: 'US',
+			forceDestroy: true,
+			softDeletePolicy: {
+				retentionDurationSeconds: 0
+			},
+			website: {
+				mainPageSuffix: 'index.html',
+				notFoundPage: 'index.html'
+			},
+			uniformBucketLevelAccess: true,
+			...args.bucketConfig
+		});
+
+		new gcp.storage.BucketIAMMember(`${name}-bucket-viewer`, {
+			bucket: bucket.name,
+			role: 'roles/storage.objectViewer',
+			member: 'allUsers'
+		}, {
+			deletedWith: bucket
+		});
+
+		const cacheControl = args.cacheControl ?? {};
+		const indexTTL = cacheControl.indexTTL ?? 10;
+		const assetsTTL = cacheControl.assetsTTL ?? 86400;
+		const defaultTTL = cacheControl.defaultTTL ?? 300;
+
+		new GoogleCloudFolderWithArgs(`${name}-files`, {
+			bucketName: bucket.name,
+			path: args.staticFilesPath,
+			filter: args.fileFilter,
+			options: {
+				generated: (fileName: string) => {
+					let ttl: number;
+					if (fileName === 'index.html') {
+						ttl = indexTTL;
+					} else if (fileName.startsWith('assets/')) {
+						ttl = assetsTTL;
+					} else {
+						ttl = defaultTTL;
+					}
+					return({
+						cacheControl: `public, max-age=${ttl}`
+					});
+				}
+			}
+		});
+
+		const backendBucket = new gcp.compute.BackendBucket(`${name}-backend`, {
+			bucketName: bucket.name,
+			enableCdn: false
+		});
+
+		this.bucket = bucket;
+		this.backendBucket = backendBucket;
+
+		if (args.loadBalancer) {
+			const lb = args.loadBalancer;
+			const routing = lb.routing ?? {};
+			const staticPaths = routing.staticPaths ?? ['/assets/', '/icons/', '/fonts/', '/images/'];
+			const staticFiles = routing.staticFiles ?? [];
+
+			const routeRules: RouteRuleConfig[] = [
+				...staticPaths.map((path, priority): RouteRuleConfig => ({
+					priority: priority + 1,
+					matchRules: [{ prefixMatch: path }],
+					service: backendBucket.id
+				})),
+				...staticFiles.map((file, priority): RouteRuleConfig => ({
+					priority: staticPaths.length + priority + 1,
+					matchRules: [{ fullPathMatch: file }],
+					service: backendBucket.id
+				})),
+				{
+					priority: staticPaths.length + staticFiles.length + 1,
+					matchRules: [{ pathTemplateMatch: '/**' }],
+					service: backendBucket.id,
+					routeAction: {
+						urlRewrite: {
+							pathTemplateRewrite: '/'
+						}
+					}
+				}
+			];
+
+			const lbResources = createLoadBalancer(
+				name,
+				lb,
+				routeRules,
+				backendBucket.id
+			);
+
+			this.urlMap = lbResources.urlMap;
+			this.httpsProxy = lbResources.httpsProxy;
+			this.forwardingRules = lbResources.forwardingRules;
+			this.ips = lbResources.ips;
+		}
+
+		this.registerOutputs({
+			bucket: bucket.name,
+			backendBucket: backendBucket.id,
+			...(this.ips ? { ips: this.ips } : {})
+		});
+	}
+}
+
+/**
+ * Configuration for Cloud Run backend service
+ */
+export interface CloudRunServiceArgs {
+	/**
+	 * GCP project and common options
+	 */
+	gcp: GCPCommonOptions;
+
+	/**
+	 * Region to deploy to
+	 */
+	region: GCPRegion;
+
+	/**
+	 * Docker image configuration
+	 */
+	image: {
+		/**
+		 * Docker image URI or configuration to build
+		 */
+		uri?: pulumi.Input<string>;
+
+		/**
+		 * Build configuration (alternative to uri)
+		 */
+		build?: {
+			directory: string;
+			registryUrl?: string;
+			imageName: string;
+			target?: string;
+			platform?: string;
+			buildArgs?: { [key: string]: pulumi.Input<string> };
+			secrets?: { [key: string]: pulumi.Input<string> };
+			githubSha?: string;
+			nodeImage?: pulumi.Input<string>;
+		};
+	};
+
+	/**
+	 * Environment variables for the Cloud Run service
+	 */
+	environment?: { [key: string]: pulumi.Input<string> | { value: pulumi.Input<string>; secret?: boolean }};
+
+	/**
+	 * Database configuration (optional)
+	 */
+	database?: {
+		/**
+		 * Tier for the database instance
+		 */
+		tier?: string;
+
+		/**
+		 * Additional database flags
+		 */
+		flags?: { [key: string]: number };
+
+		/**
+		 * Whether query insights should be enabled
+		 */
+		queryInsights?: boolean;
+
+		/**
+		 * Replication configuration for created database
+		 */
+		replication?: {
+			/**
+			 * Whether or not to enable replication across multiple zones of the same region
+			 */
+			multiZone?: boolean;
+
+			/**
+			 * Regions to create read-only replicas in
+			 */
+			replicaRegions?: GCPRegion[];
+		};
+
+		/**
+		 * Backup configuration
+		 */
+		backups?: {
+			/**
+			 * Whether or not to enable point in time recovery
+			 * Must be true if using replicas
+			 */
+			pointInTimeRecovery?: boolean;
+
+			/**
+			 * Start time for backups (Format: HH:MM)
+			 */
+			startTime?: string;
+
+			/**
+			 * Backup retention settings
+			 */
+			retentionSettings?: {
+				/**
+				 * How many backups to retain
+				 */
+				retainCount?: number;
+
+				/**
+				 * How many days to retain transaction logs for (between 1 and 7)
+				 */
+				transactionLogRetentionDays?: number;
+			};
+		};
+	};
+
+	/**
+	 * Cloud Run service configuration
+	 */
+	service?: {
+		/**
+		 * Service account email to use
+		 */
+		serviceAccount?: pulumi.Input<string> | Pick<gcp.serviceaccount.Account, 'email'>;
+
+		/**
+		 * Grant IAM roles to the service account (default is true)
+		 */
+		grantIAMRoles?: boolean;
+
+		/**
+		 * CPU limit
+		 */
+		cpuLimit?: number;
+
+		/**
+		 * Memory limit in MB
+		 */
+		memoryLimit?: number;
+
+		/**
+		 * Additional metadata annotations
+		 */
+		annotations?: { [key: string]: pulumi.Input<string> };
+	};
+
+	/**
+	 * VPC configuration (optional, created automatically if database is enabled)
+	 */
+	vpc?: {
+		/**
+		 * Existing VPC to use
+		 */
+		network?: gcp.compute.Network;
+
+		/**
+		 * VPC connector CIDR range
+		 */
+		connectorCIDR?: string;
+
+		/**
+		 * Subnet CIDR range (for database peering)
+		 */
+		subnetCIDR?: string;
+	};
+
+	/**
+	 * Managed Instance Group configuration (optional, for background workers/queue processors)
+	 */
+	mig?: {
+		/**
+		 * Whether to enable the MIG worker
+		 */
+		enabled: boolean;
+
+		/**
+		 * Number of instances (default: 1)
+		 */
+		instanceCount?: number;
+
+		/**
+		 * Machine type (default: 'e2-micro')
+		 */
+		machineType?: string;
+
+		/**
+		 * Container OS image to use
+		 */
+		cosImage?: string;
+
+		/**
+		 * Whether to enable SSH via IAP
+		 */
+		enableSSH?: boolean;
+
+		/**
+		 * Additional tags for the instances
+		 */
+		tags?: string[];
+
+		/**
+		 * Whether to allocate an external IP
+		 */
+		allocateExternalIP?: boolean;
+
+		/**
+		 * Additional environment variables specific to the MIG worker
+		 * These are merged with the main environment variables
+		 */
+		environmentOverrides?: { [key: string]: pulumi.Input<string> };
+	};
+
+	/**
+	 * Database migration configuration (optional)
+	 * Runs migrations using Cloud Run Job with the same image
+	 */
+	migration?: {
+		/**
+		 * Whether to enable database migrations
+		 */
+		enabled: boolean;
+
+		/**
+		 * Additional environment variables specific to migrations
+		 * These are merged with the main environment variables
+		 */
+		environmentOverrides?: { [key: string]: pulumi.Input<string> };
+
+		/**
+		 * CPU limit for migration job (default: 1)
+		 */
+		cpuLimit?: number;
+
+		/**
+		 * Memory limit for migration job in MB (default: 512)
+		 */
+		memoryLimit?: number;
+
+		/**
+		 * Task timeout in seconds (default: 600)
+		 */
+		taskTimeout?: number;
+	};
+}
+
+/**
+ * Cloud Run Backend Service Component
+ * Deploys a containerized backend service with optional database and MIG worker
+ */
+export class CloudRunService extends pulumi.ComponentResource {
+	readonly service: gcp.cloudrun.Service;
+	readonly database?: PostgresCloudSQL;
+	readonly vpc?: gcp.compute.Network;
+	readonly subnet?: gcp.compute.Subnetwork;
+	readonly vpcConnector?: gcp.vpcaccess.Connector;
+	readonly backendService: gcp.compute.BackendService;
+	readonly serviceAccount?: gcp.serviceaccount.Account | Pick<gcp.serviceaccount.Account, 'email'>;
+	readonly mig?: ContainerMIG;
+	readonly migrationJob?: gcp.cloudrunv2.Job;
+
+	constructor(name: string, args: CloudRunServiceArgs, opts?: pulumi.ComponentResourceOptions) {
+		super('Keeta:GCP:CloudRunService', name, args, opts);
+
+		let vpc: gcp.compute.Network | undefined;
+		let subnet: gcp.compute.Subnetwork | undefined;
+		let vpcConnector: gcp.vpcaccess.Connector | undefined;
+		let db: PostgresCloudSQL | undefined;
+
+		if (args.database || args.vpc || args.mig?.enabled) {
+			vpc = args.vpc?.network ?? new gcp.compute.Network(`${name}-vpc`, {
+				description: `[${name}] VPC network`,
+				autoCreateSubnetworks: false
+			}, { parent: this });
+
+			const subnetCIDR = args.vpc?.subnetCIDR ?? '10.97.35.0/24';
+			subnet = new gcp.compute.Subnetwork(`${name}-subnet`, {
+				description: `[${name}] Subnet`,
+				network: vpc.selfLink,
+				region: args.region,
+				ipCidrRange: subnetCIDR,
+				privateIpGoogleAccess: true
+			}, { parent: vpc });
+
+			const connectorCIDR = args.vpc?.connectorCIDR ?? '10.97.36.0/28';
+			vpcConnector = new gcp.vpcaccess.Connector(`${name}-vpc-connector`, {
+				ipCidrRange: connectorCIDR,
+				minInstances: 2,
+				maxInstances: 3,
+				network: vpc.selfLink,
+				region: args.region
+			}, { parent: subnet });
+
+			if (args.database) {
+				const privateIpAlloc = new gcp.compute.GlobalAddress(`${name}-private-ip-alloc`, {
+					purpose: 'VPC_PEERING',
+					addressType: 'INTERNAL',
+					prefixLength: 16,
+					network: vpc.selfLink
+				});
+
+				const svcNetworkingConnection = new gcp.servicenetworking.Connection(`${name}-svc-networking`, {
+					network: vpc.selfLink,
+					service: 'servicenetworking.googleapis.com',
+					reservedPeeringRanges: [privateIpAlloc.name]
+				});
+
+				db = new PostgresCloudSQL(`${name}-db`, {
+					region: args.region,
+					tier: args.database.tier ?? 'db-f1-micro',
+					vpcNetwork: vpc,
+					insightsConfig: {
+						queryInsightsEnabled: args.database.queryInsights ?? false,
+						queryStringLength: 4500
+					},
+					flags: {
+						max_connections: 25000,
+						...args.database.flags
+					},
+					replication: args.database.replication,
+					backups: args.database.backups
+				}, {
+					dependsOn: [svcNetworkingConnection]
+				});
+			}
+		}
+
+		let imageUri: pulumi.Input<string>;
+		if (args.image.uri) {
+			imageUri = args.image.uri;
+		} else if (args.image.build) {
+			const build = args.image.build;
+			const buildArgs: { [key: string]: pulumi.Input<string> } = { ...build.buildArgs };
+			if (build.nodeImage) {
+				buildArgs.NODE_IMAGE = build.nodeImage;
+			}
+
+			const imageConfig: ConstructorParameters<typeof components.DockerImage>[1] = {
+				imageName: build.imageName,
+				registryUrl: build.registryUrl ?? `${args.region}-docker.pkg.dev/${args.gcp.project}/keeta`,
+				platform: build.platform ?? 'linux/amd64',
+				buildArgs,
+				buildTarget: build.target,
+				buildDirectory: {
+					type: 'DIRECTORY',
+					directory: build.directory
+				},
+				versioning: build.githubSha ? {
+					type: 'PLAIN',
+					value: build.githubSha
+				} : {
+					type: 'FILE',
+					fromFile: build.directory
+				},
+				secrets: build.secrets
+			};
+
+			const dockerImage = new components.DockerImage(`${name}-image`, imageConfig);
+			imageUri = dockerImage.uri;
+		} else {
+			throw(new Error('Either image.uri or image.build must be provided'));
+		}
+
+		let serviceAccount: Pick<gcp.serviceaccount.Account, 'email'>;
+		if (args.service?.serviceAccount) {
+			if (typeof args.service.serviceAccount === 'object' && 'email' in args.service.serviceAccount) {
+				serviceAccount = args.service.serviceAccount;
+			} else {
+				serviceAccount = { email: pulumi.output(args.service.serviceAccount) };
+			}
+		} else {
+			const accountId = generateName(name, 'sa', 30);
+
+			serviceAccount = new gcp.serviceaccount.Account(`${name}-sa`, {
+				description: `[${name}] Service account`,
+				accountId
+			});
+		}
+
+		let extraDependsOn: pulumi.Input<pulumi.Resource[]> | undefined = undefined;
+		if (!args.service?.serviceAccount) {
+			if (args.gcp.changeProjectIAMPolicy) {
+				const resource = args.gcp.changeProjectIAMPolicy('roles/logging.logWriter', [
+					pulumi.interpolate`serviceAccount:${serviceAccount.email}`
+				]);
+
+				if (resource) {
+					extraDependsOn = pulumi.output(resource).apply(function(unwrappedResource) {
+						return([unwrappedResource]);
+					});
+				}
+			} else {
+				const resource = new gcp.projects.IAMMember(`${name}-log-writer`, {
+					project: args.gcp.project,
+					role: 'roles/logging.logWriter',
+					member: pulumi.interpolate`serviceAccount:${serviceAccount.email}`
+				});
+				extraDependsOn = [resource];
+			}
+		}
+
+		let envManager: EnvManager | undefined;
+		if (args.environment) {
+			const variables: { [key: string]: pulumi.Input<string> | { value: pulumi.Input<string>; secret: boolean }} = {};
+			for (const [key, value] of Object.entries(args.environment)) {
+				if (typeof value === 'object' && 'value' in value) {
+					variables[key] = {
+						...value,
+						secret: value.secret ?? false
+					}
+				} else {
+					variables[key] = value;
+				}
+			}
+
+			envManager = new EnvManager(`${name}-env`, {
+				serviceAccount: pulumi.interpolate`serviceAccount:${serviceAccount.email}`,
+				secretRegionName: args.region,
+				variables
+			});
+		}
+
+		const annotations: { [key: string]: pulumi.Input<string> } = {
+			...args.service?.annotations
+		};
+
+		if (db) {
+			annotations['run.googleapis.com/cloudsql-instances'] = db.hosts[db.primaryRegion]?.connectionName ?? '';
+		}
+
+		if (vpcConnector) {
+			annotations['run.googleapis.com/vpc-access-connector'] = vpcConnector.selfLink;
+		}
+
+		const service = new gcp.cloudrun.Service(`${name}-api`, {
+			location: args.region,
+			template: {
+				spec: {
+					serviceAccountName: serviceAccount.email,
+					containers: [{
+						image: imageUri,
+						envs: envManager?.variableOutput
+					}]
+				},
+				metadata: {
+					annotations
+				}
+			}
+		}, {
+			dependsOn: extraDependsOn
+		});
+		extraDependsOn = undefined;
+
+		new gcp.cloudrun.IamMember(`${name}-invoker`, {
+			service: service.name,
+			location: service.location,
+			role: 'roles/run.invoker',
+			member: 'allUsers'
+		}, {
+			deletedWith: service
+		});
+
+		const neg = new gcp.compute.RegionNetworkEndpointGroup(`${name}-neg`, {
+			region: args.region,
+			networkEndpointType: 'SERVERLESS',
+			cloudRun: {
+				service: service.name
+			}
+		});
+
+		const backendService = new gcp.compute.BackendService(`${name}-backend`, {
+			protocol: 'HTTP',
+			loadBalancingScheme: 'EXTERNAL_MANAGED',
+			backends: [{
+				group: neg.id
+			}]
+		}, { parent: this });
+
+		let mig: ContainerMIG | undefined;
+		if (args.mig?.enabled && vpc && subnet) {
+			// Enable SSH firewall if requested
+			if (args.mig.enableSSH) {
+				new gcp.compute.Firewall(`${name}-ssh-iap-firewall`, {
+					description: `[${name}] Allow SSH access to MIG instances via IAP`,
+					network: vpc.id,
+					direction: 'INGRESS',
+					sourceRanges: ['35.235.240.0/20'], // GCP IAP range
+					priority: 900,
+					allows: [{
+						protocol: 'tcp',
+						ports: ['22']
+					}],
+					...args.gcp.firewallConfig
+				});
+			}
+
+			// Prepare environment variables for MIG (merge base env + overrides)
+			const baseEnv = args.environment ?? {};
+			const overrideEnv = args.mig.environmentOverrides ?? {};
+
+			// Convert environment to the format expected by ContainerMIG
+			const migEnvVars = pulumi.all([baseEnv, overrideEnv]).apply(([base, override]) => {
+				const merged = { ...base, ...override };
+
+				return(Object.entries(merged)
+					.filter((entry): entry is [string, string | { value: string; secret?: boolean }] => {
+						return(entry[1] !== undefined);
+					})
+					.map(([envName, envValue]) => {
+						// Handle both string and object-with-value format
+						if (typeof envValue === 'object' && envValue !== null && 'value' in envValue) {
+							return({ name: envName, value: String(envValue.value) });
+						}
+						return({ name: envName, value: String(envValue) });
+					}));
+			});
+
+			// Create external IP if requested
+			let extIP: gcp.compute.Address | undefined;
+			if (args.mig.allocateExternalIP) {
+				extIP = new gcp.compute.Address(`${name}-mig-ext-ip`, {
+					description: `[${name}] External IP for MIG`,
+					addressType: 'EXTERNAL',
+					region: args.region
+				}, { parent: this });
+			}
+
+			mig = new ContainerMIG(`${name}-mig`, {
+				description: `[${name}] MIG worker for background tasks`,
+				serviceAccount: serviceAccount.email,
+				subnetwork: subnet,
+				machineType: args.mig.machineType ?? 'e2-micro',
+				cosImage: args.mig.cosImage,
+				tags: args.mig.tags,
+				enableVMSSH: args.mig.enableSSH,
+				networkInterfaces: extIP ? [{
+					accessConfigs: [{
+						natIp: extIP.address
+					}]
+				}] : undefined,
+				common: {
+					gcp: args.gcp
+				},
+				containerSpec: {
+					containers: [{
+						image: imageUri,
+						name: `${name}-worker`,
+						restartPolicy: 'Always',
+						env: migEnvVars
+					}]
+				}
+			}, { parent: this });
+		}
+
+		let migrationJob: gcp.cloudrunv2.Job | undefined;
+		if (args.migration?.enabled) {
+			const baseEnvironment = args.environment ?? {};
+			const overrideEnvironment = args.migration.environmentOverrides ?? {};
+			const mergedEnvironment = { ...baseEnvironment, ...overrideEnvironment };
+
+			// Convert environment variables to Cloud Run v2 Job format
+			let migrationEnvironmentVariables: pulumi.Output<gcp.types.input.cloudrunv2.JobTemplateTemplateContainerEnv[]> | undefined;
+			if (Object.keys(mergedEnvironment).length > 0) {
+				const variables: { [key: string]: pulumi.Input<string> | { value: pulumi.Input<string>; secret: boolean }} = {};
+				for (const [key, value] of Object.entries(mergedEnvironment)) {
+					if (typeof value === 'object' && 'value' in value) {
+						variables[key] = {
+							...value,
+							secret: value.secret ?? false
+						}
+					} else {
+						variables[key] = value;
+					}
+				}
+
+				const migrationEnvManager = new EnvManager(`${name}-migration-env`, {
+					serviceAccount: pulumi.interpolate`serviceAccount:${serviceAccount.email}`,
+					secretRegionName: args.region,
+					variables
+				});
+
+				// Convert Cloud Run v1 env format to v2 Job format
+				migrationEnvironmentVariables = pulumi.output(migrationEnvManager.variableOutput).apply(function(environmentVariables) {
+					return(environmentVariables
+						.filter(function(environmentVariable) {
+							return(environmentVariable.name !== undefined);
+						})
+						.map(function(environmentVariable) {
+							const environmentVariableName = environmentVariable.name;
+							if (!environmentVariableName) {
+								throw(new Error('Environment variable name is required'));
+							}
+
+							return({
+								name: environmentVariableName,
+								value: environmentVariable.value,
+								valueSource: environmentVariable.valueFrom ? pulumi.output(environmentVariable.valueFrom).apply(function(valueFrom) {
+									return({
+										secretKeyRef: valueFrom.secretKeyRef ? {
+											secret: valueFrom.secretKeyRef.name,
+											version: valueFrom.secretKeyRef.key
+										} : undefined
+									});
+								}) : undefined
+							});
+						}));
+				});
+			}
+
+			const jobAnnotations: { [key: string]: pulumi.Input<string> } = {};
+			if (db) {
+				jobAnnotations['run.googleapis.com/cloudsql-instances'] = db.hosts[db.primaryRegion]?.connectionName ?? '';
+			}
+			if (vpcConnector) {
+				jobAnnotations['run.googleapis.com/vpc-access-connector'] = vpcConnector.name;
+				jobAnnotations['run.googleapis.com/vpc-access-egress'] = 'private-ranges-only';
+			}
+
+			migrationJob = new gcp.cloudrunv2.Job(`${name}-migration`, {
+				location: args.region,
+				template: {
+					template: {
+						serviceAccount: serviceAccount.email,
+						vpcAccess: vpcConnector ? {
+							connector: vpcConnector.id,
+							egress: 'PRIVATE_RANGES_ONLY'
+						} : undefined,
+						containers: [{
+							image: imageUri,
+							envs: migrationEnvironmentVariables,
+							resources: {
+								limits: {
+									cpu: String(args.migration.cpuLimit ?? 1),
+									memory: `${args.migration.memoryLimit ?? 512}Mi`
+								}
+							}
+						}],
+						maxRetries: 1,
+						timeout: `${args.migration.taskTimeout ?? 600}s`
+					},
+					annotations: jobAnnotations
+				}
+			}, { parent: this });
+		}
+
+		this.service = service;
+		this.database = db;
+		this.vpc = vpc;
+		this.subnet = subnet;
+		this.vpcConnector = vpcConnector;
+		this.backendService = backendService;
+		this.serviceAccount = serviceAccount;
+		this.mig = mig;
+		this.migrationJob = migrationJob;
+
+		this.registerOutputs({
+			serviceUrl: service.statuses[0]?.url,
+			backendService: backendService.id,
+			...(mig ? { mig: mig.instanceGroupManager.id } : {}),
+			...(migrationJob ? { migrationJob: migrationJob.name } : {})
+		});
+	}
+}
+
+/**
+ * Configuration for a Full Stack Application
+ * Combines a static frontend with a Cloud Run backend
+ */
+export interface FullStackAppArgs {
+	/**
+	 * Load balancer configuration (domain, SSL, IPs, DNS)
+	 */
+	loadBalancer: LoadBalancerConfig;
+
+	/**
+	 * Frontend (SPA) configuration (without loadBalancer, as it's managed by FullStackApp)
+	 */
+	frontend: Omit<StaticWebAppArgs, 'loadBalancer'>;
+
+	/**
+	 * Backend service configuration
+	 */
+	backend: CloudRunServiceArgs;
+
+	/**
+	 * Routing configuration
+	 */
+	routing?: {
+		/**
+		 * API path prefix (default: '/api')
+		 */
+		apiPrefix?: string;
+
+		/**
+		 * Static paths to serve from frontend (default: ['/assets/', '/icons/', '/fonts/', '/images/'])
+		 */
+		staticPaths?: string[];
+
+		/**
+		 * Static files to serve from frontend (default: ['/favicon.svg'])
+		 */
+		staticFiles?: string[];
+	};
+}
+
+/**
+ * Full Stack Application Component
+ * Deploys both static frontend and Cloud Run backend with unified load balancer
+ * This component composes StaticWebApp and CloudRunService
+ */
+export class FullStackApp extends pulumi.ComponentResource {
+	readonly frontend: StaticWebApp;
+	readonly backend: CloudRunService;
+	readonly urlMap: gcp.compute.URLMap;
+	readonly httpsProxy: gcp.compute.TargetHttpsProxy;
+	readonly forwardingRules: gcp.compute.GlobalForwardingRule[];
+	readonly ips: pulumi.Output<string[]>;
+
+	constructor(name: string, args: FullStackAppArgs, opts?: pulumi.ComponentResourceOptions) {
+		super('Keeta:GCP:FullStackApp', name, args, opts);
+
+		const frontend = new StaticWebApp(`${name}-frontend`, args.frontend, { parent: this });
+
+		const backend = new CloudRunService(`${name}-backend`, args.backend, { parent: this });
+
+		const routing = args.routing ?? {};
+		const apiPrefix = routing.apiPrefix ?? '/api';
+		const staticPaths = routing.staticPaths ?? ['/assets/', '/icons/', '/fonts/', '/images/'];
+		const staticFiles = routing.staticFiles ?? ['/favicon.svg'];
+
+		const routeRules: RouteRuleConfig[] = [
+			...staticPaths.map((path, priority): RouteRuleConfig => ({
+				priority: priority + 1,
+				matchRules: [{ prefixMatch: path }],
+				service: frontend.backendBucket.id
+			})),
+			...staticFiles.map((file, priority): RouteRuleConfig => ({
+				priority: staticPaths.length + priority + 1,
+				matchRules: [{ fullPathMatch: file }],
+				service: frontend.backendBucket.id
+			})),
+			{
+				priority: staticPaths.length + staticFiles.length + 1,
+				matchRules: [{ pathTemplateMatch: `${apiPrefix}/**` }],
+				service: backend.backendService.id
+			},
+			{
+				priority: staticPaths.length + staticFiles.length + 2,
+				matchRules: [{ pathTemplateMatch: '/**' }],
+				service: frontend.backendBucket.id,
+				routeAction: {
+					urlRewrite: {
+						pathTemplateRewrite: '/'
+					}
+				}
+			}
+		];
+
+		const lbResources = createLoadBalancer(
+			name,
+			args.loadBalancer,
+			routeRules,
+			frontend.backendBucket.id
+		);
+
+		this.frontend = frontend;
+		this.backend = backend;
+		this.urlMap = lbResources.urlMap;
+		this.httpsProxy = lbResources.httpsProxy;
+		this.forwardingRules = lbResources.forwardingRules;
+		this.ips = lbResources.ips;
+
+		this.registerOutputs({
+			frontendBucket: frontend.bucket.name,
+			backendUrl: backend.service.statuses[0]?.url,
+			ips: this.ips
+		});
+	}
+}
