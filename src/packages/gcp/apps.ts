@@ -129,7 +129,7 @@ function parseIPAddresses(
 				}).address
 			}
 		);
-	} else if (typeof ipAddress === 'object' && ('ipv4' in ipAddress || 'ipv6' in ipAddress)) {
+	} else if (typeof ipAddress === 'object' && ipAddress !== null && ('ipv4' in ipAddress || 'ipv6' in ipAddress)) {
 		if ('ipv4' in ipAddress && ipAddress.ipv4) {
 			ipAddresses.push({ kind: 'ipv4', ip: ipAddress.ipv4 });
 		}
@@ -571,7 +571,7 @@ export interface CloudRunServiceArgs {
 		/**
 		 * Number of instances (default: 1)
 		 */
-		instanceCount?: number;
+		count?: number;
 
 		/**
 		 * Machine type (default: 'e2-micro')
@@ -679,6 +679,8 @@ export class CloudRunService extends pulumi.ComponentResource {
 			const connectorCIDR = args.vpc?.connectorCIDR ?? '10.97.36.0/28';
 			vpcConnector = new gcp.vpcaccess.Connector(`${name}-vpc-connector`, {
 				ipCidrRange: connectorCIDR,
+				// Standard instance range for VPC connectors: 2-3 instances provides good balance
+				// between availability and cost for typical workloads
 				minInstances: 2,
 				maxInstances: 3,
 				network: vpc.selfLink,
@@ -757,7 +759,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 
 		let serviceAccount: Pick<gcp.serviceaccount.Account, 'email'>;
 		if (args.service?.serviceAccount) {
-			if (typeof args.service.serviceAccount === 'object' && 'email' in args.service.serviceAccount) {
+			if (typeof args.service.serviceAccount === 'object' && args.service.serviceAccount !== null && 'email' in args.service.serviceAccount) {
 				serviceAccount = args.service.serviceAccount;
 			} else {
 				serviceAccount = { email: pulumi.output(args.service.serviceAccount) };
@@ -772,7 +774,8 @@ export class CloudRunService extends pulumi.ComponentResource {
 		}
 
 		let extraDependsOn: pulumi.Input<pulumi.Resource[]> | undefined = undefined;
-		if (!args.service?.serviceAccount) {
+		const shouldGrantIAMRoles = args.service?.grantIAMRoles ?? true;
+		if (!args.service?.serviceAccount && shouldGrantIAMRoles) {
 			if (args.gcp.changeProjectIAMPolicy) {
 				const resource = args.gcp.changeProjectIAMPolicy('roles/logging.logWriter', [
 					pulumi.interpolate`serviceAccount:${serviceAccount.email}`
@@ -797,11 +800,11 @@ export class CloudRunService extends pulumi.ComponentResource {
 		if (args.environment) {
 			const variables: { [key: string]: pulumi.Input<string> | { value: pulumi.Input<string>; secret: boolean }} = {};
 			for (const [key, value] of Object.entries(args.environment)) {
-				if (typeof value === 'object' && 'value' in value) {
+				if (typeof value === 'object' && value !== null && 'value' in value) {
 					variables[key] = {
 						...value,
 						secret: value.secret ?? false
-					}
+					};
 				} else {
 					variables[key] = value;
 				}
@@ -833,7 +836,13 @@ export class CloudRunService extends pulumi.ComponentResource {
 					serviceAccountName: serviceAccount.email,
 					containers: [{
 						image: imageUri,
-						envs: envManager?.variableOutput
+						envs: envManager?.variableOutput,
+						resources: args.service?.cpuLimit || args.service?.memoryLimit ? {
+							limits: {
+								...(args.service.cpuLimit ? { cpu: String(args.service.cpuLimit) } : {}),
+								...(args.service.memoryLimit ? { memory: `${args.service.memoryLimit}Mi` } : {})
+							}
+						} : undefined
 					}]
 				},
 				metadata: {
@@ -891,22 +900,31 @@ export class CloudRunService extends pulumi.ComponentResource {
 			// Prepare environment variables for MIG (merge base env + overrides)
 			const baseEnv = args.environment ?? {};
 			const overrideEnv = args.mig.environmentOverrides ?? {};
+			const mergedEnv = { ...baseEnv, ...overrideEnv };
+
+			// Use EnvManager to handle secrets in environment variables
+			const migEnvManager = new EnvManager(`${name}-mig-env`, {
+				serviceAccount: pulumi.interpolate`serviceAccount:${serviceAccount.email}`,
+				secretRegionName: args.region,
+				variables: mergedEnv
+			});
 
 			// Convert environment to the format expected by ContainerMIG
-			const migEnvVars = pulumi.all([baseEnv, overrideEnv]).apply(([base, override]) => {
-				const merged = { ...base, ...override };
-
-				return(Object.entries(merged)
-					.filter((entry): entry is [string, string | { value: string; secret?: boolean }] => {
-						return(entry[1] !== undefined);
-					})
-					.map(([envName, envValue]) => {
-						// Handle both string and object-with-value format
-						if (typeof envValue === 'object' && envValue !== null && 'value' in envValue) {
-							return({ name: envName, value: String(envValue.value) });
+			const migEnvVars = pulumi.output(migEnvManager.variableOutput).apply((envVars) => {
+				return(envVars
+					.filter((envVar) => envVar.name !== undefined)
+					.map((envVar) => {
+						// For MIG, we need to handle secret references differently
+						// Since ContainerMIG doesn't support secret references, we'll need to pass secret values directly
+						// This is a known limitation - secrets should ideally be handled through Secret Manager mounting
+						if (envVar.valueFrom?.secretKeyRef) {
+							// For now, we'll skip secret environment variables in MIG
+							// TODO: Implement proper secret mounting for MIG
+							return(null);
 						}
-						return({ name: envName, value: String(envValue) });
-					}));
+						return({ name: envVar.name!, value: envVar.value ?? '' });
+					})
+					.filter((envVar): envVar is { name: string; value: string } => envVar !== null));
 			});
 
 			// Create external IP if requested
@@ -924,6 +942,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 				serviceAccount: serviceAccount.email,
 				subnetwork: subnet,
 				machineType: args.mig.machineType ?? 'e2-micro',
+				count: args.mig.count ?? 1,
 				cosImage: args.mig.cosImage,
 				tags: args.mig.tags,
 				enableVMSSH: args.mig.enableSSH,
@@ -957,11 +976,11 @@ export class CloudRunService extends pulumi.ComponentResource {
 			if (Object.keys(mergedEnvironment).length > 0) {
 				const variables: { [key: string]: pulumi.Input<string> | { value: pulumi.Input<string>; secret: boolean }} = {};
 				for (const [key, value] of Object.entries(mergedEnvironment)) {
-					if (typeof value === 'object' && 'value' in value) {
+					if (typeof value === 'object' && value !== null && 'value' in value) {
 						variables[key] = {
 							...value,
 							secret: value.secret ?? false
-						}
+						};
 					} else {
 						variables[key] = value;
 					}
@@ -1004,10 +1023,6 @@ export class CloudRunService extends pulumi.ComponentResource {
 			const jobAnnotations: { [key: string]: pulumi.Input<string> } = {};
 			if (db) {
 				jobAnnotations['run.googleapis.com/cloudsql-instances'] = db.hosts[db.primaryRegion]?.connectionName ?? '';
-			}
-			if (vpcConnector) {
-				jobAnnotations['run.googleapis.com/vpc-access-connector'] = vpcConnector.name;
-				jobAnnotations['run.googleapis.com/vpc-access-egress'] = 'private-ranges-only';
 			}
 
 			migrationJob = new gcp.cloudrunv2.Job(`${name}-migration`, {
