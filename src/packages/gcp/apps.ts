@@ -910,21 +910,18 @@ export class CloudRunService extends pulumi.ComponentResource {
 			});
 
 			// Convert environment to the format expected by ContainerMIG
+			// Note: ContainerMIG doesn't support secret references, so we skip secret variables
+			// TODO: Implement proper secret mounting for MIG
 			const migEnvVars = pulumi.output(migEnvManager.variableOutput).apply((envVars) => {
 				return(envVars
-					.filter((envVar) => envVar.name !== undefined)
-					.map((envVar) => {
-						// For MIG, we need to handle secret references differently
-						// Since ContainerMIG doesn't support secret references, we'll need to pass secret values directly
-						// This is a known limitation - secrets should ideally be handled through Secret Manager mounting
-						if (envVar.valueFrom?.secretKeyRef) {
-							// For now, we'll skip secret environment variables in MIG
-							// TODO: Implement proper secret mounting for MIG
-							return(null);
-						}
-						return({ name: envVar.name!, value: envVar.value ?? '' });
+					.filter((envVar) => {
+						// Only include variables with valid names and plain values (no secret references)
+						return(envVar.name && !envVar.valueFrom?.secretKeyRef);
 					})
-					.filter((envVar): envVar is { name: string; value: string } => envVar !== null));
+					.map((envVar) => {
+						// At this point we know name exists and is not empty due to filter
+						return({ name: envVar.name as string, value: envVar.value ?? '' });
+					}));
 			});
 
 			// Create external IP if requested
