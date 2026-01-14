@@ -1,6 +1,7 @@
 import type * as pulumi from '@pulumi/pulumi';
 import type * as gcp from '@pulumi/gcp';
 
+
 export type GCPCommonOptions = {
 	/**
 	 * GCP project name being deployed to
@@ -22,3 +23,10 @@ export type GCPCommonOptions = {
 	 */
 	firewallConfig?: Partial<ConstructorParameters<typeof gcp.compute.Firewall>[1]>;
 };
+
+/**
+ * Extract the service URL from Cloud Run service statuses
+ */
+export function extractServiceUrl(statuses: gcp.types.output.cloudrun.ServiceStatus[] | undefined): string | undefined {
+	return(statuses?.[0]?.url);
+}

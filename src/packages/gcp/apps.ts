@@ -1,5 +1,6 @@
 import * as pulumi from '@pulumi/pulumi';
 import * as gcp from '@pulumi/gcp';
+import { extractServiceUrl } from './common';
 import type { GCPCommonOptions } from './common';
 import type { GCPRegion } from './constants';
 import { GoogleCloudFolderWithArgs } from './bucket';
@@ -208,7 +209,7 @@ function createLoadBalancer(
 		// Create DNS records if zone ID provided
 		if (config.dnsZoneId && ipConfig.kind !== '') {
 			new gcp.dns.RecordSet(`${name}-dns-${ipConfig.kind}`, {
-				name: pulumi.output(config.domain).apply(d => d.endsWith('.') ? d : `${d}.`),
+				name: pulumi.output(config.domain).apply(function(d) { return(d.endsWith('.') ? d : `${d}.`); }),
 				type: ipConfig.kind === 'ipv4' ? 'A' : 'AAAA',
 				ttl: 300,
 				managedZone: config.dnsZoneId,
@@ -217,9 +218,9 @@ function createLoadBalancer(
 		}
 	}
 
-	const ips = pulumi.all(forwardingRules.map(fr => fr.ipAddress)).apply(ips =>
-		ips.filter((ip): ip is string => ip !== undefined)
-	);
+	const ips = pulumi.all(forwardingRules.map(function(fr) { return(fr.ipAddress); })).apply(function(ips) {
+		return(ips.filter(function(ip): ip is string { return(ip !== undefined && ip !== null); }));
+	});
 
 	return({
 		urlMap,
@@ -325,7 +326,7 @@ export class StaticWebApp extends pulumi.ComponentResource {
 			path: args.staticFilesPath,
 			filter: args.fileFilter,
 			options: {
-				generated: (fileName: string) => {
+				generated: function(fileName: string) {
 					let ttl: number;
 					if (fileName === 'index.html') {
 						ttl = indexTTL;
@@ -356,16 +357,20 @@ export class StaticWebApp extends pulumi.ComponentResource {
 			const staticFiles = routing.staticFiles ?? [];
 
 			const routeRules: RouteRuleConfig[] = [
-				...staticPaths.map((path, priority): RouteRuleConfig => ({
-					priority: priority + 1,
-					matchRules: [{ prefixMatch: path }],
-					service: backendBucket.id
-				})),
-				...staticFiles.map((file, priority): RouteRuleConfig => ({
-					priority: staticPaths.length + priority + 1,
-					matchRules: [{ fullPathMatch: file }],
-					service: backendBucket.id
-				})),
+				...staticPaths.map(function(path, priority): RouteRuleConfig {
+					return({
+						priority: priority + 1,
+						matchRules: [{ prefixMatch: path }],
+						service: backendBucket.id
+					});
+				}),
+				...staticFiles.map(function(file, priority): RouteRuleConfig {
+					return({
+						priority: staticPaths.length + priority + 1,
+						matchRules: [{ fullPathMatch: file }],
+						service: backendBucket.id
+					});
+				}),
 				{
 					priority: staticPaths.length + staticFiles.length + 1,
 					matchRules: [{ pathTemplateMatch: '/**' }],
@@ -757,7 +762,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 
 		let serviceAccount: Pick<gcp.serviceaccount.Account, 'email'>;
 		if (args.service?.serviceAccount) {
-			if (typeof args.service.serviceAccount === 'object' && 'email' in args.service.serviceAccount) {
+			if (typeof args.service.serviceAccount === 'object' && args.service.serviceAccount !== null && 'email' in args.service.serviceAccount) {
 				serviceAccount = args.service.serviceAccount;
 			} else {
 				serviceAccount = { email: pulumi.output(args.service.serviceAccount) };
@@ -772,7 +777,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 		}
 
 		let extraDependsOn: pulumi.Input<pulumi.Resource[]> | undefined = undefined;
-		if (!args.service?.serviceAccount) {
+		if (args.service?.grantIAMRoles !== false && !args.service?.serviceAccount) {
 			if (args.gcp.changeProjectIAMPolicy) {
 				const resource = args.gcp.changeProjectIAMPolicy('roles/logging.logWriter', [
 					pulumi.interpolate`serviceAccount:${serviceAccount.email}`
@@ -797,11 +802,11 @@ export class CloudRunService extends pulumi.ComponentResource {
 		if (args.environment) {
 			const variables: { [key: string]: pulumi.Input<string> | { value: pulumi.Input<string>; secret: boolean }} = {};
 			for (const [key, value] of Object.entries(args.environment)) {
-				if (typeof value === 'object' && 'value' in value) {
+				if (typeof value === 'object' && value !== null && 'value' in value) {
 					variables[key] = {
 						...value,
 						secret: value.secret ?? false
-					}
+					};
 				} else {
 					variables[key] = value;
 				}
@@ -833,7 +838,13 @@ export class CloudRunService extends pulumi.ComponentResource {
 					serviceAccountName: serviceAccount.email,
 					containers: [{
 						image: imageUri,
-						envs: envManager?.variableOutput
+						envs: envManager?.variableOutput,
+						resources: {
+							limits: {
+								cpu: String(args.service?.cpuLimit ?? 1),
+								memory: `${args.service?.memoryLimit ?? 512}Mi`
+							}
+						}
 					}]
 				},
 				metadata: {
@@ -893,14 +904,21 @@ export class CloudRunService extends pulumi.ComponentResource {
 			const overrideEnv = args.mig.environmentOverrides ?? {};
 
 			// Convert environment to the format expected by ContainerMIG
-			const migEnvVars = pulumi.all([baseEnv, overrideEnv]).apply(([base, override]) => {
+			const migEnvVars = pulumi.all([baseEnv, overrideEnv]).apply(function([base, override]) {
 				const merged = { ...base, ...override };
 
+				// MIG does not support secret environment variables
+				for (const [key, val] of Object.entries(merged)) {
+					if (typeof val === 'object' && val !== null && 'secret' in val && val.secret) {
+						throw(new Error(`MIG does not support secret environment variables. Use Google Secret Manager instead. Variable: ${key}`));
+					}
+				}
+
 				return(Object.entries(merged)
-					.filter((entry): entry is [string, string | { value: string; secret?: boolean }] => {
+					.filter(function(entry): entry is [string, string | { value: string; secret?: boolean }] {
 						return(entry[1] !== undefined);
 					})
-					.map(([envName, envValue]) => {
+					.map(function([envName, envValue]) {
 						// Handle both string and object-with-value format
 						if (typeof envValue === 'object' && envValue !== null && 'value' in envValue) {
 							return({ name: envName, value: String(envValue.value) });
@@ -927,6 +945,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 				cosImage: args.mig.cosImage,
 				tags: args.mig.tags,
 				enableVMSSH: args.mig.enableSSH,
+				count: args.mig.instanceCount,
 				networkInterfaces: extIP ? [{
 					accessConfigs: [{
 						natIp: extIP.address
@@ -957,7 +976,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 			if (Object.keys(mergedEnvironment).length > 0) {
 				const variables: { [key: string]: pulumi.Input<string> | { value: pulumi.Input<string>; secret: boolean }} = {};
 				for (const [key, value] of Object.entries(mergedEnvironment)) {
-					if (typeof value === 'object' && 'value' in value) {
+					if (typeof value === 'object' && value !== null && 'value' in value) {
 						variables[key] = {
 							...value,
 							secret: value.secret ?? false
@@ -1005,10 +1024,13 @@ export class CloudRunService extends pulumi.ComponentResource {
 			if (db) {
 				jobAnnotations['run.googleapis.com/cloudsql-instances'] = db.hosts[db.primaryRegion]?.connectionName ?? '';
 			}
-			if (vpcConnector) {
-				jobAnnotations['run.googleapis.com/vpc-access-connector'] = vpcConnector.name;
-				jobAnnotations['run.googleapis.com/vpc-access-egress'] = 'private-ranges-only';
-			}
+
+			/**
+			 * https://discuss.google.dev/t/how-to-use-serverless-vpc-access-connector-in-google-cloud-with-google-cloud-run-operators/188383
+			 * "Additionally, when using the Cloud Run Jobs API v2, annotations like
+			 * run.googleapis.com/vpc-access-connector are no longer supported. Instead,
+			 * VPC settings should be defined using the networkInterfaces field."
+			 */
 
 			migrationJob = new gcp.cloudrunv2.Job(`${name}-migration`, {
 				location: args.region,
@@ -1048,7 +1070,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 		this.migrationJob = migrationJob;
 
 		this.registerOutputs({
-			serviceUrl: service.statuses[0]?.url,
+			serviceUrl: service.statuses.apply(extractServiceUrl),
 			backendService: backendService.id,
 			...(mig ? { mig: mig.instanceGroupManager.id } : {}),
 			...(migrationJob ? { migrationJob: migrationJob.name } : {})
@@ -1123,16 +1145,20 @@ export class FullStackApp extends pulumi.ComponentResource {
 		const staticFiles = routing.staticFiles ?? ['/favicon.svg'];
 
 		const routeRules: RouteRuleConfig[] = [
-			...staticPaths.map((path, priority): RouteRuleConfig => ({
-				priority: priority + 1,
-				matchRules: [{ prefixMatch: path }],
-				service: frontend.backendBucket.id
-			})),
-			...staticFiles.map((file, priority): RouteRuleConfig => ({
-				priority: staticPaths.length + priority + 1,
-				matchRules: [{ fullPathMatch: file }],
-				service: frontend.backendBucket.id
-			})),
+			...staticPaths.map(function(path, priority): RouteRuleConfig {
+				return({
+					priority: priority + 1,
+					matchRules: [{ prefixMatch: path }],
+					service: frontend.backendBucket.id
+				});
+			}),
+			...staticFiles.map(function(file, priority): RouteRuleConfig {
+				return({
+					priority: staticPaths.length + priority + 1,
+					matchRules: [{ fullPathMatch: file }],
+					service: frontend.backendBucket.id
+				});
+			}),
 			{
 				priority: staticPaths.length + staticFiles.length + 1,
 				matchRules: [{ pathTemplateMatch: `${apiPrefix}/**` }],
@@ -1166,7 +1192,7 @@ export class FullStackApp extends pulumi.ComponentResource {
 
 		this.registerOutputs({
 			frontendBucket: frontend.bucket.name,
-			backendUrl: backend.service.statuses[0]?.url,
+			backendUrl: backend.service.statuses.apply(extractServiceUrl),
 			ips: this.ips
 		});
 	}
