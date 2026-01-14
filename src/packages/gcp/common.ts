@@ -1,7 +1,6 @@
 import type * as pulumi from '@pulumi/pulumi';
 import type * as gcp from '@pulumi/gcp';
 
-
 export type GCPCommonOptions = {
 	/**
 	 * GCP project name being deployed to
