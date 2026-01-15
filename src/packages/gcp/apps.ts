@@ -568,6 +568,13 @@ export interface CloudRunServiceArgs {
 		 * Subnet CIDR range (for database peering)
 		 */
 		subnetCIDR?: string;
+
+		/**
+		 * Deletion policy for service networking connection.
+		 * Set to 'ABANDON' to avoid delete failures when Cloud SQL hasn't released the connection.
+		 * Default is undefined (normal delete behavior).
+		 */
+		servicePeeringDeletionPolicy?: 'ABANDON';
 	};
 
 	/**
@@ -721,7 +728,8 @@ export class CloudRunService extends pulumi.ComponentResource {
 				const svcNetworkingConnection = new gcp.servicenetworking.Connection(`${name}-svc-networking`, {
 					network: vpc.selfLink,
 					service: 'servicenetworking.googleapis.com',
-					reservedPeeringRanges: [privateIpAlloc.name]
+					reservedPeeringRanges: [privateIpAlloc.name],
+					deletionPolicy: args.vpc?.servicePeeringDeletionPolicy
 				});
 
 				db = new PostgresCloudSQL(`${name}-db`, {

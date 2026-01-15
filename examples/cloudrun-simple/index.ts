@@ -72,7 +72,9 @@ const backend = new gcpComponents.apps.CloudRunService(name, {
 	// === VPC Configuration ===
 	vpc: {
 		connectorCIDR: '10.8.0.0/28',
-		subnetCIDR: '10.0.0.0/24'
+		subnetCIDR: '10.0.0.0/24',
+		// ABANDON for easier cleanup in tests
+		servicePeeringDeletionPolicy: 'ABANDON'
 	},
 
 	// === Service Configuration ===

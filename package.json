@@ -16,15 +16,18 @@
 		"make:test": "make test",
 		"make:clean": "make clean",
 		"make:distclean": "make distclean",
-		"make:do-npm-pack": "make do-npm-pack"
+		"make:do-npm-pack": "make do-npm-pack",
+		"test:integration": "vitest run tests/integration --timeout=1800000"
 	},
 	"engines": {
-		"node": "~20.18.0"
+		"node": "20.18.0"
 	},
 	"devDependencies": {
 		"@keetanetwork/eslint-config-typescript": "1.4.7",
+		"@types/node": "20.17.50",
 		"eslint": "9.39.1",
-		"typescript": "5.6.3"
+		"typescript": "5.6.3",
+		"vitest": "3.2.4"
 	},
 	"dependencies": {
 		"@google-cloud/cloudbuild": "5.3.1",
