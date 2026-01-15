@@ -1,0 +1,21 @@
+{
+    "name": "cloudrun-simple-example",
+    "version": "1.0.0",
+    "description": "Example: Cloud Run service with full configuration test",
+    "main": "index.ts",
+    "devDependencies": {
+        "@types/node": "^20.0.0",
+        "typescript": "^5.6.0"
+    },
+    "dependencies": {
+        "@keetanetwork/pulumi-components": "file:../../dist",
+        "@google-cloud/cloudbuild": "5.3.1",
+        "@google-cloud/secret-manager": "6.1.1",
+        "@pulumi/command": "1.1.3",
+        "@pulumi/gcp": "9.6.0",
+        "@pulumi/pulumi": "3.122.0",
+        "@pulumi/random": "4.18.4",
+        "@pulumi/tls": "5.2.3",
+        "google-auth-library": "10.5.0"
+    }
+}
