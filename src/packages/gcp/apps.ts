@@ -841,142 +841,142 @@ export class CloudRunService extends pulumi.ComponentResource {
 				}
 			}
 
-		envManager = new EnvManager(`${name}-env`, {
-			serviceAccount: pulumi.interpolate`serviceAccount:${serviceAccount.email}`,
-			secretRegionName: args.region,
-			variables
-		});
-	}
-
-	// Create migration job and execution BEFORE the service so service depends on migration
-	let migrationJob: gcp.cloudrunv2.Job | undefined;
-	let migrationExecution: CloudRunJobExecution | undefined;
-	if (args.migration?.enabled) {
-		const baseEnvironment = args.environment ?? {};
-		const overrideEnvironment = args.migration.environmentOverrides ?? {};
-		const mergedEnvironment = { ...baseEnvironment, ...overrideEnvironment };
-
-		// Convert environment variables to Cloud Run v2 Job format
-		let migrationEnvironmentVariables: pulumi.Output<gcp.types.input.cloudrunv2.JobTemplateTemplateContainerEnv[]> | undefined;
-		if (Object.keys(mergedEnvironment).length > 0) {
-			const variables: { [key: string]: pulumi.Input<string> | { value: pulumi.Input<string>; secret: boolean }} = {};
-			for (const [key, value] of Object.entries(mergedEnvironment)) {
-				if (typeof value === 'object' && value !== null && 'value' in value) {
-					variables[key] = {
-						...value,
-						secret: value.secret ?? false
-					}
-				} else {
-					variables[key] = value;
-				}
-			}
-
-			const migrationEnvManager = new EnvManager(`${name}-migration-env`, {
+			envManager = new EnvManager(`${name}-env`, {
 				serviceAccount: pulumi.interpolate`serviceAccount:${serviceAccount.email}`,
 				secretRegionName: args.region,
 				variables
 			});
+		}
 
-			// Convert Cloud Run v1 env format to v2 Job format
-			migrationEnvironmentVariables = pulumi.output(migrationEnvManager.variableOutput).apply(function(environmentVariables) {
-				return(environmentVariables
-					.filter(function(environmentVariable) {
-						return(environmentVariable.name !== undefined);
-					})
-					.map(function(environmentVariable) {
-						const environmentVariableName = environmentVariable.name;
-						if (!environmentVariableName) {
-							throw(new Error('Environment variable name is required'));
+		// Create migration job and execution BEFORE the service so service depends on migration
+		let migrationJob: gcp.cloudrunv2.Job | undefined;
+		let migrationExecution: CloudRunJobExecution | undefined;
+		if (args.migration?.enabled) {
+			const baseEnvironment = args.environment ?? {};
+			const overrideEnvironment = args.migration.environmentOverrides ?? {};
+			const mergedEnvironment = { ...baseEnvironment, ...overrideEnvironment };
+
+			// Convert environment variables to Cloud Run v2 Job format
+			let migrationEnvironmentVariables: pulumi.Output<gcp.types.input.cloudrunv2.JobTemplateTemplateContainerEnv[]> | undefined;
+			if (Object.keys(mergedEnvironment).length > 0) {
+				const variables: { [key: string]: pulumi.Input<string> | { value: pulumi.Input<string>; secret: boolean }} = {};
+				for (const [key, value] of Object.entries(mergedEnvironment)) {
+					if (typeof value === 'object' && value !== null && 'value' in value) {
+						variables[key] = {
+							...value,
+							secret: value.secret ?? false
 						}
+					} else {
+						variables[key] = value;
+					}
+				}
 
-						return({
-							name: environmentVariableName,
-							value: environmentVariable.value,
-							valueSource: environmentVariable.valueFrom ? pulumi.output(environmentVariable.valueFrom).apply(function(valueFrom) {
-								return({
-									secretKeyRef: valueFrom.secretKeyRef ? {
-										secret: valueFrom.secretKeyRef.name,
-										version: valueFrom.secretKeyRef.key
-									} : undefined
-								});
-							}) : undefined
-						});
-					}));
-			});
-		}
+				const migrationEnvManager = new EnvManager(`${name}-migration-env`, {
+					serviceAccount: pulumi.interpolate`serviceAccount:${serviceAccount.email}`,
+					secretRegionName: args.region,
+					variables
+				});
 
-		const jobAnnotations: { [key: string]: pulumi.Input<string> } = {};
-		if (db) {
-			jobAnnotations['run.googleapis.com/cloudsql-instances'] = db.hosts[db.primaryRegion]?.connectionName ?? '';
-		}
+				// Convert Cloud Run v1 env format to v2 Job format
+				migrationEnvironmentVariables = pulumi.output(migrationEnvManager.variableOutput).apply(function(environmentVariables) {
+					return(environmentVariables
+						.filter(function(environmentVariable) {
+							return(environmentVariable.name !== undefined);
+						})
+						.map(function(environmentVariable) {
+							const environmentVariableName = environmentVariable.name;
+							if (!environmentVariableName) {
+								throw(new Error('Environment variable name is required'));
+							}
 
-		/**
+							return({
+								name: environmentVariableName,
+								value: environmentVariable.value,
+								valueSource: environmentVariable.valueFrom ? pulumi.output(environmentVariable.valueFrom).apply(function(valueFrom) {
+									return({
+										secretKeyRef: valueFrom.secretKeyRef ? {
+											secret: valueFrom.secretKeyRef.name,
+											version: valueFrom.secretKeyRef.key
+										} : undefined
+									});
+								}) : undefined
+							});
+						}));
+				});
+			}
+
+			const jobAnnotations: { [key: string]: pulumi.Input<string> } = {};
+			if (db) {
+				jobAnnotations['run.googleapis.com/cloudsql-instances'] = db.hosts[db.primaryRegion]?.connectionName ?? '';
+			}
+
+			/**
 		 * https://discuss.google.dev/t/how-to-use-serverless-vpc-access-connector-in-google-cloud-with-google-cloud-run-operators/188383
 		 * "Additionally, when using the Cloud Run Jobs API v2, annotations like
 		 * run.googleapis.com/vpc-access-connector are no longer supported. Instead,
 		 * VPC settings should be defined using the networkInterfaces field."
 		 */
 
-		const jobDependsOn: pulumi.Resource[] = [];
-		if (db) {
-			jobDependsOn.push(db);
-		}
-
-		migrationJob = new gcp.cloudrunv2.Job(`${name}-migration`, {
-			location: args.region,
-			template: {
-				template: {
-					serviceAccount: serviceAccount.email,
-					vpcAccess: vpcConnector ? {
-						connector: vpcConnector.id,
-						egress: 'PRIVATE_RANGES_ONLY'
-					} : undefined,
-					containers: [{
-						image: imageUri,
-						commands: args.migration.command,
-						args: args.migration.args,
-						envs: migrationEnvironmentVariables,
-						resources: {
-							limits: {
-								cpu: String(args.migration.cpuLimit ?? 1),
-								memory: `${args.migration.memoryLimit ?? 512}Mi`
-							}
-						}
-					}],
-					maxRetries: 1,
-					timeout: `${args.migration.taskTimeout ?? 600}s`
-				},
-				annotations: jobAnnotations
+			const jobDependsOn: pulumi.Resource[] = [];
+			if (db) {
+				jobDependsOn.push(db);
 			}
-		}, {
-			parent: this,
-			dependsOn: jobDependsOn.length > 0 ? jobDependsOn : undefined
-		});
 
-		// Execute the migration job and wait for completion
-		migrationExecution = new CloudRunJobExecution(`${name}-migration-exec`, {
-			jobName: migrationJob.name,
-			projectId: args.gcp.project,
-			region: args.region,
-			trigger: pulumi.output(imageUri).apply(function(uri) { return(uri); })
-		}, {
-			parent: this,
-			dependsOn: [migrationJob, ...(db ? [db] : [])]
-		});
-
-		// Add migration execution to service dependencies
-		if (extraDependsOn) {
-			extraDependsOn = pulumi.all([extraDependsOn, migrationExecution]).apply(function([deps, exec]) {
-				return([...deps, exec]);
+			migrationJob = new gcp.cloudrunv2.Job(`${name}-migration`, {
+				location: args.region,
+				template: {
+					template: {
+						serviceAccount: serviceAccount.email,
+						vpcAccess: vpcConnector ? {
+							connector: vpcConnector.id,
+							egress: 'PRIVATE_RANGES_ONLY'
+						} : undefined,
+						containers: [{
+							image: imageUri,
+							commands: args.migration.command,
+							args: args.migration.args,
+							envs: migrationEnvironmentVariables,
+							resources: {
+								limits: {
+									cpu: String(args.migration.cpuLimit ?? 1),
+									memory: `${args.migration.memoryLimit ?? 512}Mi`
+								}
+							}
+						}],
+						maxRetries: 1,
+						timeout: `${args.migration.taskTimeout ?? 600}s`
+					},
+					annotations: jobAnnotations
+				}
+			}, {
+				parent: this,
+				dependsOn: jobDependsOn.length > 0 ? jobDependsOn : undefined
 			});
-		} else {
-			extraDependsOn = [migrationExecution];
-		}
-	}
 
-	const annotations: { [key: string]: pulumi.Input<string> } = {
-		...args.service?.annotations
-	};
+			// Execute the migration job and wait for completion
+			migrationExecution = new CloudRunJobExecution(`${name}-migration-exec`, {
+				jobName: migrationJob.name,
+				projectId: args.gcp.project,
+				region: args.region,
+				trigger: pulumi.output(imageUri).apply(function(uri) { return(uri); })
+			}, {
+				parent: this,
+				dependsOn: [migrationJob, ...(db ? [db] : [])]
+			});
+
+			// Add migration execution to service dependencies
+			if (extraDependsOn) {
+				extraDependsOn = pulumi.all([extraDependsOn, migrationExecution]).apply(function([deps, exec]) {
+					return([...deps, exec]);
+				});
+			} else {
+				extraDependsOn = [migrationExecution];
+			}
+		}
+
+		const annotations: { [key: string]: pulumi.Input<string> } = {
+			...args.service?.annotations
+		};
 
 		if (db) {
 			annotations['run.googleapis.com/cloudsql-instances'] = db.hosts[db.primaryRegion]?.connectionName ?? '';
@@ -1117,8 +1117,8 @@ export class CloudRunService extends pulumi.ComponentResource {
 						env: migEnvVars
 					}]
 				}
-		}, { parent: this });
-	}
+			}, { parent: this });
+		}
 
 		this.service = service;
 		this.database = db;

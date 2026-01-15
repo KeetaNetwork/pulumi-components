@@ -8,7 +8,6 @@ import type { DeepInput, DeepOutput } from '../../types';
 /**
  * Execution status from Cloud Run Jobs API
  */
-type ExecutionStatus = 'EXECUTION_ENVIRONMENT_UNSPECIFIED' | 'EXECUTION_ENVIRONMENT_GEN1' | 'EXECUTION_ENVIRONMENT_GEN2';
 type ExecutionConditionState = 'STATE_UNSPECIFIED' | 'CONDITION_PENDING' | 'CONDITION_RECONCILING' | 'CONDITION_FAILED' | 'CONDITION_SUCCEEDED';
 
 interface ExecutionCondition {
@@ -23,6 +22,34 @@ interface CloudRunJobExecutionInputs {
 	projectId: string;
 	region: string;
 	trigger: string;
+}
+
+interface RunJobResponse {
+	metadata?: { name?: string };
+}
+
+interface ExecutionResponse {
+	name: string;
+	createTime?: string;
+	completionTime?: string;
+	logUri?: string;
+	conditions?: ExecutionCondition[];
+}
+
+function isRunJobResponse(value: unknown): value is RunJobResponse {
+	return(typeof value === 'object' && value !== null);
+}
+
+function isExecutionResponse(value: unknown): value is ExecutionResponse {
+	if (typeof value !== 'object' || value === null) {
+		return(false);
+	}
+	if (!('name' in value)) {
+		return(false);
+	}
+
+	// After 'name' in value check, TypeScript knows value has a 'name' property
+	return(typeof value.name === 'string');
 }
 
 interface ExecutionOutput {
@@ -77,7 +104,10 @@ async function runJob(inputs: CloudRunJobExecutionInputs): Promise<ExecutionOutp
 		throw(new Error(`Failed to run job: ${runResponse.status} ${errorText}`));
 	}
 
-	const runResult = await runResponse.json() as { metadata?: { name?: string } };
+	const runResult: unknown = await runResponse.json();
+	if (!isRunJobResponse(runResult)) {
+		throw(new Error('Invalid response from job run'));
+	}
 	const executionName = runResult.metadata?.name;
 
 	if (!executionName) {
@@ -101,13 +131,11 @@ async function runJob(inputs: CloudRunJobExecutionInputs): Promise<ExecutionOutp
 			throw(new Error(`Failed to get execution status: ${statusResponse.status} ${errorText}`));
 		}
 
-		const execution = await statusResponse.json() as {
-			name: string;
-			createTime?: string;
-			completionTime?: string;
-			logUri?: string;
-			conditions?: ExecutionCondition[];
-		};
+		const executionResult: unknown = await statusResponse.json();
+		if (!isExecutionResponse(executionResult)) {
+			throw(new Error('Invalid execution response'));
+		}
+		const execution = executionResult;
 
 		// Find the completion condition
 		const completionCondition = execution.conditions?.find(function(c) {
