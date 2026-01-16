@@ -1,0 +1,15 @@
+{
+	"name": "static-webapp-example",
+	"version": "1.0.0",
+	"description": "Example: Static Web App deployment",
+	"main": "index.ts",
+	"scripts": {
+		"up": "pulumi up",
+		"destroy": "pulumi destroy"
+	},
+	"dependencies": {
+		"@keetanetwork/pulumi-components": "file:../../dist",
+		"@pulumi/gcp": "^9.6.0",
+		"@pulumi/pulumi": "^3.122.0"
+	}
+}

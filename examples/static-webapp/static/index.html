@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Static Web App Test</title>
+	<style>
+		body {
+			font-family: system-ui, sans-serif;
+			max-width: 800px;
+			margin: 0 auto;
+			padding: 2rem;
+			background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+			min-height: 100vh;
+			color: white;
+		}
+		h1 { text-align: center; }
+		.status { 
+			background: rgba(255,255,255,0.2);
+			padding: 1rem;
+			border-radius: 8px;
+			text-align: center;
+		}
+	</style>
+</head>
+<body>
+	<h1>🚀 Static Web App</h1>
+	<div class="status">
+		<p>Deployed successfully via Pulumi!</p>
+		<p>Timestamp: <span id="time"></span></p>
+	</div>
+	<script>
+		document.getElementById('time').textContent = new Date().toISOString();
+	</script>
+</body>
+</html>

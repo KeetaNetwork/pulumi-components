@@ -1,0 +1,4 @@
+name: static-webapp
+runtime: nodejs
+main: index.ts
+description: Example - Static Web App deployment to GCS
