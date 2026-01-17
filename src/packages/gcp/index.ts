@@ -3,6 +3,7 @@ export * as container from './container';
 export * as cloudrun from './cloudrun';
 export * as cloudbuild from './cloudbuild';
 export * as cloudrunJob from './cloudrun-job';
+export * as migration from './migration';
 export * as regions from './regions';
 export * as policy from './policy';
 export * as sql from './sql';

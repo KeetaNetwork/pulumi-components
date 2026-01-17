@@ -1,0 +1,4 @@
+name: migration-job
+runtime: nodejs
+main: index.ts
+description: Example - Standalone Migration Job

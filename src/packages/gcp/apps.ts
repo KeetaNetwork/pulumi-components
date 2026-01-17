@@ -5,7 +5,6 @@ import type { GCPCommonOptions } from './common';
 import type { GCPRegion } from './constants';
 import { GoogleCloudFolderWithArgs } from './bucket';
 import { EnvManager } from './cloudrun';
-import { CloudRunJobExecution } from './cloudrun-job';
 import { PostgresCloudSQL } from './sql';
 import { ContainerMIG } from './container';
 import * as components from '../docker';
@@ -623,47 +622,6 @@ export interface CloudRunServiceArgs {
 		environmentOverrides?: { [key: string]: pulumi.Input<string> };
 	};
 
-	/**
-	 * Database migration configuration (optional)
-	 * Runs migrations using Cloud Run Job with the same image
-	 */
-	migration?: {
-		/**
-		 * Whether to enable database migrations
-		 */
-		enabled: boolean;
-
-		/**
-		 * Override container entrypoint (e.g., ['npm', 'run', 'migrate'])
-		 */
-		command?: string[];
-
-		/**
-		 * Override container arguments
-		 */
-		args?: string[];
-
-		/**
-		 * Additional environment variables specific to migrations
-		 * These are merged with the main environment variables
-		 */
-		environmentOverrides?: { [key: string]: pulumi.Input<string> };
-
-		/**
-		 * CPU limit for migration job (default: 1)
-		 */
-		cpuLimit?: number;
-
-		/**
-		 * Memory limit for migration job in MB (default: 512)
-		 */
-		memoryLimit?: number;
-
-		/**
-		 * Task timeout in seconds (default: 600)
-		 */
-		taskTimeout?: number;
-	};
 }
 
 /**
@@ -679,8 +637,6 @@ export class CloudRunService extends pulumi.ComponentResource {
 	readonly backendService: gcp.compute.BackendService;
 	readonly serviceAccount?: gcp.serviceaccount.Account | Pick<gcp.serviceaccount.Account, 'email'>;
 	readonly mig?: ContainerMIG;
-	readonly migrationJob?: gcp.cloudrunv2.Job;
-	readonly migrationExecution?: CloudRunJobExecution;
 
 	constructor(name: string, args: CloudRunServiceArgs, opts?: pulumi.ComponentResourceOptions) {
 		super('Keeta:GCP:CloudRunService', name, args, opts);
@@ -828,16 +784,35 @@ export class CloudRunService extends pulumi.ComponentResource {
 		}
 
 		let envManager: EnvManager | undefined;
-		if (args.environment) {
+		// Create environment manager if we have environment variables OR a database (for auto-injected DB vars)
+		if (args.environment || db) {
 			const variables: { [key: string]: pulumi.Input<string> | { value: pulumi.Input<string>; secret: boolean }} = {};
-			for (const [key, value] of Object.entries(args.environment)) {
-				if (typeof value === 'object' && value !== null && 'value' in value) {
-					variables[key] = {
-						...value,
-						secret: value.secret ?? false
-					};
-				} else {
-					variables[key] = value;
+
+			// Auto-inject database connection environment variables if database is enabled
+			if (db) {
+				variables['PGUSER'] = db.username;
+				variables['PGPASSWORD'] = { value: db.password, secret: true };
+				variables['PGDATABASE'] = db.databaseName;
+				variables['PGHOST'] = pulumi.interpolate`/cloudsql/${db.hosts[args.region]?.connectionName}`;
+				variables['PGPORT'] = '5432';
+				// Also set DATABASE_URL for frameworks that use it
+				variables['DATABASE_URL'] = {
+					value: pulumi.interpolate`postgresql://${db.username}:${db.password}@/${db.databaseName}?host=/cloudsql/${db.hosts[args.region]?.connectionName}`,
+					secret: true
+				};
+			}
+
+			// Add user-provided environment variables (can override DB vars)
+			if (args.environment) {
+				for (const [key, value] of Object.entries(args.environment)) {
+					if (typeof value === 'object' && value !== null && 'value' in value) {
+						variables[key] = {
+							...value,
+							secret: value.secret ?? false
+						};
+					} else {
+						variables[key] = value;
+					}
 				}
 			}
 
@@ -846,132 +821,6 @@ export class CloudRunService extends pulumi.ComponentResource {
 				secretRegionName: args.region,
 				variables
 			});
-		}
-
-		// Create migration job and execution BEFORE the service so service depends on migration
-		let migrationJob: gcp.cloudrunv2.Job | undefined;
-		let migrationExecution: CloudRunJobExecution | undefined;
-		if (args.migration?.enabled) {
-			const baseEnvironment = args.environment ?? {};
-			const overrideEnvironment = args.migration.environmentOverrides ?? {};
-			const mergedEnvironment = { ...baseEnvironment, ...overrideEnvironment };
-
-			// Convert environment variables to Cloud Run v2 Job format
-			let migrationEnvironmentVariables: pulumi.Output<gcp.types.input.cloudrunv2.JobTemplateTemplateContainerEnv[]> | undefined;
-			if (Object.keys(mergedEnvironment).length > 0) {
-				const variables: { [key: string]: pulumi.Input<string> | { value: pulumi.Input<string>; secret: boolean }} = {};
-				for (const [key, value] of Object.entries(mergedEnvironment)) {
-					if (typeof value === 'object' && value !== null && 'value' in value) {
-						variables[key] = {
-							...value,
-							secret: value.secret ?? false
-						}
-					} else {
-						variables[key] = value;
-					}
-				}
-
-				const migrationEnvManager = new EnvManager(`${name}-migration-env`, {
-					serviceAccount: pulumi.interpolate`serviceAccount:${serviceAccount.email}`,
-					secretRegionName: args.region,
-					variables
-				});
-
-				// Convert Cloud Run v1 env format to v2 Job format
-				migrationEnvironmentVariables = pulumi.output(migrationEnvManager.variableOutput).apply(function(environmentVariables) {
-					return(environmentVariables
-						.filter(function(environmentVariable) {
-							return(environmentVariable.name !== undefined);
-						})
-						.map(function(environmentVariable) {
-							const environmentVariableName = environmentVariable.name;
-							if (!environmentVariableName) {
-								throw(new Error('Environment variable name is required'));
-							}
-
-							return({
-								name: environmentVariableName,
-								value: environmentVariable.value,
-								valueSource: environmentVariable.valueFrom ? pulumi.output(environmentVariable.valueFrom).apply(function(valueFrom) {
-									return({
-										secretKeyRef: valueFrom.secretKeyRef ? {
-											secret: valueFrom.secretKeyRef.name,
-											version: valueFrom.secretKeyRef.key
-										} : undefined
-									});
-								}) : undefined
-							});
-						}));
-				});
-			}
-
-			const jobAnnotations: { [key: string]: pulumi.Input<string> } = {};
-			if (db) {
-				jobAnnotations['run.googleapis.com/cloudsql-instances'] = db.hosts[db.primaryRegion]?.connectionName ?? '';
-			}
-
-			/**
-		 * https://discuss.google.dev/t/how-to-use-serverless-vpc-access-connector-in-google-cloud-with-google-cloud-run-operators/188383
-		 * "Additionally, when using the Cloud Run Jobs API v2, annotations like
-		 * run.googleapis.com/vpc-access-connector are no longer supported. Instead,
-		 * VPC settings should be defined using the networkInterfaces field."
-		 */
-
-			const jobDependsOn: pulumi.Resource[] = [];
-			if (db) {
-				jobDependsOn.push(db);
-			}
-
-			migrationJob = new gcp.cloudrunv2.Job(`${name}-migration`, {
-				location: args.region,
-				template: {
-					template: {
-						serviceAccount: serviceAccount.email,
-						vpcAccess: vpcConnector ? {
-							connector: vpcConnector.id,
-							egress: 'PRIVATE_RANGES_ONLY'
-						} : undefined,
-						containers: [{
-							image: imageUri,
-							commands: args.migration.command,
-							args: args.migration.args,
-							envs: migrationEnvironmentVariables,
-							resources: {
-								limits: {
-									cpu: String(args.migration.cpuLimit ?? 1),
-									memory: `${args.migration.memoryLimit ?? 512}Mi`
-								}
-							}
-						}],
-						maxRetries: 1,
-						timeout: `${args.migration.taskTimeout ?? 600}s`
-					},
-					annotations: jobAnnotations
-				}
-			}, {
-				parent: this,
-				dependsOn: jobDependsOn.length > 0 ? jobDependsOn : undefined
-			});
-
-			// Execute the migration job and wait for completion
-			migrationExecution = new CloudRunJobExecution(`${name}-migration-exec`, {
-				jobName: migrationJob.name,
-				projectId: args.gcp.project,
-				region: args.region,
-				trigger: pulumi.output(imageUri).apply(function(uri) { return(uri); })
-			}, {
-				parent: this,
-				dependsOn: [migrationJob, ...(db ? [db] : [])]
-			});
-
-			// Add migration execution to service dependencies
-			if (extraDependsOn) {
-				extraDependsOn = pulumi.all([extraDependsOn, migrationExecution]).apply(function([deps, exec]) {
-					return([...deps, exec]);
-				});
-			} else {
-				extraDependsOn = [migrationExecution];
-			}
 		}
 
 		const annotations: { [key: string]: pulumi.Input<string> } = {
@@ -1128,15 +977,11 @@ export class CloudRunService extends pulumi.ComponentResource {
 		this.backendService = backendService;
 		this.serviceAccount = serviceAccount;
 		this.mig = mig;
-		this.migrationJob = migrationJob;
-		this.migrationExecution = migrationExecution;
 
 		this.registerOutputs({
 			serviceUrl: service.statuses.apply(extractServiceUrl),
 			backendService: backendService.id,
-			...(mig ? { mig: mig.instanceGroupManager.id } : {}),
-			...(migrationJob ? { migrationJob: migrationJob.name } : {}),
-			...(migrationExecution ? { migrationExecution: migrationExecution.executionName } : {})
+			...(mig ? { mig: mig.instanceGroupManager.id } : {})
 		});
 	}
 }
