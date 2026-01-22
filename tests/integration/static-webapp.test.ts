@@ -6,18 +6,26 @@ describe('StaticWebApp', function() {
 	let outputs: StackOutputs | undefined;
 	let deploymentSucceeded = false;
 
-	it('deploys successfully', async function() {
+	it('deploys and serves content', async function() {
 		outputs = await deployStack('examples/static-webapp', stackName);
 		deploymentSucceeded = true;
 
-		// Verify core outputs exist
-		expect(outputs.bucketName).toBeDefined();
-		expect(outputs.bucketUrl).toBeDefined();
-		expect(outputs.backendBucketName).toBeDefined();
+		// Verify component output exists
+		expect(outputs.staticApp).toBeDefined();
 
-		// Verify bucket URL format
-		expect(outputs.bucketUrl).toContain('storage.googleapis.com');
-		expect(outputs.bucketUrl).toContain('index.html');
+		// Get bucket name from component's registered outputs
+		const staticApp = outputs.staticApp as { bucket: { name: string } };
+		expect(staticApp.bucket?.name).toBeDefined();
+
+		// Fetch the deployed content
+		const bucketUrl = `https://storage.googleapis.com/${staticApp.bucket.name}/index.html`;
+		const response = await fetch(bucketUrl);
+		expect(response.ok).toBe(true);
+
+		// Verify it's our HTML content
+		const html = await response.text();
+		expect(html).toContain('Static Web App');
+		expect(html).toContain('Deployed successfully via Pulumi');
 	}, 300_000); // 5 min timeout (simple GCS deployment)
 
 	afterAll(async function() {

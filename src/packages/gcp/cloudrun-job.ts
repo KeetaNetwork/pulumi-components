@@ -1,55 +1,16 @@
 import * as pulumi from '@pulumi/pulumi';
-import * as googleAuth from 'google-auth-library';
-
 import { randomUUID } from 'crypto';
 
 import type { DeepInput, DeepOutput } from '../../types';
+import type * as runTypes from '@google-cloud/run';
 
-/**
- * Execution status from Cloud Run Jobs API
- */
 type ExecutionConditionState = 'STATE_UNSPECIFIED' | 'CONDITION_PENDING' | 'CONDITION_RECONCILING' | 'CONDITION_FAILED' | 'CONDITION_SUCCEEDED';
-
-interface ExecutionCondition {
-	type: string;
-	state: ExecutionConditionState;
-	message?: string;
-	reason?: string;
-}
 
 interface CloudRunJobExecutionInputs {
 	jobName: string;
 	projectId: string;
 	region: string;
 	trigger: string;
-}
-
-interface RunJobResponse {
-	metadata?: { name?: string };
-}
-
-interface ExecutionResponse {
-	name: string;
-	createTime?: string;
-	completionTime?: string;
-	logUri?: string;
-	conditions?: ExecutionCondition[];
-}
-
-function isRunJobResponse(value: unknown): value is RunJobResponse {
-	return(typeof value === 'object' && value !== null);
-}
-
-function isExecutionResponse(value: unknown): value is ExecutionResponse {
-	if (typeof value !== 'object' || value === null) {
-		return(false);
-	}
-	if (!('name' in value)) {
-		return(false);
-	}
-
-	// After 'name' in value check, TypeScript knows value has a 'name' property
-	return(typeof value.name === 'string');
 }
 
 interface ExecutionOutput {
@@ -62,138 +23,60 @@ interface ExecutionOutput {
 
 type PulumiExecutionOutput = DeepOutput<ExecutionOutput>;
 
-/**
- * Poll interval for checking execution status (in milliseconds)
- */
-const POLL_INTERVAL_MS = 5000;
-
-/**
- * Maximum time to wait for execution to complete (in milliseconds)
- */
-const MAX_WAIT_TIME_MS = 30 * 60 * 1000; // 30 minutes
-
-async function getAccessToken(): Promise<string> {
-	const auth = new googleAuth.GoogleAuth({
-		scopes: ['https://www.googleapis.com/auth/cloud-platform']
-	});
-	const client = await auth.getClient();
-	const token = await client.getAccessToken();
-	if (!token.token) {
-		throw(new Error('Failed to get access token'));
-	}
-	return(token.token);
-}
-
 async function runJob(inputs: CloudRunJobExecutionInputs): Promise<ExecutionOutput> {
-	const accessToken = await getAccessToken();
+	// Dynamic import to avoid issues with Pulumi serialization
+	// eslint-disable-next-line @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-require-imports
+	const { JobsClient } = require('@google-cloud/run') as typeof runTypes;
 
+	const client = new JobsClient();
 	const jobPath = `projects/${inputs.projectId}/locations/${inputs.region}/jobs/${inputs.jobName}`;
-	const runUrl = `https://run.googleapis.com/v2/${jobPath}:run`;
 
-	// Trigger the job execution
-	const runResponse = await fetch(runUrl, {
-		method: 'POST',
-		headers: {
-			'Authorization': `Bearer ${accessToken}`,
-			'Content-Type': 'application/json'
-		}
-	});
+	// Run the job and wait for completion
+	const [operation] = await client.runJob({ name: jobPath });
+	const [execution] = await operation.promise();
 
-	if (!runResponse.ok) {
-		const errorText = await runResponse.text();
-		throw(new Error(`Failed to run job: ${runResponse.status} ${errorText}`));
-	}
+	// Extract completion status from conditions
+	let status: ExecutionConditionState = 'STATE_UNSPECIFIED';
+	const conditions = execution.conditions ?? [];
 
-	const runResult: unknown = await runResponse.json();
-	if (!isRunJobResponse(runResult)) {
-		throw(new Error('Invalid response from job run'));
-	}
-	const executionName = runResult.metadata?.name;
-
-	if (!executionName) {
-		throw(new Error('No execution name returned from job run'));
-	}
-
-	// Poll for execution completion
-	const startTime = Date.now();
-	let lastStatus: ExecutionConditionState = 'CONDITION_PENDING';
-
-	while (Date.now() - startTime < MAX_WAIT_TIME_MS) {
-		const statusUrl = `https://run.googleapis.com/v2/${executionName}`;
-		const statusResponse = await fetch(statusUrl, {
-			headers: {
-				'Authorization': `Bearer ${accessToken}`
+	for (const condition of conditions) {
+		if (condition.type === 'Completed') {
+			const conditionState = condition.state;
+			if (conditionState === 'CONDITION_SUCCEEDED' || conditionState === 'CONDITION_FAILED' || conditionState === 'CONDITION_RECONCILING') {
+				status = conditionState;
 			}
-		});
-
-		if (!statusResponse.ok) {
-			const errorText = await statusResponse.text();
-			throw(new Error(`Failed to get execution status: ${statusResponse.status} ${errorText}`));
-		}
-
-		const executionResult: unknown = await statusResponse.json();
-		if (!isExecutionResponse(executionResult)) {
-			throw(new Error('Invalid execution response'));
-		}
-		const execution = executionResult;
-
-		// Find the completion condition
-		const completionCondition = execution.conditions?.find(function(c) {
-			return(c.type === 'Completed');
-		});
-
-		if (completionCondition) {
-			lastStatus = completionCondition.state;
-
-			if (completionCondition.state === 'CONDITION_SUCCEEDED') {
-				return({
-					executionName: execution.name,
-					status: 'CONDITION_SUCCEEDED',
-					createTime: execution.createTime ?? null,
-					completionTime: execution.completionTime ?? null,
-					logUri: execution.logUri ?? null
-				});
-			}
-
-			if (completionCondition.state === 'CONDITION_FAILED') {
-				const message = completionCondition.message ?? 'Unknown error';
-				const reason = completionCondition.reason ?? 'Unknown reason';
+			if (status === 'CONDITION_FAILED') {
+				const message = condition.message ?? 'Unknown error';
+				const reason = condition.reason ?? 'Unknown reason';
 				throw(new Error(`Job execution failed: ${reason} - ${message}. Logs: ${execution.logUri ?? 'N/A'}`));
 			}
+			break;
 		}
-
-		// Wait before polling again
-		await new Promise(function(resolve) {
-			setTimeout(resolve, POLL_INTERVAL_MS);
-		});
 	}
 
-	throw(new Error(`Job execution timed out after ${MAX_WAIT_TIME_MS / 1000} seconds. Last status: ${lastStatus}`));
+	return({
+		executionName: execution.name ?? '',
+		status,
+		createTime: execution.createTime?.seconds?.toString() ?? null,
+		completionTime: execution.completionTime?.seconds?.toString() ?? null,
+		logUri: execution.logUri ?? null
+	});
 }
 
 const cloudRunJobExecutionProvider: pulumi.dynamic.ResourceProvider = {
 	async check(_ignore_oldInput: CloudRunJobExecutionInputs, newInput: CloudRunJobExecutionInputs) {
-		return({
-			inputs: { ...newInput }
-		});
+		return({ inputs: { ...newInput }});
 	},
 
 	async create(inputs: CloudRunJobExecutionInputs) {
 		const id = randomUUID();
 		const output = await runJob(inputs);
-
-		return({
-			id: id,
-			outs: output
-		});
+		return({ id, outs: output });
 	},
 
 	async update(_ignore_id: string, _ignore_oldInput: CloudRunJobExecutionInputs, newInput: CloudRunJobExecutionInputs) {
 		const output = await runJob(newInput);
-
-		return({
-			outs: output
-		});
+		return({ outs: output });
 	},
 
 	async delete() {
@@ -203,30 +86,21 @@ const cloudRunJobExecutionProvider: pulumi.dynamic.ResourceProvider = {
 };
 
 export interface CloudRunJobExecutionArgs {
-	/**
-	 * The Cloud Run Job name (not the full resource path)
-	 */
+	/** The Cloud Run Job name (not the full resource path) */
 	jobName: pulumi.Input<string>;
 
-	/**
-	 * GCP project ID
-	 */
+	/** GCP project ID */
 	projectId: pulumi.Input<string>;
 
-	/**
-	 * GCP region where the job is deployed
-	 */
+	/** GCP region where the job is deployed */
 	region: pulumi.Input<string>;
 
-	/**
-	 * Trigger value - when this changes, the job will be re-executed
-	 * Typically set to the image digest or a hash of relevant inputs
-	 */
+	/** Trigger value - when this changes, the job will be re-executed */
 	trigger: pulumi.Input<string>;
 }
 
 /**
- * CloudRunJobExecution executes a Cloud Run Job and waits for completion.
+ * Executes a Cloud Run Job and waits for completion.
  * Re-executes when the trigger value changes.
  */
 export class CloudRunJobExecution extends pulumi.dynamic.Resource implements PulumiExecutionOutput {

@@ -16,8 +16,7 @@
 		"make:test": "make test",
 		"make:clean": "make clean",
 		"make:distclean": "make distclean",
-		"make:do-npm-pack": "make do-npm-pack",
-		"test:integration": "vitest run tests/integration --timeout=1800000"
+		"make:do-npm-pack": "make do-npm-pack"
 	},
 	"engines": {
 		"node": "20.18.0"
@@ -31,6 +30,7 @@
 	},
 	"dependencies": {
 		"@google-cloud/cloudbuild": "5.3.1",
+		"@google-cloud/run": "3.1.0",
 		"@google-cloud/secret-manager": "6.1.1",
 		"@pulumi/command": "1.1.3",
 		"@pulumi/gcp": "9.6.0",

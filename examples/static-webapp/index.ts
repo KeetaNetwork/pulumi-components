@@ -11,18 +11,12 @@ if (!gcpProject) {
 const name = `tf-static-${pulumi.getStack()}`.substring(0, 25);
 
 // === Static Web App ===
-// Deploys files to GCS bucket with backend bucket for load balancer
-const staticApp = new gcpComponents.apps.StaticWebApp(name, {
+export const staticApp = new gcpComponents.apps.StaticWebApp(name, {
 	staticFilesPath: path.join(__dirname, 'static'),
 	bucketConfig: { location: 'US' },
 	cacheControl: {
-		indexTTL: 10,      // 10s for index.html
-		assetsTTL: 86400,  // 1 day for assets
-		defaultTTL: 300    // 5 min default
+		indexTTL: 10,
+		assetsTTL: 86400,
+		defaultTTL: 300
 	}
 });
-
-// === Outputs ===
-export const bucketName = staticApp.bucket.name;
-export const bucketUrl = pulumi.interpolate`https://storage.googleapis.com/${staticApp.bucket.name}/index.html`;
-export const backendBucketName = staticApp.backendBucket.name;

@@ -1,6 +1,6 @@
 import * as pulumi from '@pulumi/pulumi';
 import * as gcp from '@pulumi/gcp';
-import { extractServiceUrl } from './common';
+import { extractServiceURL } from './common';
 import type { GCPCommonOptions } from './common';
 import type { GCPRegion } from './constants';
 import { GoogleCloudFolderWithArgs } from './bucket';
@@ -432,7 +432,7 @@ export interface CloudRunServiceArgs {
 		 */
 		build?: {
 			directory: string;
-			registryUrl?: string;
+			registryUrl?: pulumi.Input<string>;
 			imageName: string;
 			target?: string;
 			platform?: string;
@@ -979,7 +979,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 		this.mig = mig;
 
 		this.registerOutputs({
-			serviceUrl: service.statuses.apply(extractServiceUrl),
+			serviceUrl: service.statuses.apply(extractServiceURL),
 			backendService: backendService.id,
 			...(mig ? { mig: mig.instanceGroupManager.id } : {})
 		});
@@ -1100,7 +1100,7 @@ export class FullStackApp extends pulumi.ComponentResource {
 
 		this.registerOutputs({
 			frontendBucket: frontend.bucket.name,
-			backendUrl: backend.service.statuses.apply(extractServiceUrl),
+			backendUrl: backend.service.statuses.apply(extractServiceURL),
 			ips: this.ips
 		});
 	}

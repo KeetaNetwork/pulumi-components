@@ -26,6 +26,6 @@ export type GCPCommonOptions = {
 /**
  * Extract the service URL from Cloud Run service statuses
  */
-export function extractServiceUrl(statuses: gcp.types.output.cloudrun.ServiceStatus[] | undefined): string | undefined {
+export function extractServiceURL(statuses: gcp.types.output.cloudrun.ServiceStatus[] | undefined): string | undefined {
 	return(statuses?.[0]?.url);
 }

@@ -155,6 +155,13 @@ export class MigrationJob extends pulumi.ComponentResource {
 		}
 		this.serviceAccount = serviceAccount;
 
+		// Grant Cloud SQL Client role to service account
+		new gcp.projects.IAMMember(`${name}-cloudsql-client`, {
+			project: args.gcp.project,
+			role: 'roles/cloudsql.client',
+			member: pulumi.interpolate`serviceAccount:${serviceAccount.email}`
+		}, { parent: this });
+
 		// Build environment variables
 		const envVars: gcp.types.input.cloudrunv2.JobTemplateTemplateContainerEnv[] = [
 			{ name: 'PGUSER', value: username },
