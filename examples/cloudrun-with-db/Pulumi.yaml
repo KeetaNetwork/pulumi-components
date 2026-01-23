@@ -1,0 +1,6 @@
+name: cloudrun-with-db
+runtime:
+  name: nodejs
+  options:
+    typescript: true
+description: Cloud Run service with database connectivity test

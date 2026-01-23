@@ -783,20 +783,31 @@ export class CloudRunService extends pulumi.ComponentResource {
 			}
 		}
 
+		// Grant Cloud SQL client role if database is enabled
+		if (db && args.service?.grantIAMRoles !== false && !args.service?.serviceAccount) {
+			const cloudsqlClient = new gcp.projects.IAMMember(`${name}-cloudsql-client`, {
+				project: args.gcp.project,
+				role: 'roles/cloudsql.client',
+				member: pulumi.interpolate`serviceAccount:${serviceAccount.email}`
+			});
+			extraDependsOn = extraDependsOn
+				? pulumi.output(extraDependsOn).apply(function(deps) { return([...deps, cloudsqlClient]); })
+				: [cloudsqlClient];
+		}
+
 		let envManager: EnvManager | undefined;
 		// Create environment manager if we have environment variables OR a database (for auto-injected DB vars)
 		if (args.environment || db) {
 			const variables: { [key: string]: pulumi.Input<string> | { value: pulumi.Input<string>; secret: boolean }} = {};
 
-			// Auto-inject database connection environment variables if database is enabled
+			// Auto-inject database credentials (MC_CRED_* prefix avoids conflict with libpq auto-detection)
 			if (db) {
-				variables['PGUSER'] = db.username;
-				variables['PGPASSWORD'] = { value: db.password, secret: true };
-				variables['PGDATABASE'] = db.databaseName;
-				variables['PGHOST'] = pulumi.interpolate`/cloudsql/${db.hosts[args.region]?.connectionName}`;
-				variables['PGPORT'] = '5432';
-				// Also set DATABASE_URL for frameworks that use it
-				variables['DATABASE_URL'] = {
+				variables['MC_CRED_USER'] = db.username;
+				variables['MC_CRED_PASSWORD'] = { value: db.password, secret: true };
+				variables['MC_CRED_DATABASE'] = db.databaseName;
+				variables['MC_CRED_HOST'] = pulumi.interpolate`/cloudsql/${db.hosts[args.region]?.connectionName}`;
+				variables['MC_CRED_PORT'] = '5432';
+				variables['MC_CRED_URL'] = {
 					value: pulumi.interpolate`postgresql://${db.username}:${db.password}@/${db.databaseName}?host=/cloudsql/${db.hosts[args.region]?.connectionName}`,
 					secret: true
 				};
