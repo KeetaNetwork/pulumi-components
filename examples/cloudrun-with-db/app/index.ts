@@ -25,6 +25,19 @@ interface HealthResponse {
 	};
 }
 
+interface MigrationRow {
+	id: number;
+	name: string;
+	created_at: string;
+}
+
+interface MigrationsResponse {
+	status: 'ok' | 'error';
+	count?: number;
+	rows?: MigrationRow[];
+	message?: string;
+}
+
 function getEnvStatus(): HealthResponse['env'] {
 	return {
 		user: process.env.MC_CRED_USER ? 'set' : 'missing',
@@ -52,6 +65,24 @@ const server = http.createServer(async function(req, res) {
 				status: 'error',
 				message: err instanceof Error ? err.message : String(err),
 				env: getEnvStatus()
+			};
+			res.writeHead(500, { 'Content-Type': 'application/json' });
+			res.end(JSON.stringify(response));
+		}
+	} else if (req.url === '/migrations') {
+		try {
+			const result = await pool.query<MigrationRow>('SELECT * FROM test_migrations ORDER BY created_at DESC');
+			const response: MigrationsResponse = {
+				status: 'ok',
+				count: result.rowCount ?? 0,
+				rows: result.rows
+			};
+			res.writeHead(200, { 'Content-Type': 'application/json' });
+			res.end(JSON.stringify(response));
+		} catch (err) {
+			const response: MigrationsResponse = {
+				status: 'error',
+				message: err instanceof Error ? err.message : String(err)
 			};
 			res.writeHead(500, { 'Content-Type': 'application/json' });
 			res.end(JSON.stringify(response));

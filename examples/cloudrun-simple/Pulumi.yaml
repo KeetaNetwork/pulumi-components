@@ -1,5 +1,0 @@
-name: cloudrun-simple
-runtime: nodejs
-description: |
-  Self-contained test: Simple Cloud Run service.
-  Auto-detects GCP project from gcloud CLI or environment.

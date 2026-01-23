@@ -7,6 +7,7 @@ import { GoogleCloudFolderWithArgs } from './bucket';
 import { EnvManager } from './cloudrun';
 import { PostgresCloudSQL } from './sql';
 import { ContainerMIG } from './container';
+import { MigrationJob } from './migration';
 import * as components from '../docker';
 import { generateName } from '../../utils';
 
@@ -622,6 +623,48 @@ export interface CloudRunServiceArgs {
 		environmentOverrides?: { [key: string]: pulumi.Input<string> };
 	};
 
+	/**
+	 * Database migration configuration (optional)
+	 * Runs migrations using Cloud Run Job with the same image before starting the service
+	 */
+	migration?: {
+		/**
+		 * Whether to enable migrations
+		 */
+		enabled: boolean;
+
+		/**
+		 * Override container entrypoint for migration
+		 */
+		command?: string[];
+
+		/**
+		 * Override container arguments for migration
+		 */
+		args?: string[];
+
+		/**
+		 * Additional environment variables specific to migrations
+		 * These are merged with the main environment variables
+		 */
+		environmentOverrides?: { [key: string]: pulumi.Input<string> };
+
+		/**
+		 * CPU limit for migration job (default: 1)
+		 */
+		cpuLimit?: number;
+
+		/**
+		 * Memory limit for migration job in MB (default: 512)
+		 */
+		memoryLimit?: number;
+
+		/**
+		 * Task timeout in seconds (default: 600)
+		 */
+		taskTimeout?: number;
+	};
+
 }
 
 /**
@@ -637,6 +680,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 	readonly backendService: gcp.compute.BackendService;
 	readonly serviceAccount?: gcp.serviceaccount.Account | Pick<gcp.serviceaccount.Account, 'email'>;
 	readonly mig?: ContainerMIG;
+	readonly migration?: MigrationJob;
 
 	constructor(name: string, args: CloudRunServiceArgs, opts?: pulumi.ComponentResourceOptions) {
 		super('Keeta:GCP:CloudRunService', name, args, opts);
@@ -793,6 +837,31 @@ export class CloudRunService extends pulumi.ComponentResource {
 			extraDependsOn = extraDependsOn
 				? pulumi.output(extraDependsOn).apply(function(deps) { return([...deps, cloudsqlClient]); })
 				: [cloudsqlClient];
+		}
+
+		// Create migration job if enabled and database is configured
+		let migrationJob: MigrationJob | undefined;
+		if (args.migration?.enabled && db) {
+			migrationJob = new MigrationJob(`${name}-migration`, {
+				gcp: args.gcp,
+				region: args.region,
+				database: { instance: db },
+				image: imageUri,
+				command: args.migration.command,
+				args: args.migration.args,
+				vpc: vpcConnector ? { connector: vpcConnector } : undefined,
+				serviceAccount: serviceAccount,
+				cpuLimit: args.migration.cpuLimit,
+				memoryLimit: args.migration.memoryLimit,
+				taskTimeout: args.migration.taskTimeout,
+				environment: args.migration.environmentOverrides,
+				trigger: imageUri // Re-run migration when image changes
+			}, { parent: this });
+
+			// Make Cloud Run service depend on migration completing
+			extraDependsOn = extraDependsOn
+				? pulumi.output(extraDependsOn).apply(function(deps) { return([...deps, migrationJob as MigrationJob]); })
+				: [migrationJob];
 		}
 
 		let envManager: EnvManager | undefined;
@@ -988,11 +1057,13 @@ export class CloudRunService extends pulumi.ComponentResource {
 		this.backendService = backendService;
 		this.serviceAccount = serviceAccount;
 		this.mig = mig;
+		this.migration = migrationJob;
 
 		this.registerOutputs({
 			serviceUrl: service.statuses.apply(extractServiceURL),
 			backendService: backendService.id,
-			...(mig ? { mig: mig.instanceGroupManager.id } : {})
+			...(mig ? { mig: mig.instanceGroupManager.id } : {}),
+			...(migrationJob ? { migrationStatus: migrationJob.status } : {})
 		});
 	}
 }

@@ -50,6 +50,18 @@ export const backend = new gcpComponents.apps.CloudRunService(name, {
 	service: {
 		cpuLimit: 1,
 		memoryLimit: 512
+	},
+
+	// Run database migrations before starting the service
+	migration: {
+		enabled: true,
+		command: ['sh', '-c'],
+		args: [
+			'echo "Running migration..." && ' +
+			'psql -c "CREATE TABLE IF NOT EXISTS test_migrations (id serial PRIMARY KEY, name text, created_at timestamp DEFAULT now())" && ' +
+			'psql -c "INSERT INTO test_migrations (name) VALUES (\'migration-\' || extract(epoch from now())::text)" && ' +
+			'echo "Migration complete"'
+		]
 	}
 });
 

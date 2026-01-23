@@ -35,6 +35,21 @@ describe('CloudRunService with Database', function() {
 		expect(data.env.database).toBe('set');
 		expect(data.env.host).toBe('set');
 		expect(data.env.port).toBe('set');
+
+		// Verify migrations ran by querying the test_migrations table
+		const migrationsResponse = await fetch(`${serviceUrl}/migrations`);
+		const migrationsBody = await migrationsResponse.text();
+		expect(migrationsResponse.ok, `Migrations HTTP ${migrationsResponse.status}: ${migrationsBody}`).toBe(true);
+
+		const migrationsData = JSON.parse(migrationsBody) as {
+			status: string;
+			count: number;
+			rows: Array<{ id: number; name: string; created_at: string }>;
+		};
+		expect(migrationsData.status).toBe('ok');
+		expect(migrationsData.count).toBeGreaterThan(0);
+		expect(migrationsData.rows.length).toBeGreaterThan(0);
+		expect(migrationsData.rows[0].name).toMatch(/^migration-/);
 	}, 1_800_000); // 30 min timeout for Cloud SQL + image build
 
 	afterAll(async function() {
