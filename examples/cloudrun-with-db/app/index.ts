@@ -2,11 +2,11 @@ import * as http from 'http';
 import { Pool } from 'pg';
 
 const pool = new Pool({
-	user: process.env.MC_CRED_USER,
-	password: process.env.MC_CRED_PASSWORD,
-	database: process.env.MC_CRED_DATABASE,
-	host: process.env.MC_CRED_HOST,
-	port: parseInt(process.env.MC_CRED_PORT ?? '5432', 10)
+	user: process.env.MC_PSQL_DB_USER,
+	password: process.env.MC_PSQL_DB_PASSWORD,
+	database: process.env.MC_PSQL_DB_NAME,
+	host: process.env.MC_PSQL_DB_HOST,
+	port: parseInt(process.env.MC_PSQL_DB_PORT ?? '5432', 10)
 });
 
 const PORT = process.env.PORT ?? 8080;
@@ -40,11 +40,11 @@ interface MigrationsResponse {
 
 function getEnvStatus(): HealthResponse['env'] {
 	return {
-		user: process.env.MC_CRED_USER ? 'set' : 'missing',
-		password: process.env.MC_CRED_PASSWORD ? 'set' : 'missing',
-		database: process.env.MC_CRED_DATABASE ? 'set' : 'missing',
-		host: process.env.MC_CRED_HOST ? 'set' : 'missing',
-		port: process.env.MC_CRED_PORT ? 'set' : 'missing'
+		user: process.env.MC_PSQL_DB_USER ? 'set' : 'missing',
+		password: process.env.MC_PSQL_DB_PASSWORD ? 'set' : 'missing',
+		database: process.env.MC_PSQL_DB_NAME ? 'set' : 'missing',
+		host: process.env.MC_PSQL_DB_HOST ? 'set' : 'missing',
+		port: process.env.MC_PSQL_DB_PORT ? 'set' : 'missing'
 	};
 }
 

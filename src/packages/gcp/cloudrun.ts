@@ -9,7 +9,7 @@ export interface EnvironmentGCPSecretData {
 	name: pulumi.Input<string>;
 }
 
-interface EnvironmentVariables {
+export interface EnvironmentVariables {
 	[name: string]: pulumi.Input<string | number> | EnvironmentGCPSecretData | {
 		value: pulumi.Input<string | number>;
 		secret: boolean;

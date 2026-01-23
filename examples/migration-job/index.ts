@@ -66,9 +66,9 @@ export const migration = new gcpComponents.migration.MigrationJob(`${name}-migra
 	image: 'postgres:15-alpine',
 	command: ['/bin/sh', '-c'],
 	args: [
-		'echo "CREATE TABLE IF NOT EXISTS test_table (id SERIAL PRIMARY KEY, name TEXT);" | psql -v ON_ERROR_STOP=1 && ' +
-		'echo "INSERT INTO test_table (name) VALUES (\'test\');" | psql -v ON_ERROR_STOP=1 && ' +
-		'psql -v ON_ERROR_STOP=1 -c "SELECT COUNT(*) FROM test_table;"'
+		'psql "$MC_PSQL_DB_URL" -v ON_ERROR_STOP=1 -c "CREATE TABLE IF NOT EXISTS test_table (id SERIAL PRIMARY KEY, name TEXT);" && ' +
+		'psql "$MC_PSQL_DB_URL" -v ON_ERROR_STOP=1 -c "INSERT INTO test_table (name) VALUES (\'test\');" && ' +
+		'psql "$MC_PSQL_DB_URL" -v ON_ERROR_STOP=1 -c "SELECT COUNT(*) FROM test_table;"'
 	],
 	vpc: { connector: vpcConnector },
 	cpuLimit: 1,

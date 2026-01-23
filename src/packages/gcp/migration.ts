@@ -4,6 +4,8 @@ import type { GCPCommonOptions } from './common';
 import type { GCPRegion } from './constants';
 import type { PostgresCloudSQL } from './sql';
 import { CloudRunJobExecution } from './cloudrun-job';
+import { EnvManager } from './cloudrun';
+import type { EnvironmentVariables } from './cloudrun';
 import { generateName } from '../../utils';
 
 /**
@@ -109,7 +111,7 @@ export interface MigrationJobArgs {
  *
  * Features:
  * - Works with existing PostgresCloudSQL instances or explicit credentials
- * - Auto-injects PGUSER, PGPASSWORD, PGDATABASE, PGHOST, DATABASE_URL
+ * - Auto-injects MC_PSQL_DB_* vars for database connection
  * - Uses Cloud SQL volume mount for secure connection
  * - Re-runs when trigger value changes (e.g., new image)
  */
@@ -162,25 +164,25 @@ export class MigrationJob extends pulumi.ComponentResource {
 			member: pulumi.interpolate`serviceAccount:${serviceAccount.email}`
 		}, { parent: this });
 
-		// Build environment variables
-		const envVars: gcp.types.input.cloudrunv2.JobTemplateTemplateContainerEnv[] = [
-			{ name: 'PGUSER', value: username },
-			{ name: 'PGPASSWORD', value: password },
-			{ name: 'PGDATABASE', value: databaseName },
-			{ name: 'PGHOST', value: pulumi.interpolate`/cloudsql/${connectionName}` },
-			{ name: 'PGPORT', value: '5432' },
-			{
-				name: 'DATABASE_URL',
-				value: pulumi.interpolate`postgresql://${username}:${password}@/${databaseName}?host=/cloudsql/${connectionName}`
-			}
-		];
+		// Build environment variables (MC_PSQL_DB_* prefix avoids conflict with libpq auto-detection)
+		const variables: EnvironmentVariables = {
+			MC_PSQL_DB_USER: username,
+			MC_PSQL_DB_PASSWORD: { value: password, secret: true },
+			MC_PSQL_DB_NAME: databaseName,
+			MC_PSQL_DB_HOST: pulumi.interpolate`/cloudsql/${connectionName}`,
+			MC_PSQL_DB_PORT: '5432',
+			MC_PSQL_DB_URL: {
+				value: pulumi.interpolate`postgresql://${username}:${password}@/${databaseName}?host=/cloudsql/${connectionName}`,
+				secret: true
+			},
+			...args.environment
+		};
 
-		// Add user-provided environment variables
-		if (args.environment) {
-			for (const [key, value] of Object.entries(args.environment)) {
-				envVars.push({ name: key, value });
-			}
-		}
+		const envManager = new EnvManager(`${name}-env`, {
+			serviceAccount: pulumi.interpolate`serviceAccount:${serviceAccount.email}`,
+			secretRegionName: args.region,
+			variables
+		}, { parent: this });
 
 		// Cloud SQL volume mount
 		const volumes: gcp.types.input.cloudrunv2.JobTemplateTemplateVolume[] = [{
@@ -211,7 +213,7 @@ export class MigrationJob extends pulumi.ComponentResource {
 						image: args.image,
 						commands: args.command,
 						args: args.args,
-						envs: envVars,
+						envs: envManager.cloudRunJobVariableOutput,
 						resources: {
 							limits: {
 								cpu: String(args.cpuLimit ?? 1),

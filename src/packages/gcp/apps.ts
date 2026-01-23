@@ -834,15 +834,14 @@ export class CloudRunService extends pulumi.ComponentResource {
 				role: 'roles/cloudsql.client',
 				member: pulumi.interpolate`serviceAccount:${serviceAccount.email}`
 			});
-			extraDependsOn = extraDependsOn
-				? pulumi.output(extraDependsOn).apply(function(deps) { return([...deps, cloudsqlClient]); })
-				: [cloudsqlClient];
+			extraDependsOn = pulumi.output(extraDependsOn ?? []).apply(function(deps) {
+				return([...deps, cloudsqlClient]);
+			});
 		}
 
 		// Create migration job if enabled and database is configured
-		let migrationJob: MigrationJob | undefined;
-		if (args.migration?.enabled && db) {
-			migrationJob = new MigrationJob(`${name}-migration`, {
+		const migration = args.migration?.enabled && db
+			? new MigrationJob(`${name}-migration`, {
 				gcp: args.gcp,
 				region: args.region,
 				database: { instance: db },
@@ -856,12 +855,14 @@ export class CloudRunService extends pulumi.ComponentResource {
 				taskTimeout: args.migration.taskTimeout,
 				environment: args.migration.environmentOverrides,
 				trigger: imageUri // Re-run migration when image changes
-			}, { parent: this });
+			}, { parent: this })
+			: undefined;
 
+		if (migration) {
 			// Make Cloud Run service depend on migration completing
-			extraDependsOn = extraDependsOn
-				? pulumi.output(extraDependsOn).apply(function(deps) { return([...deps, migrationJob as MigrationJob]); })
-				: [migrationJob];
+			extraDependsOn = pulumi.output(extraDependsOn ?? []).apply(function(deps) {
+				return([...deps, migration]);
+			});
 		}
 
 		let envManager: EnvManager | undefined;
@@ -869,14 +870,14 @@ export class CloudRunService extends pulumi.ComponentResource {
 		if (args.environment || db) {
 			const variables: { [key: string]: pulumi.Input<string> | { value: pulumi.Input<string>; secret: boolean }} = {};
 
-			// Auto-inject database credentials (MC_CRED_* prefix avoids conflict with libpq auto-detection)
+			// Auto-inject database credentials (MC_PSQL_DB_* prefix avoids conflict with libpq auto-detection)
 			if (db) {
-				variables['MC_CRED_USER'] = db.username;
-				variables['MC_CRED_PASSWORD'] = { value: db.password, secret: true };
-				variables['MC_CRED_DATABASE'] = db.databaseName;
-				variables['MC_CRED_HOST'] = pulumi.interpolate`/cloudsql/${db.hosts[args.region]?.connectionName}`;
-				variables['MC_CRED_PORT'] = '5432';
-				variables['MC_CRED_URL'] = {
+				variables['MC_PSQL_DB_USER'] = db.username;
+				variables['MC_PSQL_DB_PASSWORD'] = { value: db.password, secret: true };
+				variables['MC_PSQL_DB_NAME'] = db.databaseName;
+				variables['MC_PSQL_DB_HOST'] = pulumi.interpolate`/cloudsql/${db.hosts[args.region]?.connectionName}`;
+				variables['MC_PSQL_DB_PORT'] = '5432';
+				variables['MC_PSQL_DB_URL'] = {
 					value: pulumi.interpolate`postgresql://${db.username}:${db.password}@/${db.databaseName}?host=/cloudsql/${db.hosts[args.region]?.connectionName}`,
 					secret: true
 				};
@@ -1057,13 +1058,13 @@ export class CloudRunService extends pulumi.ComponentResource {
 		this.backendService = backendService;
 		this.serviceAccount = serviceAccount;
 		this.mig = mig;
-		this.migration = migrationJob;
+		this.migration = migration;
 
 		this.registerOutputs({
 			serviceUrl: service.statuses.apply(extractServiceURL),
 			backendService: backendService.id,
 			...(mig ? { mig: mig.instanceGroupManager.id } : {}),
-			...(migrationJob ? { migrationStatus: migrationJob.status } : {})
+			...(migration ? { migrationStatus: migration.status } : {})
 		});
 	}
 }
