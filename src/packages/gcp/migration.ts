@@ -169,7 +169,7 @@ export class MigrationJob extends pulumi.ComponentResource {
 			MC_PSQL_DB_USER: username,
 			MC_PSQL_DB_PASSWORD: { value: password, secret: true },
 			MC_PSQL_DB_NAME: databaseName,
-			MC_PSQL_DB_HOST: pulumi.interpolate`/cloudsql/${connectionName}`,
+			MC_PSQL_DB_SOCKET_DIR: pulumi.interpolate`/cloudsql/${connectionName}`,
 			MC_PSQL_DB_PORT: '5432',
 			MC_PSQL_DB_URL: {
 				value: pulumi.interpolate`postgresql://${username}:${password}@/${databaseName}?host=/cloudsql/${connectionName}`,
@@ -197,6 +197,12 @@ export class MigrationJob extends pulumi.ComponentResource {
 			mountPath: '/cloudsql'
 		}];
 
+		// Configure VPC access if connector is provided
+		let vpcAccess: { connector: pulumi.Output<string>; egress: string } | undefined;
+		if (args.vpc?.connector) {
+			vpcAccess = { connector: args.vpc.connector.id, egress: 'PRIVATE_RANGES_ONLY' };
+		}
+
 		// Create Cloud Run Job
 		this.job = new gcp.cloudrunv2.Job(`${name}-job`, {
 			location: args.region,
@@ -204,10 +210,7 @@ export class MigrationJob extends pulumi.ComponentResource {
 			template: {
 				template: {
 					serviceAccount: serviceAccount.email,
-					vpcAccess: args.vpc?.connector ? {
-						connector: args.vpc.connector.id,
-						egress: 'PRIVATE_RANGES_ONLY'
-					} : undefined,
+					vpcAccess,
 					volumes,
 					containers: [{
 						image: args.image,

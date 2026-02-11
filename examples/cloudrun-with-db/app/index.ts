@@ -5,7 +5,7 @@ const pool = new Pool({
 	user: process.env.MC_PSQL_DB_USER,
 	password: process.env.MC_PSQL_DB_PASSWORD,
 	database: process.env.MC_PSQL_DB_NAME,
-	host: process.env.MC_PSQL_DB_HOST,
+	host: process.env.MC_PSQL_DB_SOCKET_DIR,
 	port: parseInt(process.env.MC_PSQL_DB_PORT ?? '5432', 10)
 });
 
@@ -43,7 +43,7 @@ function getEnvStatus(): HealthResponse['env'] {
 		user: process.env.MC_PSQL_DB_USER ? 'set' : 'missing',
 		password: process.env.MC_PSQL_DB_PASSWORD ? 'set' : 'missing',
 		database: process.env.MC_PSQL_DB_NAME ? 'set' : 'missing',
-		host: process.env.MC_PSQL_DB_HOST ? 'set' : 'missing',
+		host: process.env.MC_PSQL_DB_SOCKET_DIR ? 'set' : 'missing',
 		port: process.env.MC_PSQL_DB_PORT ? 'set' : 'missing'
 	};
 }

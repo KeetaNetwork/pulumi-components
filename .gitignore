@@ -2,3 +2,5 @@ node_modules/
 /dist
 /.tsbuildinfo
 /keetanetwork-pulumi-components-*.tgz
+# Ignore Pulumi test files
+Pulumi.test-*.yaml

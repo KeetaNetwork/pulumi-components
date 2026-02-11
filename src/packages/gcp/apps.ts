@@ -397,11 +397,16 @@ export class StaticWebApp extends pulumi.ComponentResource {
 			this.ips = lbResources.ips;
 		}
 
-		this.registerOutputs({
+		const outputs: { [key: string]: unknown } = {
 			bucket: bucket.name,
-			backendBucket: backendBucket.id,
-			...(this.ips ? { ips: this.ips } : {})
-		});
+			backendBucket: backendBucket.id
+		};
+
+		if (this.ips) {
+			outputs.ips = this.ips;
+		}
+
+		this.registerOutputs(outputs);
 	}
 }
 
@@ -706,7 +711,8 @@ export class CloudRunService extends pulumi.ComponentResource {
 			}, { parent: vpc });
 
 			const connectorCIDR = args.vpc?.connectorCIDR ?? '10.97.36.0/28';
-			// VPC connector name max 25 chars: ^[a-z][-a-z0-9]{0,23}[a-z0-9]$
+			// GCP enforces a 25-char limit on connector IDs: ^[a-z][-a-z0-9]{0,23}[a-z0-9]$
+			// Note: If we allow auto-generated names, we receive an error: Error creating Connector: googleapi: Error 400: Connector ID must follow the pattern ^[a-z][-a-z0-9]{0,23}[a-z0-9]$.
 			const connectorName = `${name}-vpc`.substring(0, 25);
 			vpcConnector = new gcp.vpcaccess.Connector(`${name}-vpc-connector`, {
 				name: connectorName,
@@ -763,6 +769,13 @@ export class CloudRunService extends pulumi.ComponentResource {
 				buildArgs.NODE_IMAGE = build.nodeImage;
 			}
 
+			let versioning: ConstructorParameters<typeof components.DockerImage>[1]['versioning'];
+			if (build.githubSha) {
+				versioning = { type: 'PLAIN', value: build.githubSha };
+			} else {
+				versioning = { type: 'FILE', fromFile: build.directory };
+			}
+
 			const imageConfig: ConstructorParameters<typeof components.DockerImage>[1] = {
 				imageName: build.imageName,
 				registryUrl: build.registryUrl ?? `${args.region}-docker.pkg.dev/${args.gcp.project}/keeta`,
@@ -773,13 +786,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 					type: 'DIRECTORY',
 					directory: build.directory
 				},
-				versioning: build.githubSha ? {
-					type: 'PLAIN',
-					value: build.githubSha
-				} : {
-					type: 'FILE',
-					fromFile: build.directory
-				},
+				versioning,
 				secrets: build.secrets
 			};
 
@@ -840,28 +847,33 @@ export class CloudRunService extends pulumi.ComponentResource {
 		}
 
 		// Create migration job if enabled and database is configured
-		const migration = args.migration?.enabled && db
-			? new MigrationJob(`${name}-migration`, {
+		let migration: MigrationJob | undefined;
+		if (args.migration?.enabled && db) {
+			let vpcConfig: { connector: gcp.vpcaccess.Connector } | undefined;
+			if (vpcConnector) {
+				vpcConfig = { connector: vpcConnector };
+			}
+
+			migration = new MigrationJob(`${name}-migration`, {
 				gcp: args.gcp,
 				region: args.region,
 				database: { instance: db },
 				image: imageUri,
 				command: args.migration.command,
 				args: args.migration.args,
-				vpc: vpcConnector ? { connector: vpcConnector } : undefined,
+				vpc: vpcConfig,
 				serviceAccount: serviceAccount,
 				cpuLimit: args.migration.cpuLimit,
 				memoryLimit: args.migration.memoryLimit,
 				taskTimeout: args.migration.taskTimeout,
 				environment: args.migration.environmentOverrides,
 				trigger: imageUri // Re-run migration when image changes
-			}, { parent: this })
-			: undefined;
+			}, { parent: this });
 
-		if (migration) {
 			// Make Cloud Run service depend on migration completing
+			const migrationDep = migration;
 			extraDependsOn = pulumi.output(extraDependsOn ?? []).apply(function(deps) {
-				return([...deps, migration]);
+				return([...deps, migrationDep]);
 			});
 		}
 
@@ -875,7 +887,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 				variables['MC_PSQL_DB_USER'] = db.username;
 				variables['MC_PSQL_DB_PASSWORD'] = { value: db.password, secret: true };
 				variables['MC_PSQL_DB_NAME'] = db.databaseName;
-				variables['MC_PSQL_DB_HOST'] = pulumi.interpolate`/cloudsql/${db.hosts[args.region]?.connectionName}`;
+				variables['MC_PSQL_DB_SOCKET_DIR'] = pulumi.interpolate`/cloudsql/${db.hosts[args.region]?.connectionName}`;
 				variables['MC_PSQL_DB_PORT'] = '5432';
 				variables['MC_PSQL_DB_URL'] = {
 					value: pulumi.interpolate`postgresql://${db.username}:${db.password}@/${db.databaseName}?host=/cloudsql/${db.hosts[args.region]?.connectionName}`,
@@ -1060,12 +1072,18 @@ export class CloudRunService extends pulumi.ComponentResource {
 		this.mig = mig;
 		this.migration = migration;
 
-		this.registerOutputs({
+		const serviceOutputs: { [key: string]: unknown } = {
 			serviceUrl: service.statuses.apply(extractServiceURL),
-			backendService: backendService.id,
-			...(mig ? { mig: mig.instanceGroupManager.id } : {}),
-			...(migration ? { migrationStatus: migration.status } : {})
-		});
+			backendService: backendService.id
+		};
+		if (mig) {
+			serviceOutputs.mig = mig.instanceGroupManager.id;
+		}
+		if (migration) {
+			serviceOutputs.migrationStatus = migration.status;
+		}
+
+		this.registerOutputs(serviceOutputs);
 	}
 }
 
