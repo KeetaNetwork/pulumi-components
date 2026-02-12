@@ -707,9 +707,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 			}, { parent: vpc });
 
 			const connectorCIDR = args.vpc?.connectorCIDR ?? '10.97.36.0/28';
-			// GCP enforces a 25-char limit on connector IDs: ^[a-z][-a-z0-9]{0,23}[a-z0-9]$
-			// Note: If we allow auto-generated names, we receive an error: Error creating Connector: googleapi: Error 400: Connector ID must follow the pattern ^[a-z][-a-z0-9]{0,23}[a-z0-9]$.
-			const connectorName = `${name}-vpc`.substring(0, 25);
+			const connectorName = generateName(name, 'vpc', 25);
 			vpcConnector = new gcp.vpcaccess.Connector(`${name}-vpc-connector`, {
 				name: connectorName,
 				ipCidrRange: connectorCIDR,
