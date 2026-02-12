@@ -8,6 +8,7 @@ import { EnvManager } from './cloudrun';
 import { PostgresCloudSQL } from './sql';
 import { ContainerMIG } from './container';
 import { MigrationJob } from './migration';
+import { buildDatabaseEnvVars } from './database-env';
 import * as components from '../docker';
 import { generateName } from '../../utils';
 
@@ -639,8 +640,12 @@ export interface CloudRunServiceArgs {
 		enabled: boolean;
 
 		/**
-		 * Shell script to run as the migration command.
-		 * Automatically wrapped with SSL cert setup for psql/libpq.
+		 * Container entrypoint override (e.g., ['node', 'dist/migrate.js'])
+		 */
+		command?: string[];
+
+		/**
+		 * Arguments passed to the container command
 		 */
 		args?: string[];
 
@@ -853,6 +858,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 				region: args.region,
 				database: { instance: db },
 				image: imageUri,
+				command: args.migration.command,
 				args: args.migration.args,
 				vpc: vpcConfig,
 				serviceAccount: serviceAccount,
@@ -875,20 +881,16 @@ export class CloudRunService extends pulumi.ComponentResource {
 		if (args.environment || db) {
 			const variables: { [key: string]: pulumi.Input<string> | { value: pulumi.Input<string>; secret: boolean }} = {};
 
-			// Auto-inject database credentials (MC_PSQL_DB_* prefix avoids conflict with libpq auto-detection)
+			// Auto-inject database credentials
 			if (db) {
-				const dbHost = db.hosts[args.region]?.host ?? '';
-				variables['MC_PSQL_DB_USER'] = db.username;
-				variables['MC_PSQL_DB_PASSWORD'] = { value: db.password, secret: true };
-				variables['MC_PSQL_DB_NAME'] = db.databaseName;
-				variables['MC_PSQL_DB_HOST'] = dbHost;
-				variables['MC_PSQL_DB_PORT'] = '5432';
-				variables['MC_PSQL_DB_SSLMODE'] = 'require';
-				variables['MC_PSQL_DB_CA_CERT'] = db.hosts[args.region]?.caCertificate ?? '';
-				variables['MC_PSQL_DB_URL'] = {
-					value: pulumi.interpolate`postgresql://${db.username}:${db.password}@${dbHost}:5432/${db.databaseName}?sslmode=require`,
-					secret: true
-				};
+				const dbVars = buildDatabaseEnvVars({
+					host: db.hosts[args.region]?.host ?? '',
+					username: db.username,
+					password: db.password,
+					databaseName: db.databaseName,
+					caCertificate: db.hosts[args.region]?.caCertificate ?? ''
+				});
+				Object.assign(variables, dbVars);
 			}
 
 			// Add user-provided environment variables (can override DB vars)
@@ -988,33 +990,34 @@ export class CloudRunService extends pulumi.ComponentResource {
 				});
 			}
 
-			// Prepare environment variables for MIG (merge base env + overrides)
-			const baseEnv = args.environment ?? {};
-			const overrideEnv = args.mig.environmentOverrides ?? {};
+			// Build MIG environment variables through EnvManager (resolves secrets at deploy time)
+			const migVariables: { [key: string]: pulumi.Input<string> | { value: pulumi.Input<string>; secret: boolean }} = {};
 
-			// Convert environment to the format expected by ContainerMIG
-			const migEnvVars = pulumi.all([baseEnv, overrideEnv]).apply(function([base, override]) {
-				const merged = { ...base, ...override };
+			if (db) {
+				const dbVars = buildDatabaseEnvVars({
+					host: db.hosts[args.region]?.host ?? '',
+					username: db.username,
+					password: db.password,
+					databaseName: db.databaseName,
+					caCertificate: db.hosts[args.region]?.caCertificate ?? ''
+				});
+				Object.assign(migVariables, dbVars);
+			}
 
-				// MIG does not support secret environment variables
-				for (const [key, val] of Object.entries(merged)) {
-					if (typeof val === 'object' && val !== null && 'secret' in val && val.secret) {
-						throw(new Error(`MIG does not support secret environment variables. Use Google Secret Manager instead. Variable: ${key}`));
-					}
-				}
+			if (args.environment) {
+				Object.assign(migVariables, args.environment);
+			}
+			if (args.mig.environmentOverrides) {
+				Object.assign(migVariables, args.mig.environmentOverrides);
+			}
 
-				return(Object.entries(merged)
-					.filter(function(entry): entry is [string, string | { value: string; secret?: boolean }] {
-						return(entry[1] !== undefined);
-					})
-					.map(function([envName, envValue]) {
-						// Handle both string and object-with-value format
-						if (typeof envValue === 'object' && envValue !== null && 'value' in envValue) {
-							return({ name: envName, value: String(envValue.value) });
-						}
-						return({ name: envName, value: String(envValue) });
-					}));
+			const migEnvManager = new EnvManager(`${name}-mig-env`, {
+				serviceAccount: pulumi.interpolate`serviceAccount:${serviceAccount.email}`,
+				secretRegionName: args.region,
+				variables: migVariables
 			});
+
+			const migEnvVars = migEnvManager.resolvedVariableOutput;
 
 			// Create external IP if requested
 			let extIP: gcp.compute.Address | undefined;

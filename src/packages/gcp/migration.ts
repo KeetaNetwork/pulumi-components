@@ -6,6 +6,7 @@ import type { PostgresCloudSQL } from './sql';
 import { CloudRunJobExecution } from './cloudrun-job';
 import { EnvManager } from './cloudrun';
 import type { EnvironmentVariables } from './cloudrun';
+import { buildDatabaseEnvVars } from './database-env';
 import { generateName } from '../../utils';
 
 /**
@@ -56,8 +57,12 @@ export interface MigrationJobArgs {
 	image: pulumi.Input<string>;
 
 	/**
-	 * Shell script to run as the migration command.
-	 * Automatically wrapped with SSL cert setup for psql/libpq.
+	 * Container entrypoint override (e.g., ['node', 'dist/migrate.js'])
+	 */
+	command?: string[];
+
+	/**
+	 * Arguments passed to the container command
 	 */
 	args?: string[];
 
@@ -165,19 +170,15 @@ export class MigrationJob extends pulumi.ComponentResource {
 			member: pulumi.interpolate`serviceAccount:${serviceAccount.email}`
 		}, { parent: this });
 
-		// Build environment variables (MC_PSQL_DB_* prefix avoids conflict with libpq auto-detection)
+		// Build environment variables
 		const variables: EnvironmentVariables = {
-			MC_PSQL_DB_USER: username,
-			MC_PSQL_DB_PASSWORD: { value: password, secret: true },
-			MC_PSQL_DB_NAME: databaseName,
-			MC_PSQL_DB_HOST: dbHost,
-			MC_PSQL_DB_PORT: '5432',
-			MC_PSQL_DB_SSLMODE: 'require',
-			MC_PSQL_DB_CA_CERT: caCertificate,
-			MC_PSQL_DB_URL: {
-				value: pulumi.interpolate`postgresql://${username}:${password}@${dbHost}:5432/${databaseName}?sslmode=require`,
-				secret: true
-			},
+			...buildDatabaseEnvVars({
+				host: dbHost,
+				username,
+				password,
+				databaseName,
+				caCertificate
+			}),
 			...args.environment
 		};
 
@@ -193,20 +194,6 @@ export class MigrationJob extends pulumi.ComponentResource {
 			vpcAccess = { connector: args.vpc.connector.id, egress: 'PRIVATE_RANGES_ONLY' };
 		}
 
-		// Export standard PG* vars so psql commands need no connection args
-		const pgSetup = [
-			'echo "$MC_PSQL_DB_CA_CERT" > /tmp/mc-psql-ca.pem',
-			'export PGSSLROOTCERT=/tmp/mc-psql-ca.pem',
-			'export PGHOST="$MC_PSQL_DB_HOST"',
-			'export PGPORT="$MC_PSQL_DB_PORT"',
-			'export PGUSER="$MC_PSQL_DB_USER"',
-			'export PGPASSWORD="$MC_PSQL_DB_PASSWORD"',
-			'export PGDATABASE="$MC_PSQL_DB_NAME"',
-			'export PGSSLMODE="$MC_PSQL_DB_SSLMODE"'
-		].join(' && ');
-		const userScript = args.args?.join(' ') ?? '';
-		const script = userScript ? `${pgSetup} && ${userScript}` : pgSetup;
-
 		// Create Cloud Run Job (connects to Cloud SQL via VPC private IP)
 		this.job = new gcp.cloudrunv2.Job(`${name}-job`, {
 			location: args.region,
@@ -217,8 +204,8 @@ export class MigrationJob extends pulumi.ComponentResource {
 					vpcAccess,
 					containers: [{
 						image: args.image,
-						commands: ['sh', '-c'],
-						args: [script],
+						commands: args.command,
+						args: args.args,
 						envs: envManager.cloudRunJobVariableOutput,
 						resources: {
 							limits: {
