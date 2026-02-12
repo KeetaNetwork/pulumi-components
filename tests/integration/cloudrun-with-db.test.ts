@@ -56,5 +56,5 @@ describe('CloudRunService with Database', function() {
 		if (deploymentSucceeded || outputs) {
 			await destroyStack('examples/cloudrun-with-db', stackName);
 		}
-	}, 900_000); // 15 min timeout for destroy
+	}, 1_800_000); // 30 min timeout for destroy (Cloud SQL teardown is slow)
 });

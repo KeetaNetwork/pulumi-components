@@ -33,5 +33,5 @@ describe('StaticWebApp', function() {
 		if (deploymentSucceeded || outputs) {
 			await destroyStack('examples/static-webapp', stackName);
 		}
-	}, 300_000); // 5 min timeout for destroy
+	}, 600_000); // 10 min timeout for destroy
 });

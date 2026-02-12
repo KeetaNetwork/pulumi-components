@@ -13,7 +13,7 @@ import { generateName } from '../../utils';
  */
 interface DatabaseInstanceConfig {
 	instance: PostgresCloudSQL;
-	connectionName?: never;
+	host?: never;
 	username?: never;
 	password?: never;
 	databaseName?: never;
@@ -24,7 +24,8 @@ interface DatabaseInstanceConfig {
  */
 interface DatabaseCredentialsConfig {
 	instance?: never;
-	connectionName: pulumi.Input<string>;
+	host: pulumi.Input<string>;
+	caCertificate?: pulumi.Input<string>;
 	username: pulumi.Input<string>;
 	password: pulumi.Input<string>;
 	databaseName: pulumi.Input<string>;
@@ -55,12 +56,8 @@ export interface MigrationJobArgs {
 	image: pulumi.Input<string>;
 
 	/**
-	 * Override container entrypoint
-	 */
-	command?: string[];
-
-	/**
-	 * Override container arguments
+	 * Shell script to run as the migration command.
+	 * Automatically wrapped with SSL cert setup for psql/libpq.
 	 */
 	args?: string[];
 
@@ -126,19 +123,23 @@ export class MigrationJob extends pulumi.ComponentResource {
 		super('Keeta:GCP:MigrationJob', name, args, opts);
 
 		// Extract database connection info
-		let connectionName: pulumi.Input<string>;
+		let dbHost: pulumi.Input<string>;
 		let username: pulumi.Input<string>;
 		let password: pulumi.Input<string>;
 		let databaseName: pulumi.Input<string>;
+		let caCertificate: pulumi.Input<string>;
 
 		if ('instance' in args.database && args.database.instance) {
 			const db = args.database.instance;
-			connectionName = db.hosts[args.region]?.connectionName ?? db.hosts[db.primaryRegion]?.connectionName ?? '';
+			const hostInfo = db.hosts[args.region] ?? db.hosts[db.primaryRegion];
+			dbHost = hostInfo?.host ?? '';
+			caCertificate = hostInfo?.caCertificate ?? '';
 			username = db.username;
 			password = db.password;
 			databaseName = db.databaseName;
 		} else {
-			connectionName = args.database.connectionName;
+			dbHost = args.database.host;
+			caCertificate = args.database.caCertificate ?? '';
 			username = args.database.username;
 			password = args.database.password;
 			databaseName = args.database.databaseName;
@@ -169,10 +170,12 @@ export class MigrationJob extends pulumi.ComponentResource {
 			MC_PSQL_DB_USER: username,
 			MC_PSQL_DB_PASSWORD: { value: password, secret: true },
 			MC_PSQL_DB_NAME: databaseName,
-			MC_PSQL_DB_SOCKET_DIR: pulumi.interpolate`/cloudsql/${connectionName}`,
+			MC_PSQL_DB_HOST: dbHost,
 			MC_PSQL_DB_PORT: '5432',
+			MC_PSQL_DB_SSLMODE: 'require',
+			MC_PSQL_DB_CA_CERT: caCertificate,
 			MC_PSQL_DB_URL: {
-				value: pulumi.interpolate`postgresql://${username}:${password}@/${databaseName}?host=/cloudsql/${connectionName}`,
+				value: pulumi.interpolate`postgresql://${username}:${password}@${dbHost}:5432/${databaseName}?sslmode=require`,
 				secret: true
 			},
 			...args.environment
@@ -184,26 +187,27 @@ export class MigrationJob extends pulumi.ComponentResource {
 			variables
 		}, { parent: this });
 
-		// Cloud SQL volume mount
-		const volumes: gcp.types.input.cloudrunv2.JobTemplateTemplateVolume[] = [{
-			name: 'cloudsql',
-			cloudSqlInstance: {
-				instances: [connectionName]
-			}
-		}];
-
-		const volumeMounts: gcp.types.input.cloudrunv2.JobTemplateTemplateContainerVolumeMount[] = [{
-			name: 'cloudsql',
-			mountPath: '/cloudsql'
-		}];
-
 		// Configure VPC access if connector is provided
 		let vpcAccess: { connector: pulumi.Output<string>; egress: string } | undefined;
 		if (args.vpc?.connector) {
 			vpcAccess = { connector: args.vpc.connector.id, egress: 'PRIVATE_RANGES_ONLY' };
 		}
 
-		// Create Cloud Run Job
+		// Export standard PG* vars so psql commands need no connection args
+		const pgSetup = [
+			'echo "$MC_PSQL_DB_CA_CERT" > /tmp/mc-psql-ca.pem',
+			'export PGSSLROOTCERT=/tmp/mc-psql-ca.pem',
+			'export PGHOST="$MC_PSQL_DB_HOST"',
+			'export PGPORT="$MC_PSQL_DB_PORT"',
+			'export PGUSER="$MC_PSQL_DB_USER"',
+			'export PGPASSWORD="$MC_PSQL_DB_PASSWORD"',
+			'export PGDATABASE="$MC_PSQL_DB_NAME"',
+			'export PGSSLMODE="$MC_PSQL_DB_SSLMODE"'
+		].join(' && ');
+		const userScript = args.args?.join(' ') ?? '';
+		const script = userScript ? `${pgSetup} && ${userScript}` : pgSetup;
+
+		// Create Cloud Run Job (connects to Cloud SQL via VPC private IP)
 		this.job = new gcp.cloudrunv2.Job(`${name}-job`, {
 			location: args.region,
 			deletionProtection: false,
@@ -211,19 +215,17 @@ export class MigrationJob extends pulumi.ComponentResource {
 				template: {
 					serviceAccount: serviceAccount.email,
 					vpcAccess,
-					volumes,
 					containers: [{
 						image: args.image,
-						commands: args.command,
-						args: args.args,
+						commands: ['sh', '-c'],
+						args: [script],
 						envs: envManager.cloudRunJobVariableOutput,
 						resources: {
 							limits: {
 								cpu: String(args.cpuLimit ?? 1),
 								memory: `${args.memoryLimit ?? 512}Mi`
 							}
-						},
-						volumeMounts
+						}
 					}],
 					maxRetries: 1,
 					timeout: `${args.taskTimeout ?? 600}s`

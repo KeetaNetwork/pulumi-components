@@ -639,12 +639,8 @@ export interface CloudRunServiceArgs {
 		enabled: boolean;
 
 		/**
-		 * Override container entrypoint for migration
-		 */
-		command?: string[];
-
-		/**
-		 * Override container arguments for migration
+		 * Shell script to run as the migration command.
+		 * Automatically wrapped with SSL cert setup for psql/libpq.
 		 */
 		args?: string[];
 
@@ -859,7 +855,6 @@ export class CloudRunService extends pulumi.ComponentResource {
 				region: args.region,
 				database: { instance: db },
 				image: imageUri,
-				command: args.migration.command,
 				args: args.migration.args,
 				vpc: vpcConfig,
 				serviceAccount: serviceAccount,
@@ -884,13 +879,16 @@ export class CloudRunService extends pulumi.ComponentResource {
 
 			// Auto-inject database credentials (MC_PSQL_DB_* prefix avoids conflict with libpq auto-detection)
 			if (db) {
+				const dbHost = db.hosts[args.region]?.host ?? '';
 				variables['MC_PSQL_DB_USER'] = db.username;
 				variables['MC_PSQL_DB_PASSWORD'] = { value: db.password, secret: true };
 				variables['MC_PSQL_DB_NAME'] = db.databaseName;
-				variables['MC_PSQL_DB_SOCKET_DIR'] = pulumi.interpolate`/cloudsql/${db.hosts[args.region]?.connectionName}`;
+				variables['MC_PSQL_DB_HOST'] = dbHost;
 				variables['MC_PSQL_DB_PORT'] = '5432';
+				variables['MC_PSQL_DB_SSLMODE'] = 'require';
+				variables['MC_PSQL_DB_CA_CERT'] = db.hosts[args.region]?.caCertificate ?? '';
 				variables['MC_PSQL_DB_URL'] = {
-					value: pulumi.interpolate`postgresql://${db.username}:${db.password}@/${db.databaseName}?host=/cloudsql/${db.hosts[args.region]?.connectionName}`,
+					value: pulumi.interpolate`postgresql://${db.username}:${db.password}@${dbHost}:5432/${db.databaseName}?sslmode=require`,
 					secret: true
 				};
 			}
@@ -919,10 +917,6 @@ export class CloudRunService extends pulumi.ComponentResource {
 		const annotations: { [key: string]: pulumi.Input<string> } = {
 			...args.service?.annotations
 		};
-
-		if (db) {
-			annotations['run.googleapis.com/cloudsql-instances'] = db.hosts[db.primaryRegion]?.connectionName ?? '';
-		}
 
 		if (vpcConnector) {
 			annotations['run.googleapis.com/vpc-access-connector'] = vpcConnector.selfLink;
