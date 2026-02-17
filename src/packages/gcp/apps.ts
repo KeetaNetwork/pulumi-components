@@ -466,6 +466,11 @@ export interface CloudRunServiceArgs {
 	 */
 	database?: {
 		/**
+		 * Database engine type. Currently only 'postgres' is supported.
+		 */
+		type?: 'postgres';
+
+		/**
 		 * Tier for the database instance
 		 */
 		tier?: string;
@@ -646,14 +651,19 @@ export interface CloudRunServiceArgs {
 		enabled: boolean;
 
 		/**
-		 * Container entrypoint override (e.g., ['node', 'dist/migrate.js'])
+		 * Container execution configuration
 		 */
-		command?: string[];
+		container?: {
+			/**
+			 * Entrypoint override (e.g., ['node', 'dist/migrate.js'])
+			 */
+			entrypoint?: string[];
 
-		/**
-		 * Arguments passed to the container command
-		 */
-		args?: string[];
+			/**
+			 * Arguments passed to the entrypoint
+			 */
+			args?: string[];
+		};
 
 		/**
 		 * Additional environment variables specific to migrations
@@ -864,8 +874,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 				region: args.region,
 				database: { instance: db },
 				image: imageUri,
-				command: args.migration.command,
-				args: args.migration.args,
+				container: args.migration.container,
 				vpc: vpcConfig,
 				serviceAccount: serviceAccount,
 				cpuLimit: args.migration.cpuLimit,

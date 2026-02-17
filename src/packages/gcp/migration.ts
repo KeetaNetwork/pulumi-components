@@ -57,14 +57,19 @@ export interface MigrationJobArgs {
 	image: pulumi.Input<string>;
 
 	/**
-	 * Container entrypoint override (e.g., ['node', 'dist/migrate.js'])
+	 * Container execution configuration
 	 */
-	command?: string[];
+	container?: {
+		/**
+		 * Entrypoint override (e.g., ['node', 'dist/migrate.js'])
+		 */
+		entrypoint?: string[];
 
-	/**
-	 * Arguments passed to the container command
-	 */
-	args?: string[];
+		/**
+		 * Arguments passed to the entrypoint
+		 */
+		args?: string[];
+	};
 
 	/**
 	 * Optional VPC connector for private IP access to Cloud SQL
@@ -204,8 +209,8 @@ export class MigrationJob extends pulumi.ComponentResource {
 					vpcAccess,
 					containers: [{
 						image: args.image,
-						commands: args.command,
-						args: args.args,
+						commands: args.container?.entrypoint,
+						args: args.container?.args,
 						envs: envManager.cloudRunJobVariableOutput,
 						resources: {
 							limits: {

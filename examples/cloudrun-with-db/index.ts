@@ -55,7 +55,9 @@ export const backend = new gcpComponents.apps.CloudRunService(name, {
 	// Run database migrations before starting the service
 	migration: {
 		enabled: true,
-		command: ['node', 'dist/migrate.js']
+		container: {
+			entrypoint: ['node', 'dist/migrate.js']
+		}
 	}
 });
 
