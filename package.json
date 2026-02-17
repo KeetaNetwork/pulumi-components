@@ -9,6 +9,7 @@
 	"scripts": {
 		"tsc": "tsc",
 		"eslint": "eslint",
+		"vitest": "vitest",
 		"prepare": "tsc",
 		"make:all": "make all",
 		"make:dist": "make dist",

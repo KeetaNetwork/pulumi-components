@@ -49,7 +49,7 @@ dist: dist/.done
 
 # This is a synthetic target that runs this test suite.
 test: node_modules
-	npx vitest run
+	npm run vitest -- run
 
 # Run linting
 do-lint: node_modules

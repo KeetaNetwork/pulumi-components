@@ -817,7 +817,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 			});
 		}
 
-		let extraDependsOn: pulumi.Input<pulumi.Resource[]> | undefined = undefined;
+		let serviceDependsOn: pulumi.Input<pulumi.Resource[]> | undefined = undefined;
 		if (args.service?.grantIAMRoles !== false && !args.service?.serviceAccount) {
 			if (args.gcp.changeProjectIAMPolicy) {
 				const resource = args.gcp.changeProjectIAMPolicy('roles/logging.logWriter', [
@@ -825,7 +825,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 				]);
 
 				if (resource) {
-					extraDependsOn = pulumi.output(resource).apply(function(unwrappedResource) {
+					serviceDependsOn = pulumi.output(resource).apply(function(unwrappedResource) {
 						return([unwrappedResource]);
 					});
 				}
@@ -835,7 +835,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 					role: 'roles/logging.logWriter',
 					member: pulumi.interpolate`serviceAccount:${serviceAccount.email}`
 				});
-				extraDependsOn = [resource];
+				serviceDependsOn = [resource];
 			}
 		}
 
@@ -846,7 +846,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 				role: 'roles/cloudsql.client',
 				member: pulumi.interpolate`serviceAccount:${serviceAccount.email}`
 			});
-			extraDependsOn = pulumi.output(extraDependsOn ?? []).apply(function(deps) {
+			serviceDependsOn = pulumi.output(serviceDependsOn ?? []).apply(function(deps) {
 				return([...deps, cloudsqlClient]);
 			});
 		}
@@ -877,7 +877,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 
 			// Make Cloud Run service depend on migration completing
 			const migrationDep = migration;
-			extraDependsOn = pulumi.output(extraDependsOn ?? []).apply(function(deps) {
+			serviceDependsOn = pulumi.output(serviceDependsOn ?? []).apply(function(deps) {
 				return([...deps, migrationDep]);
 			});
 		}
@@ -949,10 +949,9 @@ export class CloudRunService extends pulumi.ComponentResource {
 				}
 			}
 		}, {
-			dependsOn: extraDependsOn,
+			dependsOn: serviceDependsOn,
 			parent: this
 		});
-		extraDependsOn = undefined;
 
 		new gcp.cloudrun.IamMember(`${name}-invoker`, {
 			service: service.name,
