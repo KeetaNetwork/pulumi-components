@@ -1,6 +1,6 @@
 import * as pulumi from '@pulumi/pulumi';
 import * as gcp from '@pulumi/gcp';
-import * as path from 'path';
+import * as path from 'node:path';
 import { gcp as gcpComponents } from '@keetanetwork/pulumi-components';
 
 const gcpProject = gcp.config.project ?? process.env.GOOGLE_PROJECT ?? process.env.GCLOUD_PROJECT;

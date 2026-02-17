@@ -5,13 +5,13 @@ const pool = new Pool({
 	password: process.env.MC_PSQL_DB_PASSWORD,
 	database: process.env.MC_PSQL_DB_NAME,
 	host: process.env.MC_PSQL_DB_HOST,
-	port: parseInt(process.env.MC_PSQL_DB_PORT ?? '5432', 10),
+	port: Number.parseInt(process.env.MC_PSQL_DB_PORT ?? '5432', 10),
 	ssl: process.env.MC_PSQL_DB_CA_CERT
 		? { ca: process.env.MC_PSQL_DB_CA_CERT, checkServerIdentity: () => undefined }
 		: false
 });
 
-async function migrate() {
+try {
 	console.log('Running migration...');
 
 	await pool.query(`
@@ -28,10 +28,9 @@ async function migrate() {
 	);
 
 	console.log('Migration complete');
-	await pool.end();
-}
-
-migrate().catch(function(err) {
+} catch (err) {
 	console.error('Migration failed:', err);
 	process.exit(1);
-});
+} finally {
+	await pool.end();
+}

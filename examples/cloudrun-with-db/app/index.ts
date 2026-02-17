@@ -1,4 +1,4 @@
-import * as http from 'http';
+import * as http from 'node:http';
 import { Pool } from 'pg';
 
 const pool = new Pool({
@@ -6,7 +6,7 @@ const pool = new Pool({
 	password: process.env.MC_PSQL_DB_PASSWORD,
 	database: process.env.MC_PSQL_DB_NAME,
 	host: process.env.MC_PSQL_DB_HOST,
-	port: parseInt(process.env.MC_PSQL_DB_PORT ?? '5432', 10),
+	port: Number.parseInt(process.env.MC_PSQL_DB_PORT ?? '5432', 10),
 	ssl: process.env.MC_PSQL_DB_CA_CERT
 		? { ca: process.env.MC_PSQL_DB_CA_CERT, checkServerIdentity: () => undefined }
 		: false
