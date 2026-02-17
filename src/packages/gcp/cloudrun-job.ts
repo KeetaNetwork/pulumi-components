@@ -1,5 +1,5 @@
 import * as pulumi from '@pulumi/pulumi';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 
 import type { DeepInput, DeepOutput } from '../../types';
 import type * as runTypes from '@google-cloud/run';

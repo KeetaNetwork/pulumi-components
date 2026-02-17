@@ -329,7 +329,7 @@ export class StaticWebApp extends pulumi.ComponentResource {
 		const assetsPrefix = cacheControl.assetsPrefix ?? 'assets/';
 		const defaultTTL = cacheControl.defaultTTL ?? 300;
 
-		new GoogleCloudFolderWithArgs(`${name}-files`, {
+		void new GoogleCloudFolderWithArgs(`${name}-files`, {
 			bucketName: bucket.name,
 			path: args.staticFilesPath,
 			filter: args.fileFilter,
