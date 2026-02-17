@@ -267,6 +267,11 @@ export interface StaticWebAppArgs {
 		assetsTTL?: number;
 
 		/**
+		 * Path prefix used to identify hashed asset files (default: 'assets/')
+		 */
+		assetsPrefix?: string;
+
+		/**
 		 * Cache duration for other files (default: 5 minutes)
 		 */
 		defaultTTL?: number;
@@ -321,6 +326,7 @@ export class StaticWebApp extends pulumi.ComponentResource {
 		const cacheControl = args.cacheControl ?? {};
 		const indexTTL = cacheControl.indexTTL ?? 10;
 		const assetsTTL = cacheControl.assetsTTL ?? 86400;
+		const assetsPrefix = cacheControl.assetsPrefix ?? 'assets/';
 		const defaultTTL = cacheControl.defaultTTL ?? 300;
 
 		new GoogleCloudFolderWithArgs(`${name}-files`, {
@@ -332,7 +338,7 @@ export class StaticWebApp extends pulumi.ComponentResource {
 					let ttl: number;
 					if (fileName === 'index.html') {
 						ttl = indexTTL;
-					} else if (fileName.startsWith('assets/')) {
+					} else if (fileName.startsWith(assetsPrefix)) {
 						ttl = assetsTTL;
 					} else {
 						ttl = defaultTTL;
@@ -943,7 +949,8 @@ export class CloudRunService extends pulumi.ComponentResource {
 				}
 			}
 		}, {
-			dependsOn: extraDependsOn
+			dependsOn: extraDependsOn,
+			parent: this
 		});
 		extraDependsOn = undefined;
 
