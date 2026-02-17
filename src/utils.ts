@@ -6,7 +6,7 @@ export type PublicInterface<T> = Pick<T, keyof T>;
 
 export function normalizeName(...args: string[]) {
 	const joined = args.join('-').toLowerCase();
-	return joined.replace(/\.|_/g, '-');
+	return(joined.replace(/\.|_/g, '-'));
 }
 
 interface ExecResponse {
@@ -16,7 +16,7 @@ interface ExecResponse {
 }
 
 export function promisifyExec(script: string, args: string[] = [], env?: NodeJS.ProcessEnv): Promise<ExecResponse> {
-	return new Promise(function(resolve, reject) {
+	return(new Promise(function(resolve, reject) {
 		const child = spawn(script, args, {
 			env: env
 		});
@@ -24,7 +24,7 @@ export function promisifyExec(script: string, args: string[] = [], env?: NodeJS.
 		const resp: ExecResponse = { exitCode: null, stdout: [], stderr: [] };
 
 		for (const type of ['stderr', 'stdout'] as const) {
-			child[type].on('data', function(data) {
+			child[type].on('data', function(data: Buffer) {
 				resp[type].push(data.toString());
 			});
 		}
@@ -33,13 +33,13 @@ export function promisifyExec(script: string, args: string[] = [], env?: NodeJS.
 			resp.exitCode = exitCode;
 
 			if (exitCode !== 0) {
-				reject(resp);
+				reject(new Error(`Command failed with exit code ${exitCode}`));
 				return;
 			}
 
 			resolve(resp);
 		});
-	});
+	}));
 }
 
 export function nonNullable<T>(input: T | undefined | null): T {
@@ -116,4 +116,28 @@ export function generateName(prefix: string, suffix: string, maxLength: number) 
 	}
 
 	return(`${realPrefix}-${suffix}`);
+}
+
+/**
+ * Create a hash with an optional letter prefix
+ * @param data Data to hash
+ * @param length Length of the hash to return
+ * @param addPrefix Whether to add a letter prefix (true), a custom prefix (string), or no prefix (false)
+ * @returns Hash string (lowercase)
+ */
+export function hashWithPrefix(data: string, length = 20, addPrefix: boolean | string = true): string {
+	const hashValue = hash(data, length);
+
+	let hashPrefix = '';
+	if (addPrefix === true) {
+		// Find the first letter in the hash to use as prefix
+		const letterMatches = hashValue.match(/[A-Za-z]/g);
+		const firstChar = (letterMatches ?? ['a'])[0];
+		hashPrefix = firstChar;
+	} else if (typeof addPrefix === 'string') {
+		hashPrefix = addPrefix;
+	}
+
+	const combined = `${hashPrefix}${hashValue}`;
+	return(combined.substring(0, length).toLowerCase());
 }

@@ -2,17 +2,22 @@ import { gcpRegions, gcpSpannerRegions, gcpZones, spannerMultiRegionConfiguratio
 import { hash } from '../../utils';
 import type * as types from './constants';
 
-export function assertGCPRegion(region: any): types.GCPRegion {
-	if (!gcpRegions.includes(region)) {
+export function assertGCPRegion(region: unknown): types.GCPRegion {
+	if (typeof region !== 'string') {
+		throw(new TypeError(`Region must be a string, got ${typeof region}`));
+	}
+	const validRegions: readonly string[] = gcpRegions;
+	if (!validRegions.includes(region)) {
 		throw(new Error(`Region ${region} is not a valid GCP region`));
 	}
 
-	return region;
+	// eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+	return(region as types.GCPRegion);
 }
 
-export function assertGCPZone(zone: any): types.GCPZone {
+export function assertGCPZone(zone: unknown): types.GCPZone {
 	if (typeof zone !== 'string') {
-		throw(new Error(`Zone ${zone} is not a string`));
+		throw(new TypeError(`Zone must be a string, got ${typeof zone}`));
 	}
 
 	const maybeRegion = zone.split('-').slice(0, 2).join('-');
@@ -28,7 +33,7 @@ export function assertGCPZone(zone: any): types.GCPZone {
 	 * and we are about to verify that it is a valid zone in that region
 	 * so we can safely cast it to a GCPZone.
 	 */
-	// eslint-disable-next-line no-type-assertion/no-type-assertion
+	// eslint-disable-next-line @typescript-eslint/consistent-type-assertions
 	const verifiedZone = zone as types.GCPZone;
 
 	/* TypeScript is confused about the type of regionalZones, so we have to
@@ -66,50 +71,63 @@ export function gcpRandomZone(key: string, region: string): types.GCPZone {
 	return(zone);
 }
 
-export function isGCPSpannerRegionName(region: any): region is types.GCPSpannerRegionName {
-	return gcpSpannerRegions.includes(region);
+export function isGCPSpannerRegionName(region: string): region is types.GCPSpannerRegionName {
+	const validRegions: readonly string[] = gcpSpannerRegions;
+	return(validRegions.includes(region));
 }
 
 export function isGCPSpannerRegionalLocationConfig(input: string): input is types.GCPSpannerRegionalLocationConfig {
 	if (!input.startsWith('regional-')) {
-		return false;
+		return(false);
 	}
 
-	return isGCPSpannerRegionName(input.replace('regional-', ''));
+	return(isGCPSpannerRegionName(input.replace('regional-', '')));
 }
 
-export function assertGCPSpannerRegionalLocationConfig(input: any): types.GCPSpannerRegionName {
+export function assertGCPSpannerRegionalLocationConfig(input: unknown): types.GCPSpannerRegionName {
+	if (typeof input !== 'string') {
+		throw(new TypeError(`Input must be a string, got ${typeof input}`));
+	}
 	if (!isGCPSpannerRegionName(input)) {
-		throw new Error(`Invalid spanner regional config: ${input}`);
+		throw(new Error(`Invalid spanner regional config: ${input}`));
 	}
 
-	return input;
+	return(input);
 }
 
-export function assertGCPSpannerRegionName(region: any): types.GCPSpannerRegionName {
+export function assertGCPSpannerRegionName(region: unknown): types.GCPSpannerRegionName {
+	if (typeof region !== 'string') {
+		throw(new TypeError(`Region must be a string, got ${typeof region}`));
+	}
 	if (!isGCPSpannerRegionName(region)) {
-		throw new Error(`Invalid spanner region: ${region}`);
+		throw(new Error(`Invalid spanner region: ${region}`));
 	}
 
-	return region;
+	return(region);
 }
 
-export function isGCPSpannerMultiRegionLocationConfig(input: any): input is types.GCPSpannerMultiRegionLocationConfig {
-	return Object.keys(spannerMultiRegionConfiguration).includes(input);
+export function isGCPSpannerMultiRegionLocationConfig(input: string): input is types.GCPSpannerMultiRegionLocationConfig {
+	return(Object.keys(spannerMultiRegionConfiguration).includes(input));
 }
 
-export function assertGCPSpannerMultiRegionLocationConfig(input: any): types.GCPSpannerMultiRegionLocationConfig {
+export function assertGCPSpannerMultiRegionLocationConfig(input: unknown): types.GCPSpannerMultiRegionLocationConfig {
+	if (typeof input !== 'string') {
+		throw(new TypeError(`Input must be a string, got ${typeof input}`));
+	}
 	if (!isGCPSpannerMultiRegionLocationConfig(input)) {
-		throw new Error(`Invalid Spanner multi-region configuration name: ${input}`);
+		throw(new Error(`Invalid Spanner multi-region configuration name: ${input}`));
 	}
 
-	return input;
+	return(input);
 }
 
-export function assertGCPSpannerLocationConfig(input: any): types.GCPSpannerLocationConfig {
+export function assertGCPSpannerLocationConfig(input: unknown): types.GCPSpannerLocationConfig {
+	if (typeof input !== 'string') {
+		throw(new TypeError(`Input must be a string, got ${typeof input}`));
+	}
 	if (!isGCPSpannerMultiRegionLocationConfig(input) && !isGCPSpannerRegionalLocationConfig(input)) {
-		throw new Error(`Invalid Spanner configuration input: ${input}`);
+		throw(new Error(`Invalid Spanner configuration input: ${input}`));
 	}
 
-	return input;
+	return(input);
 }
