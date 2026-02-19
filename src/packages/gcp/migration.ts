@@ -26,7 +26,7 @@ interface DatabaseInstanceConfig {
 interface DatabaseCredentialsConfig {
 	instance?: never;
 	host: pulumi.Input<string>;
-	caCertificate?: pulumi.Input<string>;
+	caCertificate: pulumi.Input<string>;
 	username: pulumi.Input<string>;
 	password: pulumi.Input<string>;
 	databaseName: pulumi.Input<string>;
@@ -142,14 +142,18 @@ export class MigrationJob extends pulumi.ComponentResource {
 		if ('instance' in args.database && args.database.instance) {
 			const db = args.database.instance;
 			const hostInfo = db.hosts[args.region] ?? db.hosts[db.primaryRegion];
-			dbHost = hostInfo?.host ?? '';
-			caCertificate = hostInfo?.caCertificate ?? '';
+			if (!hostInfo) {
+				throw(new Error(`No database host found for region ${args.region} or primary region ${db.primaryRegion}`));
+			}
+
+			dbHost = hostInfo.host;
+			caCertificate = hostInfo.caCertificate;
 			username = db.username;
 			password = db.password;
 			databaseName = db.databaseName;
 		} else {
 			dbHost = args.database.host;
-			caCertificate = args.database.caCertificate ?? '';
+			caCertificate = args.database.caCertificate;
 			username = args.database.username;
 			password = args.database.password;
 			databaseName = args.database.databaseName;

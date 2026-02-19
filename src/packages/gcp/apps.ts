@@ -899,12 +899,13 @@ export class CloudRunService extends pulumi.ComponentResource {
 
 			// Auto-inject database credentials
 			if (db) {
+				const hostInfo = db.getHost(args.region);
 				const dbVars = buildDatabaseEnvVars({
-					host: db.hosts[args.region]?.host ?? '',
+					host: hostInfo.host,
 					username: db.username,
 					password: db.password,
 					databaseName: db.databaseName,
-					caCertificate: db.hosts[args.region]?.caCertificate ?? ''
+					caCertificate: hostInfo.caCertificate
 				});
 				Object.assign(variables, dbVars);
 			}
@@ -1011,12 +1012,13 @@ export class CloudRunService extends pulumi.ComponentResource {
 			const migVariables: { [key: string]: pulumi.Input<string> | { value: pulumi.Input<string>; secret: boolean }} = {};
 
 			if (db) {
+				const hostInfo = db.getHost(args.region);
 				const dbVars = buildDatabaseEnvVars({
-					host: db.hosts[args.region]?.host ?? '',
+					host: hostInfo.host,
 					username: db.username,
 					password: db.password,
 					databaseName: db.databaseName,
-					caCertificate: db.hosts[args.region]?.caCertificate ?? ''
+					caCertificate: hostInfo.caCertificate
 				});
 				Object.assign(migVariables, dbVars);
 			}
