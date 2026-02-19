@@ -509,7 +509,7 @@ export class ExternalLoadBalancer extends pulumi.ComponentResource {
 				globalNetworkEndpointGroup: endpointGroup.id,
 				...targetInfo
 			}, {
-				parent: this
+				parent: endpointGroup
 			});
 
 			targetBackendGroup = endpointGroup.id;

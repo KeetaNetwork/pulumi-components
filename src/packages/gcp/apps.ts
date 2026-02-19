@@ -744,14 +744,14 @@ export class CloudRunService extends pulumi.ComponentResource {
 					addressType: 'INTERNAL',
 					prefixLength: 16,
 					network: vpc.selfLink
-				});
+				}, { parent: vpc });
 
 				const svcNetworkingConnection = new gcp.servicenetworking.Connection(`${name}-svc-networking`, {
 					network: vpc.selfLink,
 					service: 'servicenetworking.googleapis.com',
 					reservedPeeringRanges: [privateIpAlloc.name],
 					deletionPolicy: args.vpc?.servicePeeringDeletionPolicy
-				});
+				}, { parent: privateIpAlloc });
 
 				db = new PostgresCloudSQL(`${name}-db`, {
 					region: args.region,
@@ -769,7 +769,8 @@ export class CloudRunService extends pulumi.ComponentResource {
 					replication: args.database.replication,
 					backups: args.database.backups
 				}, {
-					dependsOn: [svcNetworkingConnection]
+					dependsOn: [svcNetworkingConnection],
+					parent: this
 				});
 			}
 		}
@@ -844,7 +845,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 					project: args.gcp.project,
 					role: 'roles/logging.logWriter',
 					member: pulumi.interpolate`serviceAccount:${serviceAccount.email}`
-				});
+				}, { parent: this });
 				serviceDependsOn = [resource];
 			}
 		}
@@ -855,7 +856,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 				project: args.gcp.project,
 				role: 'roles/cloudsql.client',
 				member: pulumi.interpolate`serviceAccount:${serviceAccount.email}`
-			});
+			}, { parent: db });
 			serviceDependsOn = pulumi.output(serviceDependsOn ?? []).apply(function(deps) {
 				return([...deps, cloudsqlClient]);
 			});
@@ -926,7 +927,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 				serviceAccount: pulumi.interpolate`serviceAccount:${serviceAccount.email}`,
 				secretRegionName: args.region,
 				variables
-			});
+			}, { parent: this });
 		}
 
 		const annotations: { [key: string]: pulumi.Input<string> } = {
@@ -968,7 +969,8 @@ export class CloudRunService extends pulumi.ComponentResource {
 			role: 'roles/run.invoker',
 			member: 'allUsers'
 		}, {
-			deletedWith: service
+			deletedWith: service,
+			parent: service
 		});
 
 		const neg = new gcp.compute.RegionNetworkEndpointGroup(`${name}-neg`, {
@@ -977,7 +979,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 			cloudRun: {
 				service: service.name
 			}
-		});
+		}, { parent: service });
 
 		const backendService = new gcp.compute.BackendService(`${name}-backend`, {
 			protocol: 'HTTP',
@@ -985,7 +987,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 			backends: [{
 				group: neg.id
 			}]
-		}, { parent: this });
+		}, { parent: neg });
 
 		let mig: ContainerMIG | undefined;
 		if (args.mig?.enabled && vpc && subnet) {
@@ -1002,7 +1004,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 						ports: ['22']
 					}],
 					...args.gcp.firewallConfig
-				});
+				}, { parent: vpc });
 			}
 
 			// Build MIG environment variables through EnvManager (resolves secrets at deploy time)
@@ -1030,7 +1032,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 				serviceAccount: pulumi.interpolate`serviceAccount:${serviceAccount.email}`,
 				secretRegionName: args.region,
 				variables: migVariables
-			});
+			}, { parent: this });
 
 			const migEnvVars = migEnvManager.resolvedVariableOutput;
 

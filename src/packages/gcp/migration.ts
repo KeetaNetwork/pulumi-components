@@ -233,7 +233,7 @@ export class MigrationJob extends pulumi.ComponentResource {
 			region: args.region,
 			trigger: pulumi.output(trigger).apply(function(t) { return(t); })
 		}, {
-			parent: this,
+			parent: this.job,
 			dependsOn: [this.job]
 		});
 
