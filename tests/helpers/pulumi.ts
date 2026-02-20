@@ -37,7 +37,7 @@ export async function deployStack(projectDir: string, stackName: string): Promis
 	});
 
 	if (upResult.summary.result !== 'succeeded') {
-		throw(new Error(`Deployment failed: ${upResult.summary.message}`));
+		throw(new Error(`Deployment failed with status '${upResult.summary.result}': ${upResult.summary.message}`));
 	}
 
 	// Get outputs
