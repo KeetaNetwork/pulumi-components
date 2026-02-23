@@ -101,7 +101,7 @@ export interface MigrationJobArgs {
 	/**
 	 * Additional environment variables
 	 */
-	environment?: { [key: string]: pulumi.Input<string> };
+	environment?: EnvironmentVariables;
 
 	/**
 	 * Trigger value - when this changes, the migration job re-runs

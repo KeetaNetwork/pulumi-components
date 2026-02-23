@@ -3,6 +3,7 @@ import * as gcp from '@pulumi/gcp';
 import { extractServiceURL } from './common';
 import type { GCPCommonOptions } from './common';
 import type { GCPRegion } from './constants';
+import type { EnvironmentVariables } from './cloudrun';
 import { GoogleCloudFolderWithArgs } from './bucket';
 import { EnvManager } from './cloudrun';
 import { PostgresCloudSQL } from './sql';
@@ -459,7 +460,7 @@ export interface CloudRunServiceArgs {
 	/**
 	 * Environment variables for the Cloud Run service
 	 */
-	environment?: { [key: string]: pulumi.Input<string> | { value: pulumi.Input<string>; secret?: boolean }};
+	environment?: EnvironmentVariables;
 
 	/**
 	 * Database configuration (optional)
@@ -881,7 +882,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 				cpuLimit: args.migration.cpuLimit,
 				memoryLimit: args.migration.memoryLimit,
 				taskTimeout: args.migration.taskTimeout,
-				environment: args.migration.environmentOverrides,
+				environment: { ...args.environment, ...args.migration.environmentOverrides },
 				trigger: imageUri // Re-run migration when image changes
 			}, { parent: this });
 
@@ -895,9 +896,8 @@ export class CloudRunService extends pulumi.ComponentResource {
 		let envManager: EnvManager | undefined;
 		// Create environment manager if we have environment variables OR a database (for auto-injected DB vars)
 		if (args.environment || db) {
-			const variables: { [key: string]: pulumi.Input<string> | { value: pulumi.Input<string>; secret: boolean }} = {};
+			const variables: EnvironmentVariables = {};
 
-			// Auto-inject database credentials
 			if (db) {
 				const hostInfo = db.getHost(args.region);
 				const dbVars = buildDatabaseEnvVars({
@@ -910,18 +910,8 @@ export class CloudRunService extends pulumi.ComponentResource {
 				Object.assign(variables, dbVars);
 			}
 
-			// Add user-provided environment variables (can override DB vars)
 			if (args.environment) {
-				for (const [key, value] of Object.entries(args.environment)) {
-					if (typeof value === 'object' && value !== null && 'value' in value) {
-						variables[key] = {
-							...value,
-							secret: value.secret ?? false
-						};
-					} else {
-						variables[key] = value;
-					}
-				}
+				Object.assign(variables, args.environment);
 			}
 
 			envManager = new EnvManager(`${name}-env`, {
