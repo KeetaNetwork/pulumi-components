@@ -33,7 +33,10 @@ export function promisifyExec(script: string, args: string[] = [], env?: NodeJS.
 			resp.exitCode = exitCode;
 
 			if (exitCode !== 0) {
-				reject(new Error(`Command failed with exit code ${exitCode}`));
+				const stderr = resp.stderr.join('');
+				const stdout = resp.stdout.join('');
+				const output = stderr || stdout;
+				reject(new Error(`Command failed with exit code ${exitCode}\n${output}`));
 				return;
 			}
 

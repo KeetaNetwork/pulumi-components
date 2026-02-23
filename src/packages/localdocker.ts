@@ -75,6 +75,14 @@ async function createBuild(inputs: LocalBuildInputs) {
 		await promisifyExec('docker', ['build', ...buildArgs, inputs.buildDirectory], env);
 
 		/*
+		 * Authenticate Docker to the registry before pushing
+		 */
+		const registryHost = inputs.imageURI.split('/')[0];
+		if (registryHost) {
+			await promisifyExec('gcloud', ['auth', 'configure-docker', registryHost, '--quiet']);
+		}
+
+		/*
 		 * Push the image
 		 */
 		await promisifyExec('docker', [ 'image', 'push', inputs.imageURI ]);

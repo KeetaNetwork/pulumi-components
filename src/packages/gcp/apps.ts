@@ -454,6 +454,18 @@ export interface CloudRunServiceArgs {
 			secrets?: { [key: string]: pulumi.Input<string> };
 			githubSha?: string;
 			nodeImage?: pulumi.Input<string>;
+
+			/**
+			 * Remote build configuration (Cloud Build)
+			 * If provided, the image is built using GCP Cloud Build instead of local Docker
+			 */
+			remote?: {
+				serviceAccount?: Pick<gcp.serviceaccount.Account, 'email'>;
+				bucket?: Pick<gcp.storage.Bucket, 'name'> | gcp.storage.Bucket;
+				bucketConfig?: Partial<Pick<gcp.storage.BucketArgs, 'logging'>>;
+				bindPermissions?: boolean;
+				machineType?: string;
+			};
 		};
 	};
 
@@ -793,7 +805,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 				versioning = { type: 'FILE', fromFile: build.directory };
 			}
 
-			const imageConfig: ConstructorParameters<typeof components.DockerImage>[1] = {
+			let imageConfig: ConstructorParameters<typeof components.DockerImage>[1] = {
 				imageName: build.imageName,
 				registryUrl: build.registryUrl ?? `${args.region}-docker.pkg.dev/${args.gcp.project}/keeta`,
 				platform: build.platform ?? 'linux/amd64',
@@ -806,6 +818,11 @@ export class CloudRunService extends pulumi.ComponentResource {
 				versioning,
 				secrets: build.secrets
 			};
+
+			if (build.remote) {
+				const remoteConfig = this.getRemoteConfig(name, args, build.remote);
+				imageConfig = { ...imageConfig, ...remoteConfig };
+			}
 
 			const dockerImage = new components.DockerImage(`${name}-image`, imageConfig);
 			imageUri = dockerImage.uri;
@@ -1088,6 +1105,46 @@ export class CloudRunService extends pulumi.ComponentResource {
 		}
 
 		this.registerOutputs(serviceOutputs);
+	}
+
+	private getRemoteConfig(
+		name: string,
+		args: CloudRunServiceArgs,
+		remote: NonNullable<NonNullable<CloudRunServiceArgs['image']['build']>['remote']>
+	) {
+		const provider = new gcp.Provider(`${name}-build-provider`, {
+			project: args.gcp.project,
+			region: args.region
+		}, { parent: this });
+
+		let { bindPermissions, serviceAccount, bucket } = remote;
+
+		if (bindPermissions === undefined && (serviceAccount === undefined || bucket === undefined)) {
+			bindPermissions = true;
+		}
+
+		if (!serviceAccount) {
+			serviceAccount = new gcp.serviceaccount.Account(`${name}-build-sa`, {
+				accountId: generateName(name, 'build', 30)
+			}, { parent: this });
+		}
+
+		if (!bucket) {
+			bucket = new gcp.storage.Bucket(generateName(name, 'docker', 55), {
+				location: args.region,
+				forceDestroy: true,
+				uniformBucketLevelAccess: true,
+				...remote.bucketConfig
+			}, { parent: this });
+		}
+
+		return({
+			provider,
+			bindPermissions,
+			serviceAccount,
+			bucket,
+			machineType: remote.machineType
+		});
 	}
 }
 
