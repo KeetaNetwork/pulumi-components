@@ -10,6 +10,7 @@ import { PostgresCloudSQL } from './sql';
 import { ContainerMIG } from './container';
 import { MigrationJob } from './migration';
 import { buildDatabaseEnvVars } from './database-env';
+import { createHttpRedirect } from './lb';
 import * as components from '../docker';
 import { generateName } from '../../utils';
 
@@ -62,21 +63,6 @@ export interface LoadBalancerConfig {
 	 * SSL certificate configuration
 	 */
 	ssl: SSLConfig;
-
-	/**
-	 * Routing configuration for static paths
-	 */
-	routing?: {
-		/**
-		 * Static paths to serve (e.g., ['/assets/', '/icons/'])
-		 */
-		staticPaths?: string[];
-
-		/**
-		 * Static files to serve (e.g., ['/favicon.svg'])
-		 */
-		staticFiles?: string[];
-	};
 }
 
 /**
@@ -221,6 +207,8 @@ function createLoadBalancer(
 		}
 	}
 
+	createHttpRedirect(name, ipAddresses);
+
 	const ips = pulumi.all(forwardingRules.map(function(fr) { return(fr.ipAddress); })).apply(function(ips) {
 		return(ips.filter(function(ip): ip is string { return(ip !== undefined && ip !== null); }));
 	});
@@ -284,6 +272,21 @@ export interface StaticWebAppArgs {
 	 * If not provided, only creates backend bucket for use in composed deployments
 	 */
 	loadBalancer?: LoadBalancerConfig;
+
+	/**
+	 * Routing configuration for static paths when using standalone load balancer
+	 */
+	routing?: {
+		/**
+		 * Static paths to serve (e.g., ['/assets/', '/icons/'])
+		 */
+		staticPaths?: string[];
+
+		/**
+		 * Static files to serve (e.g., ['/favicon.svg'])
+		 */
+		staticFiles?: string[];
+	};
 }
 
 /**
@@ -361,7 +364,7 @@ export class StaticWebApp extends pulumi.ComponentResource {
 
 		if (args.loadBalancer) {
 			const lb = args.loadBalancer;
-			const routing = lb.routing ?? {};
+			const routing = args.routing ?? {};
 			const staticPaths = routing.staticPaths ?? ['/assets/', '/icons/', '/fonts/', '/images/'];
 			const staticFiles = routing.staticFiles ?? [];
 
@@ -807,7 +810,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 
 			let imageConfig: ConstructorParameters<typeof components.DockerImage>[1] = {
 				imageName: build.imageName,
-				registryUrl: build.registryUrl ?? `${args.region}-docker.pkg.dev/${args.gcp.project}/keeta`,
+				registryUrl: build.registryUrl ?? pulumi.interpolate`${args.region}-docker.pkg.dev/${args.gcp.project}/keeta`,
 				platform: build.platform ?? 'linux/amd64',
 				buildArgs,
 				buildTarget: build.target,
@@ -1201,6 +1204,7 @@ export class FullStackApp extends pulumi.ComponentResource {
 	readonly httpsProxy: gcp.compute.TargetHttpsProxy;
 	readonly forwardingRules: gcp.compute.GlobalForwardingRule[];
 	readonly ips: pulumi.Output<string[]>;
+	readonly frontendBucket: pulumi.Output<string>;
 
 	constructor(name: string, args: FullStackAppArgs, opts?: pulumi.ComponentResourceOptions) {
 		super('Keeta:GCP:FullStackApp', name, args, opts);
@@ -1231,7 +1235,7 @@ export class FullStackApp extends pulumi.ComponentResource {
 			}),
 			{
 				priority: staticPaths.length + staticFiles.length + 1,
-				matchRules: [{ pathTemplateMatch: `${apiPrefix}/**` }],
+				matchRules: [{ prefixMatch: apiPrefix }],
 				service: backend.backendService.id
 			},
 			{
@@ -1259,6 +1263,7 @@ export class FullStackApp extends pulumi.ComponentResource {
 		this.httpsProxy = lbResources.httpsProxy;
 		this.forwardingRules = lbResources.forwardingRules;
 		this.ips = lbResources.ips;
+		this.frontendBucket = frontend.bucket.name;
 
 		this.registerOutputs({
 			frontendBucket: frontend.bucket.name,

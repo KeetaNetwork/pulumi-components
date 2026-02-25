@@ -10,9 +10,14 @@ export interface StackOutputs {
  * Deploy a Pulumi stack from a project directory
  * @param projectDir - Path to the Pulumi project directory (relative to repo root)
  * @param stackName - Name for the stack
+ * @param extraConfig - Additional config values to set before deployment
  * @returns Stack outputs after successful deployment
  */
-export async function deployStack(projectDir: string, stackName: string): Promise<StackOutputs> {
+export async function deployStack(
+	projectDir: string,
+	stackName: string,
+	extraConfig?: { [key: string]: string }
+): Promise<StackOutputs> {
 	const workDir = path.resolve(process.cwd(), projectDir);
 
 	// Install dependencies in the project directory
@@ -28,6 +33,12 @@ export async function deployStack(projectDir: string, stackName: string): Promis
 	await stack.setConfig('gcp:project', {
 		value: process.env.GOOGLE_PROJECT ?? process.env.GCLOUD_PROJECT ?? ''
 	});
+
+	if (extraConfig) {
+		for (const [key, value] of Object.entries(extraConfig)) {
+			await stack.setConfig(key, { value });
+		}
+	}
 
 	// Run pulumi up
 	const upResult = await stack.up({

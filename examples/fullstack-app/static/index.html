@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>FullStack App Frontend</title>
+</head>
+<body>
+	<h1>FullStack App Frontend</h1>
+	<p>Deployed successfully via Pulumi</p>
+
+	<h2>Database Health</h2>
+	<pre id="health">Loading...</pre>
+
+	<h2>Migrations</h2>
+	<pre id="migrations">Loading...</pre>
+
+	<script>
+		async function loadEndpoint(id, url) {
+			try {
+				var response = await fetch(url);
+				var data = await response.json();
+				document.getElementById(id).textContent = JSON.stringify(data, null, 2);
+			} catch (err) {
+				document.getElementById(id).textContent = "Error: " + err.message;
+			}
+		}
+
+		loadEndpoint("health", "/api/health");
+		loadEndpoint("migrations", "/api/migrations");
+	</script>
+</body>
+</html>

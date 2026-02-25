@@ -1,0 +1,6 @@
+name: fullstack-app
+runtime:
+  name: nodejs
+  options:
+    typescript: true
+description: Full stack application with load balancer, frontend, backend, and database

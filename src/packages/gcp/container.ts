@@ -327,7 +327,7 @@ export class ContainerMIG extends pulumi.ComponentResource {
 			 * to the old Container Registry
 			 */
 			const oldPolicyResource = new gcp.storage.BucketIAMMember(`${name}-iam`, {
-				bucket: `artifacts.${options.common.gcp.project}.appspot.com`,
+				bucket: pulumi.interpolate`artifacts.${options.common.gcp.project}.appspot.com`,
 				member: pulumi.interpolate`serviceAccount:${serviceAccount}`,
 				role: 'roles/storage.objectViewer'
 			}, {

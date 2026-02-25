@@ -5,7 +5,7 @@ export type GCPCommonOptions = {
 	/**
 	 * GCP project name being deployed to
 	 */
-	project: string;
+	project: pulumi.Input<string>;
 
 	/**
 	 * Function to change the IAM policy for the project
