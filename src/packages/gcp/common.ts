@@ -5,7 +5,7 @@ export type GCPCommonOptions = {
 	/**
 	 * GCP project name being deployed to
 	 */
-	project: string;
+	project: pulumi.Input<string>;
 
 	/**
 	 * Function to change the IAM policy for the project
@@ -22,3 +22,10 @@ export type GCPCommonOptions = {
 	 */
 	firewallConfig?: Partial<ConstructorParameters<typeof gcp.compute.Firewall>[1]>;
 };
+
+/**
+ * Extract the service URL from Cloud Run service statuses
+ */
+export function extractServiceURL(statuses: gcp.types.output.cloudrun.ServiceStatus[] | undefined): string | undefined {
+	return(statuses?.[0]?.url);
+}

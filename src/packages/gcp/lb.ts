@@ -5,6 +5,40 @@ import * as utils from '../../utils';
 import type { GCPCommonOptions } from './common';
 import type { ContainerMIG } from './container';
 
+/**
+ * Create HTTP-to-HTTPS redirect resources (URL map, proxy, forwarding rules)
+ */
+export function createHttpRedirect(
+	name: string,
+	ips: { ip: pulumi.Input<string>; kind: string }[],
+	opts?: pulumi.CustomResourceOptions
+) {
+	const redirectMap = new gcp.compute.URLMap(`${name}-http-redirect`, {
+		defaultUrlRedirect: {
+			httpsRedirect: true,
+			stripQuery: false
+		}
+	}, opts);
+
+	const httpProxy = new gcp.compute.TargetHttpProxy(`${name}-http-proxy`, {
+		urlMap: redirectMap.id
+	}, opts);
+
+	for (const ipConfig of ips) {
+		const ruleName = `${name}-http-fr-${ipConfig.kind}`.replace(/-$/, '');
+		new gcp.compute.GlobalForwardingRule(ruleName, {
+			ipAddress: ipConfig.ip,
+			target: httpProxy.id,
+			portRange: '80',
+			loadBalancingScheme: 'EXTERNAL_MANAGED',
+			ipProtocol: 'TCP'
+		}, {
+			...opts,
+			deleteBeforeReplace: true
+		});
+	}
+}
+
 type LoadBalancerArgs = {
 	/**
 	 * Common arguments for GCP resources
@@ -509,7 +543,7 @@ export class ExternalLoadBalancer extends pulumi.ComponentResource {
 				globalNetworkEndpointGroup: endpointGroup.id,
 				...targetInfo
 			}, {
-				parent: this
+				parent: endpointGroup
 			});
 
 			targetBackendGroup = endpointGroup.id;
@@ -572,6 +606,8 @@ export class ExternalLoadBalancer extends pulumi.ComponentResource {
 			parent: urlMap,
 			dependsOn: toDependOn.splice(0)
 		});
+
+		createHttpRedirect(name, [{ ip, kind: '' }], { parent: urlMap });
 
 		if (args.target.type === 'MIG') {
 			/*

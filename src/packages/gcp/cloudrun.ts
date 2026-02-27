@@ -9,7 +9,7 @@ export interface EnvironmentGCPSecretData {
 	name: pulumi.Input<string>;
 }
 
-interface EnvironmentVariables {
+export interface EnvironmentVariables {
 	[name: string]: pulumi.Input<string | number> | EnvironmentGCPSecretData | {
 		value: pulumi.Input<string | number>;
 		secret: boolean;
@@ -120,6 +120,36 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 
 			return({ name: variable.name, value: variable.value, valueSource });
 		}));
+	}
+
+	/**
+	 * Returns all variables with secrets resolved to their plain values.
+	 * For use with GCE/MIG containers that don't support Secret Manager references.
+	 */
+	get resolvedVariableOutput(): pulumi.Output<{ name: string; value: string }[]> {
+		const entries: pulumi.Output<{ name: string; value: string }>[] = [];
+		for (const variableName in this.variables) {
+			const valueOrWrapper = this.variables[variableName];
+
+			// Skip external secrets -- we can't resolve those at deploy time
+			if (isEnvironmentGCPSecretData(valueOrWrapper)) {
+				continue;
+			}
+
+			if (typeof valueOrWrapper === 'object' && 'value' in valueOrWrapper) {
+				entries.push(pulumi.output(valueOrWrapper.value).apply(function(val) {
+					return({ name: variableName, value: String(val) });
+				}));
+
+				continue;
+			}
+
+			entries.push(pulumi.output(valueOrWrapper).apply(function(val) {
+				return({ name: variableName, value: String(val) });
+			}));
+		}
+
+		return(pulumi.all(entries));
 	}
 
 	private registerExistingSecret(name: string, secret: EnvironmentGCPSecretData) {

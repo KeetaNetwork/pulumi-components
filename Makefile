@@ -49,9 +49,7 @@ dist: dist/.done
 
 # This is a synthetic target that runs this test suite.
 test: node_modules
-	@echo "No tests configured yet. Please add test framework and tests."
-	@echo "Required system dependencies: Node.js >= 16.0.0"
-	@exit 1
+	npm run vitest -- run
 
 # Run linting
 do-lint: node_modules
