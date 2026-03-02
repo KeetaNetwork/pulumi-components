@@ -98,7 +98,8 @@ interface RouteRuleConfig {
  */
 function parseIPAddresses(
 	name: string,
-	ipAddress: IPAddressConfig | undefined
+	ipAddress: IPAddressConfig | undefined,
+	opts: { parent: pulumi.Resource }
 ): { kind: 'ipv4' | 'ipv6' | ''; ip: pulumi.Input<string> }[] {
 	const ipAddresses: { kind: 'ipv4' | 'ipv6' | ''; ip: pulumi.Input<string> }[] = [];
 
@@ -109,14 +110,14 @@ function parseIPAddresses(
 				ip: new gcp.compute.GlobalAddress(`${name}-ipv4`, {
 					addressType: 'EXTERNAL',
 					ipVersion: 'IPV4'
-				}).address
+				}, opts).address
 			},
 			{
 				kind: 'ipv6',
 				ip: new gcp.compute.GlobalAddress(`${name}-ipv6`, {
 					addressType: 'EXTERNAL',
 					ipVersion: 'IPV6'
-				}).address
+				}, opts).address
 			}
 		);
 	} else if (typeof ipAddress === 'object' && ('ipv4' in ipAddress || 'ipv6' in ipAddress)) {
@@ -140,7 +141,8 @@ function createLoadBalancer(
 	name: string,
 	config: LoadBalancerConfig,
 	routeRules: RouteRuleConfig[],
-	defaultService: pulumi.Input<string>
+	defaultService: pulumi.Input<string>,
+	opts: { parent: pulumi.Resource }
 ): LoadBalancerResources {
 	// Create URL map with routing rules
 	const urlMap = new gcp.compute.URLMap(`${name}-url-map`, {
@@ -154,7 +156,7 @@ function createLoadBalancer(
 			hosts: ['*'],
 			pathMatcher: 'all'
 		}]
-	});
+	}, opts);
 
 	// Create or use existing SSL certificate
 	let sslCertificate: Pick<gcp.compute.ManagedSslCertificate, 'id'>;
@@ -166,6 +168,7 @@ function createLoadBalancer(
 				domains: config.ssl.domains
 			}
 		}, {
+			...opts,
 			protect: config.ssl.protectCert,
 			deleteBeforeReplace: true
 		});
@@ -175,10 +178,10 @@ function createLoadBalancer(
 	const httpsProxy = new gcp.compute.TargetHttpsProxy(`${name}-https-proxy`, {
 		urlMap: urlMap.id,
 		sslCertificates: [sslCertificate.id]
-	});
+	}, opts);
 
 	// Parse IP addresses
-	const ipAddresses = parseIPAddresses(name, config.ipAddress);
+	const ipAddresses = parseIPAddresses(name, config.ipAddress, opts);
 	const forwardingRules: gcp.compute.GlobalForwardingRule[] = [];
 
 	// Create forwarding rules and DNS records
@@ -191,6 +194,7 @@ function createLoadBalancer(
 			loadBalancingScheme: 'EXTERNAL_MANAGED',
 			ipProtocol: 'TCP'
 		}, {
+			...opts,
 			deleteBeforeReplace: true
 		});
 		forwardingRules.push(rule);
@@ -203,11 +207,11 @@ function createLoadBalancer(
 				ttl: 300,
 				managedZone: config.dnsZoneId,
 				rrdatas: [ipConfig.ip]
-			});
+			}, opts);
 		}
 	}
 
-	createHttpRedirect(name, ipAddresses);
+	createHttpRedirect(name, ipAddresses, { parent: urlMap });
 
 	const ips = pulumi.all(forwardingRules.map(function(fr) { return(fr.ipAddress); })).apply(function(ips) {
 		return(ips.filter(function(ip): ip is string { return(ip !== undefined && ip !== null); }));
@@ -399,7 +403,8 @@ export class StaticWebApp extends pulumi.ComponentResource {
 				name,
 				lb,
 				routeRules,
-				backendBucket.id
+				backendBucket.id,
+				{ parent: this }
 			);
 
 			this.urlMap = lbResources.urlMap;
@@ -846,7 +851,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 			serviceAccount = new gcp.serviceaccount.Account(`${name}-sa`, {
 				description: `[${name}] Service account`,
 				accountId
-			});
+			}, { parent: this });
 		}
 
 		let serviceDependsOn: pulumi.Input<pulumi.Resource[]> | undefined = undefined;
@@ -1164,7 +1169,7 @@ export interface FullStackAppArgs {
 	/**
 	 * Frontend (SPA) configuration (without loadBalancer, as it's managed by FullStackApp)
 	 */
-	frontend: Omit<StaticWebAppArgs, 'loadBalancer'>;
+	frontend: Omit<StaticWebAppArgs, 'loadBalancer'> | null;
 
 	/**
 	 * Backend service configuration
@@ -1198,76 +1203,89 @@ export interface FullStackAppArgs {
  * This component composes StaticWebApp and CloudRunService
  */
 export class FullStackApp extends pulumi.ComponentResource {
-	readonly frontend: StaticWebApp;
+	readonly frontend: StaticWebApp | null;
 	readonly backend: CloudRunService;
 	readonly urlMap: gcp.compute.URLMap;
 	readonly httpsProxy: gcp.compute.TargetHttpsProxy;
 	readonly forwardingRules: gcp.compute.GlobalForwardingRule[];
 	readonly ips: pulumi.Output<string[]>;
-	readonly frontendBucket: pulumi.Output<string>;
+	readonly frontendBucket: pulumi.Output<string> | null;
 
 	constructor(name: string, args: FullStackAppArgs, opts?: pulumi.ComponentResourceOptions) {
 		super('Keeta:GCP:FullStackApp', name, args, opts);
 
-		const frontend = new StaticWebApp(`${name}-frontend`, args.frontend, { parent: this });
+		let routeRules: RouteRuleConfig[];
 
-		const backend = new CloudRunService(`${name}-backend`, args.backend, { parent: this });
+		this.backend = new CloudRunService(`${name}-backend`, args.backend, { parent: this });
 
-		const routing = args.routing ?? {};
-		const apiPrefix = routing.apiPrefix ?? '/api';
-		const staticPaths = routing.staticPaths ?? ['/assets/', '/icons/', '/fonts/', '/images/'];
-		const staticFiles = routing.staticFiles ?? ['/favicon.svg'];
+		if (args.frontend) {
+			const frontend = new StaticWebApp(`${name}-frontend`, args.frontend, { parent: this });
+			this.frontend = frontend;
+			this.frontendBucket = this.frontend.bucket.name;
 
-		const routeRules: RouteRuleConfig[] = [
-			...staticPaths.map(function(path, priority): RouteRuleConfig {
-				return({
-					priority: priority + 1,
-					matchRules: [{ prefixMatch: path }],
-					service: frontend.backendBucket.id
-				});
-			}),
-			...staticFiles.map(function(file, priority): RouteRuleConfig {
-				return({
-					priority: staticPaths.length + priority + 1,
-					matchRules: [{ fullPathMatch: file }],
-					service: frontend.backendBucket.id
-				});
-			}),
-			{
-				priority: staticPaths.length + staticFiles.length + 1,
-				matchRules: [{ prefixMatch: apiPrefix }],
-				service: backend.backendService.id
-			},
-			{
-				priority: staticPaths.length + staticFiles.length + 2,
-				matchRules: [{ pathTemplateMatch: '/**' }],
-				service: frontend.backendBucket.id,
-				routeAction: {
-					urlRewrite: {
-						pathTemplateRewrite: '/'
+			const routing = args.routing ?? {};
+			const apiPrefix = routing.apiPrefix ?? '/api';
+			const staticPaths = routing.staticPaths ?? ['/assets/', '/icons/', '/fonts/', '/images/'];
+			const staticFiles = routing.staticFiles ?? ['/favicon.svg'];
+
+			routeRules = [
+				...staticPaths.map((path, priority): RouteRuleConfig => {
+					return({
+						priority: priority + 1,
+						matchRules: [{ prefixMatch: path }],
+						service: frontend.backendBucket.id
+					});
+				}),
+				...staticFiles.map((file, priority): RouteRuleConfig => {
+					return({
+						priority: staticPaths.length + priority + 1,
+						matchRules: [{ fullPathMatch: file }],
+						service: frontend.backendBucket.id
+					});
+				}),
+				{
+					priority: staticPaths.length + staticFiles.length + 1,
+					matchRules: [{ prefixMatch: apiPrefix }],
+					service: this.backend.backendService.id
+				},
+				{
+					priority: staticPaths.length + staticFiles.length + 2,
+					matchRules: [{ pathTemplateMatch: '/**' }],
+					service: this.frontend.backendBucket.id,
+					routeAction: {
+						urlRewrite: {
+							pathTemplateRewrite: '/'
+						}
 					}
 				}
+			];
+		} else {
+			this.frontend = null;
+			this.frontendBucket = null;
+
+			if (args.routing) {
+				throw(new Error('Routing configuration is not applicable when frontend is null'));
 			}
-		];
+
+			routeRules = [];
+		}
 
 		const lbResources = createLoadBalancer(
 			name,
 			args.loadBalancer,
 			routeRules,
-			frontend.backendBucket.id
+			this.frontend ? this.frontend.backendBucket.id : this.backend.backendService.id,
+			{ parent: this }
 		);
 
-		this.frontend = frontend;
-		this.backend = backend;
 		this.urlMap = lbResources.urlMap;
 		this.httpsProxy = lbResources.httpsProxy;
 		this.forwardingRules = lbResources.forwardingRules;
 		this.ips = lbResources.ips;
-		this.frontendBucket = frontend.bucket.name;
 
 		this.registerOutputs({
-			frontendBucket: frontend.bucket.name,
-			backendUrl: backend.service.statuses.apply(extractServiceURL),
+			frontendBucket: this.frontend ? this.frontend.bucket.name : null,
+			backendUrl: this.backend.service.statuses.apply(extractServiceURL),
 			ips: this.ips
 		});
 	}
