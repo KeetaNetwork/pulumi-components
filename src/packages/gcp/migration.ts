@@ -206,7 +206,6 @@ export class MigrationJob extends pulumi.ComponentResource {
 		// Create Cloud Run Job (connects to Cloud SQL via VPC private IP)
 		this.job = new gcp.cloudrunv2.Job(`${name}-job`, {
 			location: args.region,
-			deletionProtection: false,
 			template: {
 				template: {
 					serviceAccount: serviceAccount.email,
