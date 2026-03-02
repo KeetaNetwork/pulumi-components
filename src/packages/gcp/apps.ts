@@ -1228,7 +1228,6 @@ export class FullStackApp extends pulumi.ComponentResource {
 			const staticPaths = routing.staticPaths ?? ['/assets/', '/icons/', '/fonts/', '/images/'];
 			const staticFiles = routing.staticFiles ?? ['/favicon.svg'];
 
-
 			routeRules = [
 				...staticPaths.map((path, priority): RouteRuleConfig => {
 					return({
