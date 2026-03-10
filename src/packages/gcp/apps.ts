@@ -89,6 +89,7 @@ interface RouteRuleConfig {
 	routeAction?: {
 		urlRewrite?: {
 			pathTemplateRewrite?: string;
+			pathPrefixRewrite?: string;
 		};
 	};
 }
@@ -1246,7 +1247,12 @@ export class FullStackApp extends pulumi.ComponentResource {
 				{
 					priority: staticPaths.length + staticFiles.length + 1,
 					matchRules: [{ prefixMatch: apiPrefix }],
-					service: this.backend.backendService.id
+					service: this.backend.backendService.id,
+					routeAction: {
+						urlRewrite: {
+							pathPrefixRewrite: '/'
+						}
+					}
 				},
 				{
 					priority: staticPaths.length + staticFiles.length + 2,
