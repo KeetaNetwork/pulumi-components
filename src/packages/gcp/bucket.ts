@@ -3,6 +3,10 @@ import * as gcp from '@pulumi/gcp';
 import * as fs from 'fs';
 import * as path from 'path';
 
+type BucketObjectOptions = {
+	retainOnDelete?: boolean;
+};
+
 /**
  * Reimplement the GoogleCloudFolder but with support for specifying
  * options to pass through for each file
@@ -25,13 +29,13 @@ export interface GoogleCloudFolderArgs {
 		/**
 		 * The options to set for every object
 		 */
-		object?: Partial<Omit<gcp.storage.BucketObjectArgs, 'bucket' | 'source' | 'name'>>;
+		object?: Partial<Omit<gcp.storage.BucketObjectArgs, 'bucket' | 'source' | 'name'>> & BucketObjectOptions;
 
 		/**
 		 * A function to generate the options for each object
 		 * based on the path
 		 */
-		generated?: (path: string) => Partial<Omit<gcp.storage.BucketObjectArgs, 'bucket' | 'source' | 'name'>>;
+		generated?: (path: string) => Partial<Omit<gcp.storage.BucketObjectArgs, 'bucket' | 'source' | 'name'>> & BucketObjectOptions;
 	}
 
 	/**
@@ -139,16 +143,33 @@ export class GoogleCloudFolderWithArgs extends pulumi.ComponentResource {
 
 			const resourceName = `${name}-${file.replace(/[^A-Za-z0-9/.]/g, '-')}`;
 
+			/*
+			 * Compute the combined Args+Options for the bucket
+			 * object, then split them apart
+			 */
+			const bucketObjectArgs = {
+				...args.options?.object,
+				...args.options?.generated?.(file)
+			};
+
+			const bucketObjectOptions = {
+				retainOnDelete: bucketObjectArgs?.retainOnDelete ?? args.options?.object?.retainOnDelete ?? false
+			};
+			delete bucketObjectArgs.retainOnDelete;
+
+			/**
+			 * Create the bucket object with the computed args and options
+			 */
 			const object = new gcp.storage.BucketObject(resourceName, {
 				bucket: args.bucketName,
 				source: new pulumi.asset.FileAsset(filePath),
 				name: file,
 				contentType: this.computeContentType(file),
-				...args.options?.object,
-				...args.options?.generated?.(file)
+				...bucketObjectArgs
 			}, {
 				parent: this,
-				deleteBeforeReplace: true
+				deleteBeforeReplace: true,
+				...bucketObjectOptions
 			});
 
 			objects.push(object);

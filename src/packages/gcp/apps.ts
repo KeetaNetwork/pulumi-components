@@ -344,15 +344,34 @@ export class StaticWebApp extends pulumi.ComponentResource {
 			options: {
 				generated: function(fileName: string) {
 					let ttl: number;
+					let retainOnDelete = false;
+					let retainDays: number | undefined = undefined;
 					if (fileName === 'index.html') {
 						ttl = indexTTL;
 					} else if (fileName.startsWith(assetsPrefix)) {
 						ttl = assetsTTL;
+
+						/**
+						 * Assets are assumed to be
+						 * content-hashed and
+						 * immutable, so we can retain
+						 * them on delete so that users
+						 * with the old application
+						 * version don't lose access to
+						 * them.
+						 */
+						retainOnDelete = true;
+						retainDays = 7;
 					} else {
 						ttl = defaultTTL;
 					}
 					return({
-						cacheControl: `public, max-age=${ttl}`
+						cacheControl: `public, max-age=${ttl}`,
+						retention: (retainOnDelete && retainDays) ? {
+							retainUntilTime: new Date(Date.now() + (retainDays * 24 * 60 * 60 * 1000)).toISOString(),
+							mode: 'Unlocked'
+						} : undefined,
+						retainOnDelete: retainOnDelete
 					});
 				}
 			}
