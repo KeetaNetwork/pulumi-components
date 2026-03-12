@@ -344,7 +344,7 @@ export class StaticWebApp extends pulumi.ComponentResource {
 			options: {
 				generated: function(fileName: string) {
 					let ttl: number;
-					let retainDays: number | undefined = undefined;
+					let retainOnDelete = false;
 					if (fileName === 'index.html') {
 						ttl = indexTTL;
 					} else if (fileName.startsWith(assetsPrefix)) {
@@ -359,16 +359,13 @@ export class StaticWebApp extends pulumi.ComponentResource {
 						 * version don't lose access to
 						 * them.
 						 */
-						retainDays = 7;
+						retainOnDelete = true;
 					} else {
 						ttl = defaultTTL;
 					}
 					return({
 						cacheControl: `public, max-age=${ttl}`,
-						retention: retainDays ? {
-							retainUntilTime: new Date(Date.now() + (retainDays * 24 * 60 * 60 * 1000)).toISOString(),
-							mode: 'Unlocked'
-						} : undefined
+						retainOnDelete: retainOnDelete
 					});
 				}
 			}
