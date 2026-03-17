@@ -26,8 +26,11 @@ export interface IPv6AddressConfig {
 
 export type IPAddressConfig = pulumi.Input<string> | IPv4AddressConfig | IPv6AddressConfig;
 
+type CertificateManagerCert = Pick<gcp.certificatemanager.Certificate, 'name'>;
+type ComputeManagedSslCert = Pick<gcp.compute.ManagedSslCertificate, 'id' | 'subjectAlternativeNames'>;
+
 interface SSLCertificateConfig {
-	sslCertificate: Pick<gcp.compute.ManagedSslCertificate, 'id'>;
+	sslCertificate: CertificateManagerCert | ComputeManagedSslCert;
 	domains?: never;
 	protectCert?: never;
 }
@@ -159,11 +162,23 @@ function createLoadBalancer(
 	}, opts);
 
 	// Create or use existing SSL certificate
-	let sslCertificate: Pick<gcp.compute.ManagedSslCertificate, 'id'>;
+	let certificateID: pulumi.Output<string>;
+	let useCertificateManager = false;
 	if ('sslCertificate' in config.ssl && config.ssl.sslCertificate) {
-		sslCertificate = config.ssl.sslCertificate;
+		const cert = config.ssl.sslCertificate;
+		// Discriminate based on presence of subjectAlternativeNames (compute.ManagedSslCertificate only)
+		if ('subjectAlternativeNames' in cert) {
+			// This is a compute.ManagedSslCertificate
+			certificateID = pulumi.output(cert.id);
+			useCertificateManager = false;
+		} else {
+			// This is a certificatemanager.Certificate
+			useCertificateManager = true;
+			certificateID = pulumi.output(cert.name);
+		}
 	} else {
-		sslCertificate = new gcp.compute.ManagedSslCertificate(`${name}-cert`, {
+		// Create a new compute.ManagedSslCertificate
+		const sslCertificate = new gcp.compute.ManagedSslCertificate(`${name}-cert`, {
 			managed: {
 				domains: config.ssl.domains
 			}
@@ -172,12 +187,16 @@ function createLoadBalancer(
 			protect: config.ssl.protectCert,
 			deleteBeforeReplace: true
 		});
+		certificateID = sslCertificate.id;
+		useCertificateManager = false;
 	}
 
 	// Create HTTPS proxy
 	const httpsProxy = new gcp.compute.TargetHttpsProxy(`${name}-https-proxy`, {
 		urlMap: urlMap.id,
-		sslCertificates: [sslCertificate.id]
+		...(useCertificateManager
+			? { certificateManagerCertificates: [certificateID] }
+			: { sslCertificates: [certificateID] })
 	}, opts);
 
 	// Parse IP addresses
