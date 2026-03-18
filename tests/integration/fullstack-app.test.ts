@@ -1,7 +1,7 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import { deployStack, destroyStack, type StackOutputs } from '../helpers/pulumi';
 
-const domain = process.env.TEST_DOMAIN || 'fullstack-test.dev.keeta.com';
+const domain = process.env.TEST_DOMAIN || 'fullstack.pulumi-components-test-zone.test.keeta.com';
 const dnsZoneId = process.env.TEST_DNS_ZONE_ID;
 
 describe('FullStackApp', function() {
