@@ -1,26 +1,21 @@
 name: Integration Tests
 
 on:
-  # Temp - Remove once verified working
-  pull_request:
-    branches:
-      - main
   push:
     branches:
       - main
 
 jobs:
   test:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
     runs-on: ubuntu-latest
     timeout-minutes: 120
     permissions:
       contents: read
       packages: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+      - uses: actions/setup-node@v6
         with:
           node-version: 20.18.0
           registry-url: "https://npm.pkg.github.com"
