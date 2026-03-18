@@ -142,7 +142,7 @@ type InternalLoadBalancerArgs = LoadBalancerArgs & {
 	/**
 	 * SSL certificate to use (Certificate Manager certificate or
 	 * compute ManagedSslCertificate). If not supplied, one will be
-	 * created automatically based on the domain name specified
+	 * created using DNS validation of the domain name specified
 	 * in "domainName")
 	 */
 	sslCertificate?: CertificateManagerCert | ComputeManagedSslCert;
@@ -309,13 +309,17 @@ export class InternalLoadBalancer extends pulumi.ComponentResource {
 			if ('subjectAlternativeNames' in cert) {
 				// This is a compute.ManagedSslCertificate - look it up by region
 				const regionCert = gcp.compute.getRegionSslCertificateOutput({
-					name: pulumi.output(cert.id).apply(id => {
+					name: pulumi.output(cert.id).apply(function(id) {
 						const parts = id.split('/');
-						return(parts[parts.length - 1] || id);
+						return(parts[parts.length - 1] ?? id);
 					}),
 					region: region
 				});
-				certificateID = regionCert.apply(c => c.id);
+
+				certificateID = regionCert.apply(function(regionCertResolved) {
+					return(regionCertResolved.id);
+				});
+
 				useCertificateManager = false;
 			} else {
 				// This is a certificatemanager.Certificate
