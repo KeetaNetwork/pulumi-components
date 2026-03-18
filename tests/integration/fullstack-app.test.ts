@@ -1,5 +1,5 @@
 import { describe, it, expect, afterAll } from 'vitest';
-import { deployStack, destroyStack, type StackOutputs } from '../helpers/pulumi';
+import { deployStack, destroyStack, fetchWithRetry, type StackOutputs } from '../helpers/pulumi';
 
 const domain = process.env.TEST_DOMAIN || 'fullstack.pulumi-components-test-zone.test.keeta.com';
 const dnsZoneId = process.env.TEST_DNS_ZONE_ID;
@@ -71,14 +71,14 @@ describe('FullStackApp', function() {
 		expect(ips.length).toBeGreaterThan(0);
 
 		const ip = ips[0];
-		const response = await fetch(`http://${ip}/`, { redirect: 'manual' });
+		const response = await fetchWithRetry(`http://${ip}/`, { redirect: 'manual' });
 		expect(response.status).toBeGreaterThanOrEqual(300);
 		expect(response.status).toBeLessThan(400);
 
 		const location = response.headers.get('location');
 		expect(location).toBeDefined();
 		expect(location).toMatch(/^https:\/\//);
-	}, 60_000);
+	}, 660_000);
 
 	// Fetches from GCS directly because the LB's managed SSL cert is not
 	// provisioned in time for the test run, causing ECONNRESET on HTTPS.
