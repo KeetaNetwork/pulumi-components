@@ -165,8 +165,8 @@ function createLoadBalancer(
 		const cert = config.ssl.sslCertificate;
 		certificateID = pulumi.output(cert.id);
 
-		// Discriminate based on presence of subjectAlternativeNames (compute.ManagedSslCertificate only)
-		if ('subjectAlternativeNames' in cert) {
+		// Discriminate based on presence of certificateId (compute.ManagedSslCertificate only)
+		if ('certificateId' in cert) {
 			// This is a compute.ManagedSslCertificate
 			useCertificateManager = false;
 		} else {

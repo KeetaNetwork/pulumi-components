@@ -305,16 +305,26 @@ export class InternalLoadBalancer extends pulumi.ComponentResource {
 		let useCertificateManager = false;
 		if ('sslCertificate' in config && config.sslCertificate !== undefined) {
 			const cert = config.sslCertificate;
-			// Discriminate based on presence of subjectAlternativeNames (compute.ManagedSslCertificate only)
-			if ('subjectAlternativeNames' in cert) {
+			// Discriminate based on presence of certificateId (compute.ManagedSslCertificate only)
+			if ('certificateId' in cert) {
 				// This is a compute.ManagedSslCertificate - look it up by region
-				const regionCert = gcp.compute.getRegionSslCertificateOutput({
-					name: pulumi.output(cert.id).apply(function(id) {
-						const parts = id.split('/');
-						return(parts[parts.length - 1] ?? id);
-					}),
-					region: region
-				});
+				let regionCert;
+				try {
+					regionCert = gcp.compute.getCertificateOutput({
+						name: pulumi.output(cert.id).apply(function(id) {
+							const parts = id.split('/');
+							return(parts[parts.length - 1] ?? id);
+						})
+					});
+				} catch {
+					regionCert = gcp.compute.getRegionSslCertificateOutput({
+						name: pulumi.output(cert.id).apply(function(id) {
+							const parts = id.split('/');
+							return(parts[parts.length - 1] ?? id);
+						}),
+						region: region
+					});
+				}
 
 				certificateID = regionCert.apply(function(regionCertResolved) {
 					return(regionCertResolved.id);
@@ -520,8 +530,8 @@ export class ExternalLoadBalancer extends pulumi.ComponentResource {
 		let useCertificateManager = false;
 		if ('sslCertificate' in config && config.sslCertificate !== undefined) {
 			const cert = config.sslCertificate;
-			// Discriminate based on presence of subjectAlternativeNames (compute.ManagedSslCertificate only)
-			if ('subjectAlternativeNames' in cert) {
+			// Discriminate based on presence of certificateId (compute.ManagedSslCertificate only)
+			if ('certificateId' in cert) {
 				// This is a compute.ManagedSslCertificate
 				certificateID = pulumi.output(cert.id);
 				useCertificateManager = false;

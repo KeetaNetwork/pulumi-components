@@ -31,7 +31,7 @@ export type CertificateManagerCert = Pick<gcp.certificatemanager.Certificate, 'i
 /**
  * Compute Managed SSL certificate type
  */
-export type ComputeManagedSslCert = Pick<gcp.compute.ManagedSslCertificate, 'id' | 'subjectAlternativeNames'>;
+export type ComputeManagedSslCert = Pick<gcp.compute.ManagedSslCertificate, 'id' | 'certificateId'>;
 
 /**
  * Extract the service URL from Cloud Run service statuses
