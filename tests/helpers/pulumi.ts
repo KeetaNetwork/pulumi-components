@@ -94,28 +94,39 @@ export async function destroyStack(projectDir: string, stackName: string): Promi
 /**
  * Retry a fetch request until it succeeds or max attempts are exhausted.
  * Useful for resources like load balancers that need propagation time.
+ * Retries on both network errors and responses that fail the validate check.
  *
  * @param url - URL to fetch
  * @param options - Fetch options
+ * @param validate - Optional function to validate the response; return false to retry
  * @param maxAttempts - Maximum retry attempts (default 10)
  * @param delayMs - Delay between retries in ms (default 60000)
  */
 export async function fetchWithRetry(
 	url: string,
 	options?: RequestInit,
+	validate?: (response: Response) => boolean,
 	maxAttempts = 10,
 	delayMs = 60_000
 ): Promise<Response> {
 	for (let attempt = 1; attempt <= maxAttempts; attempt++) {
 		try {
-			return await fetch(url, options);
+			const response = await fetch(url, options);
+
+			if (!validate || validate(response)) {
+				return response;
+			}
+
+			if (attempt === maxAttempts) {
+				return response;
+			}
 		} catch (err) {
 			if (attempt === maxAttempts) {
 				throw err;
 			}
-
-			await new Promise(function(resolve) { setTimeout(resolve, delayMs); });
 		}
+
+		await new Promise(function(resolve) { setTimeout(resolve, delayMs); });
 	}
 
 	throw new Error('Unreachable');
