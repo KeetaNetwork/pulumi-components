@@ -1,0 +1,51 @@
+name: Integration Tests
+
+on:
+  # Temp - Remove once verified working
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20.18.0
+          registry-url: "https://npm.pkg.github.com"
+
+      - uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
+
+      - uses: google-github-actions/setup-gcloud@v3
+
+      - uses: pulumi/actions@v6
+        with:
+          command: version
+
+      - name: Login to Pulumi State Backend
+        run: pulumi login gs://pulumi-liftoffs-truest-561598453/
+
+      - name: Install Packages
+        run: make dist
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run Integration Tests
+        run: make test
+        env:
+          GOOGLE_PROJECT: ${{ vars.GOOGLE_PROJECT }}
+          TEST_DOMAIN: ${{ vars.TEST_DOMAIN }}
+          TEST_DNS_ZONE_ID: ${{ vars.TEST_DNS_ZONE_ID }}
