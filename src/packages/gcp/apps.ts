@@ -1,7 +1,7 @@
 import * as pulumi from '@pulumi/pulumi';
 import * as gcp from '@pulumi/gcp';
 import { extractServiceURL } from './common';
-import type { GCPCommonOptions } from './common';
+import type { GCPCommonOptions, CertificateManagerCert, ComputeManagedSslCert } from './common';
 import type { GCPRegion } from './constants';
 import type { EnvironmentVariables } from './cloudrun';
 import { GoogleCloudFolderWithArgs } from './bucket';
@@ -25,9 +25,6 @@ export interface IPv6AddressConfig {
 }
 
 export type IPAddressConfig = pulumi.Input<string> | IPv4AddressConfig | IPv6AddressConfig;
-
-type CertificateManagerCert = Pick<gcp.certificatemanager.Certificate, 'name'>;
-type ComputeManagedSslCert = Pick<gcp.compute.ManagedSslCertificate, 'id' | 'subjectAlternativeNames'>;
 
 interface SSLCertificateConfig {
 	sslCertificate: CertificateManagerCert | ComputeManagedSslCert;
@@ -174,7 +171,7 @@ function createLoadBalancer(
 		} else {
 			// This is a certificatemanager.Certificate
 			useCertificateManager = true;
-			certificateID = pulumi.output(cert.name);
+			certificateID = pulumi.output(cert.id);
 		}
 	} else {
 		// Create a new compute.ManagedSslCertificate
@@ -192,12 +189,19 @@ function createLoadBalancer(
 	}
 
 	// Create HTTPS proxy
-	const httpsProxy = new gcp.compute.TargetHttpsProxy(`${name}-https-proxy`, {
-		urlMap: urlMap.id,
-		...(useCertificateManager
-			? { certificateManagerCertificates: [certificateID] }
-			: { sslCertificates: [certificateID] })
-	}, opts);
+	let proxyConfig: ConstructorParameters<typeof gcp.compute.TargetHttpsProxy>[1];
+	if (useCertificateManager) {
+		proxyConfig = {
+			urlMap: urlMap.id,
+			certificateManagerCertificates: [certificateID]
+		};
+	} else {
+		proxyConfig = {
+			urlMap: urlMap.id,
+			sslCertificates: [certificateID]
+		};
+	}
+	const httpsProxy = new gcp.compute.TargetHttpsProxy(`${name}-https-proxy`, proxyConfig, opts);
 
 	// Parse IP addresses
 	const ipAddresses = parseIPAddresses(name, config.ipAddress, opts);

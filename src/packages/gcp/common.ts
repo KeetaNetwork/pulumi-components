@@ -24,6 +24,16 @@ export type GCPCommonOptions = {
 };
 
 /**
+ * Certificate Manager certificate type - uses id instead of name
+ */
+export type CertificateManagerCert = Pick<gcp.certificatemanager.Certificate, 'id' | 'sanDnsnames'>;
+
+/**
+ * Compute Managed SSL certificate type
+ */
+export type ComputeManagedSslCert = Pick<gcp.compute.ManagedSslCertificate, 'id' | 'subjectAlternativeNames'>;
+
+/**
  * Extract the service URL from Cloud Run service statuses
  */
 export function extractServiceURL(statuses: gcp.types.output.cloudrun.ServiceStatus[] | undefined): string | undefined {
