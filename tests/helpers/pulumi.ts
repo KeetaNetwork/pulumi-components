@@ -24,10 +24,10 @@ export async function deployStack(
 	console.log(`Installing dependencies in ${workDir}...`);
 	execSync('npm install', { cwd: workDir, stdio: 'inherit' });
 
-	const stack = await automation.LocalWorkspace.createOrSelectStack({
-		stackName,
-		workDir
-	});
+	const stack = await automation.LocalWorkspace.createOrSelectStack(
+		{ stackName, workDir },
+		{ secretsProvider: 'gcpkms://projects/mimetic-algebra-344104/locations/nam8/keyRings/pulumi-secrets/cryptoKeys/dev' }
+	);
 
 	// Set required config
 	await stack.setConfig('gcp:project', {
