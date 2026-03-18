@@ -1,4 +1,6 @@
 import { describe, it, expect, afterAll } from 'vitest';
+import * as pulumi from '@pulumi/pulumi';
+import type { CloudRunServiceArgs } from '../../src/packages/gcp/apps';
 import { deployStack, destroyStack, type StackOutputs } from '../helpers/pulumi';
 
 describe('CloudRunService with Database', function() {
@@ -53,4 +55,22 @@ describe('CloudRunService with Database', function() {
 	afterAll(async function() {
 		await destroyStack('examples/cloudrun-with-db', stackName);
 	}, 1_800_000); // 30 min timeout for destroy (Cloud SQL teardown is slow)
+});
+
+describe('CloudRunServiceArgs description field', () => {
+	const baseArgs = {
+		gcp: { project: 'my-project' },
+		region: 'us-central1' as const,
+		image: { uri: 'gcr.io/my-project/my-image:latest' }
+	};
+
+	it('accepts pulumi.Input<string> and pulumi.Output<string>', () => {
+		const withInput: CloudRunServiceArgs = { ...baseArgs, description: 'my service' };
+		const withOutput: CloudRunServiceArgs = { ...baseArgs, description: pulumi.output('my service') };
+		const withoutDescription: CloudRunServiceArgs = { ...baseArgs };
+
+		expect(withInput.description).toBeDefined();
+		expect(withOutput.description).toBeDefined();
+		expect(withoutDescription.description).toBeUndefined();
+	});
 });

@@ -1,4 +1,6 @@
 import { describe, it, expect, afterAll } from 'vitest';
+import * as pulumi from '@pulumi/pulumi';
+import type { FullStackAppArgs } from '../../src/packages/gcp/apps';
 import { deployStack, destroyStack, fetchWithRetry, type StackOutputs } from '../helpers/pulumi';
 
 const domain = process.env.TEST_DOMAIN || 'fullstack.pulumi-components-test-zone.test.keeta.com';
@@ -100,4 +102,26 @@ describe('FullStackApp', function() {
 	afterAll(async function() {
 		await destroyStack('examples/fullstack-app', stackName);
 	}, 1_800_000);
+});
+
+describe('FullStackAppArgs description field', () => {
+	const baseArgs = {
+		loadBalancer: { domain: 'app.example.com', ssl: { domains: ['app.example.com'] } },
+		frontend: { staticFilesPath: './dist' },
+		backend: {
+			gcp: { project: 'my-project' },
+			region: 'us-central1' as const,
+			image: { uri: 'gcr.io/my-project/my-image:latest' }
+		}
+	};
+
+	it('accepts pulumi.Input<string> and pulumi.Output<string>', () => {
+		const withInput: FullStackAppArgs = { ...baseArgs, description: 'my app' };
+		const withOutput: FullStackAppArgs = { ...baseArgs, description: pulumi.output('my app') };
+		const withoutDescription: FullStackAppArgs = { ...baseArgs };
+
+		expect(withInput.description).toBeDefined();
+		expect(withOutput.description).toBeDefined();
+		expect(withoutDescription.description).toBeUndefined();
+	});
 });
