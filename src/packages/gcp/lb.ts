@@ -2,7 +2,7 @@ import * as pulumi from '@pulumi/pulumi';
 import * as gcp from '@pulumi/gcp';
 import * as utils from '../../utils';
 
-import type { GCPCommonOptions } from './common';
+import type { GCPCommonOptions, CertificateManagerCert, ComputeManagedSslCert } from './common';
 import type { ContainerMIG } from './container';
 
 /**
@@ -134,39 +134,41 @@ type InternalLoadBalancerArgs = LoadBalancerArgs & {
 
 	/**
 	 * Domain name to use for the SSL certificates and DNS
-	 * entries (must be supplied if "sslCertificateName"
+	 * entries (must be supplied if "sslCertificate"
 	 * is not)
 	 */
 	domainName?: pulumi.Input<string>;
 
 	/**
-	 * Name of the SSL certificate to use (if not
-	 * supplied, one will be created using DNS validation
-	 * of the domain name specified in "domainName")
+	 * SSL certificate to use (Certificate Manager certificate or
+	 * compute ManagedSslCertificate). If not supplied, one will be
+	 * created using DNS validation of the domain name specified
+	 * in "domainName")
 	 */
-	sslCertificateName?: pulumi.Input<string>;
+	sslCertificate?: CertificateManagerCert | ComputeManagedSslCert;
 };
 
 type ExternalLoadBalancerArgs = LoadBalancerArgs & {
 	/**
-	 * IP Address to use for the Internal Load Balancer,
+	 * IP Address to use for the External Load Balancer,
 	 * if not supplied one will be created
 	 */
 	ip?: pulumi.Input<string> | gcp.compute.GlobalAddress;
 
 	/**
 	 * Domain name to use for the SSL certificates and DNS
-	 * entries (must be supplied if "sslCertificateName"
+	 * entries (must be supplied if "sslCertificate"
 	 * is not)
 	 */
 	domainName?: pulumi.Input<string>;
 
 	/**
-	 * Name of the SSL certificate to use (if not
-	 * supplied, one will be created using DNS validation
-	 * of the domain name specified in "domainName")
+	 * SSL certificate to use (Certificate Manager certificate or
+	 * compute ManagedSslCertificate). If not supplied, one will be
+	 * created automatically based on the domain name specified
+	 * in "domainName")
 	 */
-	sslCertificateName?: pulumi.Input<string>;
+	sslCertificate?: CertificateManagerCert | ComputeManagedSslCert;
 };
 
 /**
@@ -300,16 +302,40 @@ export class InternalLoadBalancer extends pulumi.ComponentResource {
 		 * Pull in user-specified SSL certificate or create one
 		 */
 		let certificateID: pulumi.Output<string>;
-		if ('sslCertificateName' in config && config.sslCertificateName !== undefined) {
-			/* Untested */
-			const cert = gcp.compute.getRegionSslCertificateOutput({
-				name: config.sslCertificateName,
-				region: region
-			});
+		let useCertificateManager = false;
+		if ('sslCertificate' in config && config.sslCertificate !== undefined) {
+			const cert = config.sslCertificate;
+			// Discriminate based on presence of certificateId (compute.ManagedSslCertificate only)
+			if ('certificateId' in cert) {
+				// This is a compute.ManagedSslCertificate - look it up by region
+				let regionCert;
+				if ('region' in cert && cert.region !== undefined) {
+					regionCert = gcp.compute.getRegionSslCertificateOutput({
+						name: pulumi.output(cert.id).apply(function(id) {
+							const parts = id.split('/');
+							return(parts[parts.length - 1] ?? id);
+						}),
+						region: region
+					});
+				} else {
+					regionCert = gcp.compute.getCertificateOutput({
+						name: pulumi.output(cert.id).apply(function(id) {
+							const parts = id.split('/');
+							return(parts[parts.length - 1] ?? id);
+						})
+					});
+				}
 
-			certificateID = cert.apply(function(certInfo) {
-				return(certInfo.id);
-			});
+				certificateID = regionCert.apply(function(regionCertResolved) {
+					return(regionCertResolved.id);
+				});
+
+				useCertificateManager = false;
+			} else {
+				// This is a certificatemanager.Certificate
+				useCertificateManager = true;
+				certificateID = pulumi.output(cert.id);
+			}
 		} else if ('domainName' in config && config.domainName !== undefined) {
 			const domainValidation = new gcp.certificatemanager.DnsAuthorization(`${name}-cert-dns`, {
 				description: `DNS Authorization for the SSL Certificate for the ${args.baseDescription}`,
@@ -337,8 +363,9 @@ export class InternalLoadBalancer extends pulumi.ComponentResource {
 			});
 
 			certificateID = cert.id;
+			useCertificateManager = true;
 		} else {
-			throw(new Error('Internal Load Balancer requires either a domain name or an SSL certificate name (or both)'));
+			throw(new Error('Internal Load Balancer requires either a domain name or an SSL certificate (or both)'));
 		}
 
 		if (args.target.type === 'NEG') {
@@ -372,10 +399,20 @@ export class InternalLoadBalancer extends pulumi.ComponentResource {
 			parent: backend
 		});
 
+		let targetCertConfig: Pick<NonNullable<ConstructorParameters<typeof gcp.compute.TargetHttpsProxy>[1]>, 'certificateManagerCertificates' | 'sslCertificates'>;
+		if (useCertificateManager) {
+			targetCertConfig = {
+				certificateManagerCertificates: [certificateID]
+			};
+		} else {
+			targetCertConfig = {
+				sslCertificates: [certificateID]
+			};
+		}
 		const target = new gcp.compute.TargetHttpsProxy(`${name}-target`, {
 			description: `Target HTTPS Proxy for the ${args.baseDescription}`,
 			urlMap: urlMap.name,
-			certificateManagerCertificates: [certificateID]
+			...targetCertConfig
 		}, {
 			parent: urlMap
 		});
@@ -490,8 +527,19 @@ export class ExternalLoadBalancer extends pulumi.ComponentResource {
 		 * Pull in user-specified SSL certificate or create one
 		 */
 		let certificateID: pulumi.Output<string>;
-		if ('sslCertificateName' in config && config.sslCertificateName !== undefined) {
-			certificateID = pulumi.output(config.sslCertificateName);
+		let useCertificateManager = false;
+		if ('sslCertificate' in config && config.sslCertificate !== undefined) {
+			const cert = config.sslCertificate;
+			// Discriminate based on presence of certificateId (compute.ManagedSslCertificate only)
+			if ('certificateId' in cert) {
+				// This is a compute.ManagedSslCertificate
+				certificateID = pulumi.output(cert.id);
+				useCertificateManager = false;
+			} else {
+				// This is a certificatemanager.Certificate
+				useCertificateManager = true;
+				certificateID = pulumi.output(cert.id);
+			}
 		} else if ('domainName' in config && config.domainName !== undefined) {
 			const cert = new gcp.compute.ManagedSslCertificate(`${name}-ext-cert`, {
 				description: `SSL Certificate for the ${args.baseDescription}`,
@@ -504,8 +552,9 @@ export class ExternalLoadBalancer extends pulumi.ComponentResource {
 			});
 
 			certificateID = cert.id;
+			useCertificateManager = false;
 		} else {
-			throw(new Error('External Load Balancer requires either a domain name or an SSL certificate name (or both)'));
+			throw(new Error('External Load Balancer requires either a domain name or an SSL certificate (or both)'));
 		}
 
 		let targetBackendGroup;
@@ -588,12 +637,44 @@ export class ExternalLoadBalancer extends pulumi.ComponentResource {
 			parent: backend
 		});
 
-		const target = new gcp.compute.TargetHttpsProxy(`${name}-ext-target`, {
-			description: `Target HTTPS Proxy for the ${args.baseDescription}`,
-			urlMap: urlMap.name,
-			sslCertificates: [certificateID]
-		}, {
-			parent: urlMap
+		let targetConfig: Pick<NonNullable<ConstructorParameters<typeof gcp.compute.TargetHttpsProxy>[1]>, 'description' | 'urlMap' | 'certificateMap' | 'sslCertificates'>;
+		if (useCertificateManager) {
+			const certMap = new gcp.certificatemanager.CertificateMap(`${name}-ext-cert-map`, {
+				description: `Certificate map for the ${args.baseDescription}`
+			}, {
+				parent: urlMap
+			});
+
+			let certMapEntryHostConfig: Pick<NonNullable<ConstructorParameters<typeof gcp.certificatemanager.CertificateMapEntry>[1]>, 'hostname' | 'matcher'>;
+			if ('domainName' in config && config.domainName !== undefined) {
+				certMapEntryHostConfig = { hostname: config.domainName };
+			} else {
+				certMapEntryHostConfig = { matcher: 'PRIMARY' };
+			}
+			const certMapEntry = new gcp.certificatemanager.CertificateMapEntry(`${name}-ext-cert-map-entry`, {
+				map: certMap.name,
+				certificates: [certificateID],
+				...certMapEntryHostConfig
+			}, {
+				parent: certMap
+			});
+			toDependOn.push(certMapEntry);
+
+			targetConfig = {
+				description: `Target HTTPS Proxy for the ${args.baseDescription}`,
+				urlMap: urlMap.name,
+				certificateMap: pulumi.interpolate`//certificatemanager.googleapis.com/${certMap.id}`
+			};
+		} else {
+			targetConfig = {
+				description: `Target HTTPS Proxy for the ${args.baseDescription}`,
+				urlMap: urlMap.name,
+				sslCertificates: [certificateID]
+			};
+		}
+		const target = new gcp.compute.TargetHttpsProxy(`${name}-ext-target`, targetConfig, {
+			parent: urlMap,
+			dependsOn: toDependOn.splice(0)
 		});
 
 		const lb = new gcp.compute.GlobalForwardingRule(`${name}-lb`, {

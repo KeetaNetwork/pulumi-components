@@ -1,7 +1,7 @@
 import * as pulumi from '@pulumi/pulumi';
 import * as gcp from '@pulumi/gcp';
 import { extractServiceURL } from './common';
-import type { GCPCommonOptions } from './common';
+import type { GCPCommonOptions, CertificateManagerCert, ComputeManagedSslCert } from './common';
 import type { GCPRegion } from './constants';
 import type { EnvironmentVariables } from './cloudrun';
 import { GoogleCloudFolderWithArgs } from './bucket';
@@ -27,7 +27,7 @@ export interface IPv6AddressConfig {
 export type IPAddressConfig = pulumi.Input<string> | IPv4AddressConfig | IPv6AddressConfig;
 
 interface SSLCertificateConfig {
-	sslCertificate: Pick<gcp.compute.ManagedSslCertificate, 'id'>;
+	sslCertificate: CertificateManagerCert | ComputeManagedSslCert;
 	domains?: never;
 	protectCert?: never;
 }
@@ -159,11 +159,23 @@ function createLoadBalancer(
 	}, opts);
 
 	// Create or use existing SSL certificate
-	let sslCertificate: Pick<gcp.compute.ManagedSslCertificate, 'id'>;
+	let certificateID: pulumi.Output<string>;
+	let useCertificateManager: boolean;
 	if ('sslCertificate' in config.ssl && config.ssl.sslCertificate) {
-		sslCertificate = config.ssl.sslCertificate;
+		const cert = config.ssl.sslCertificate;
+		certificateID = pulumi.output(cert.id);
+
+		// Discriminate based on presence of certificateId (compute.ManagedSslCertificate only)
+		if ('certificateId' in cert) {
+			// This is a compute.ManagedSslCertificate
+			useCertificateManager = false;
+		} else {
+			// This is a certificatemanager.Certificate
+			useCertificateManager = true;
+		}
 	} else {
-		sslCertificate = new gcp.compute.ManagedSslCertificate(`${name}-cert`, {
+		// Create a new compute.ManagedSslCertificate
+		const sslCertificate = new gcp.compute.ManagedSslCertificate(`${name}-cert`, {
 			managed: {
 				domains: config.ssl.domains
 			}
@@ -172,13 +184,55 @@ function createLoadBalancer(
 			protect: config.ssl.protectCert,
 			deleteBeforeReplace: true
 		});
+		certificateID = sslCertificate.id;
+		useCertificateManager = false;
 	}
 
 	// Create HTTPS proxy
-	const httpsProxy = new gcp.compute.TargetHttpsProxy(`${name}-https-proxy`, {
-		urlMap: urlMap.id,
-		sslCertificates: [sslCertificate.id]
-	}, opts);
+	const toDependOn: pulumi.Resource[] = [];
+	let proxyConfig: ConstructorParameters<typeof gcp.compute.TargetHttpsProxy>[1];
+	if (useCertificateManager) {
+		const certMap = new gcp.certificatemanager.CertificateMap(`${name}-cert-map`, {
+			description: `[${name}] Certificate map for load balancer`
+		}, opts);
+
+		/*
+		 * We need to make the TargetHttpsProxy depend on the
+		 * CertificateMapEntry to ensure the certificate is properly
+		 * associated before the proxy is created, or it will fail
+		 */
+		const certMapEntry = new gcp.certificatemanager.CertificateMapEntry(`${name}-cert-map-entry`, {
+			map: certMap.name,
+			certificates: [certificateID],
+			/*
+			 * Since we create one cert-map per Load Balancer we
+			 * can just use the "PRIMARY" matcher to match all
+			 * requests, and avoid having to specify which domains
+			 * to match in the entry.
+			 */
+			matcher: 'PRIMARY'
+		}, opts);
+		toDependOn.push(certMapEntry);
+
+		proxyConfig = {
+			urlMap: urlMap.id,
+			certificateMap: pulumi.interpolate`//certificatemanager.googleapis.com/${certMap.id}`
+		};
+	} else {
+		proxyConfig = {
+			urlMap: urlMap.id,
+			sslCertificates: [certificateID]
+		};
+	}
+	const httpsProxy = new gcp.compute.TargetHttpsProxy(`${name}-https-proxy`, proxyConfig, {
+		...opts,
+		dependsOn: toDependOn.splice(0),
+		/*
+		 * It seems like we need to replace the proxy when the kind
+		 * of certificate changes, or GCP gets confused
+		 */
+		replaceOnChanges: ['certificateMap', 'sslCertificates']
+	});
 
 	// Parse IP addresses
 	const ipAddresses = parseIPAddresses(name, config.ipAddress, opts);
