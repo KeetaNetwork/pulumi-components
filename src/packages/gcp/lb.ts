@@ -309,20 +309,20 @@ export class InternalLoadBalancer extends pulumi.ComponentResource {
 			if ('certificateId' in cert) {
 				// This is a compute.ManagedSslCertificate - look it up by region
 				let regionCert;
-				try {
-					regionCert = gcp.compute.getCertificateOutput({
-						name: pulumi.output(cert.id).apply(function(id) {
-							const parts = id.split('/');
-							return(parts[parts.length - 1] ?? id);
-						})
-					});
-				} catch {
+				if ('region' in cert && cert.region !== undefined) {
 					regionCert = gcp.compute.getRegionSslCertificateOutput({
 						name: pulumi.output(cert.id).apply(function(id) {
 							const parts = id.split('/');
 							return(parts[parts.length - 1] ?? id);
 						}),
 						region: region
+					});
+				} else {
+					regionCert = gcp.compute.getCertificateOutput({
+						name: pulumi.output(cert.id).apply(function(id) {
+							const parts = id.split('/');
+							return(parts[parts.length - 1] ?? id);
+						})
 					});
 				}
 

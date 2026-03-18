@@ -194,10 +194,10 @@ function createLoadBalancer(
 	if (useCertificateManager) {
 		const certMap = new gcp.certificatemanager.CertificateMap(`${name}-cert-map`, {
 			description: `[${name}] Certificate map for load balancer`
-		});
+		}, opts);
 
 		/*
-		 * We need to make the TargetHttpProxy depend on the
+		 * We need to make the TargetHttpsProxy depend on the
 		 * CertificateMapEntry to ensure the certificate is properly
 		 * associated before the proxy is created, or it will fail
 		 */
@@ -211,7 +211,7 @@ function createLoadBalancer(
 			 * to match in the entry.
 			 */
 			matcher: 'PRIMARY'
-		})
+		}, opts);
 		toDependOn.push(certMapEntry);
 
 		proxyConfig = {
