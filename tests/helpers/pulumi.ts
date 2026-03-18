@@ -24,10 +24,10 @@ export async function deployStack(
 	console.log(`Installing dependencies in ${workDir}...`);
 	execSync('npm install', { cwd: workDir, stdio: 'inherit' });
 
-	const stack = await automation.LocalWorkspace.createOrSelectStack({
-		stackName,
-		workDir
-	});
+	const stack = await automation.LocalWorkspace.createOrSelectStack(
+		{ stackName, workDir },
+		{ secretsProvider: 'gcpkms://projects/mimetic-algebra-344104/locations/nam8/keyRings/pulumi-secrets/cryptoKeys/dev' }
+	);
 
 	// Set required config
 	await stack.setConfig('gcp:project', {
@@ -89,6 +89,36 @@ export async function destroyStack(projectDir: string, stackName: string): Promi
 		// Log but don't fail if stack doesn't exist
 		console.error(`Warning: Failed to destroy stack ${stackName}:`, err);
 	}
+}
+
+/**
+ * Retry a fetch request until it succeeds or max attempts are exhausted.
+ * Useful for resources like load balancers that need propagation time.
+ *
+ * @param url - URL to fetch
+ * @param options - Fetch options
+ * @param maxAttempts - Maximum retry attempts (default 10)
+ * @param delayMs - Delay between retries in ms (default 60000)
+ */
+export async function fetchWithRetry(
+	url: string,
+	options?: RequestInit,
+	maxAttempts = 10,
+	delayMs = 60_000
+): Promise<Response> {
+	for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+		try {
+			return await fetch(url, options);
+		} catch (err) {
+			if (attempt === maxAttempts) {
+				throw err;
+			}
+
+			await new Promise(function(resolve) { setTimeout(resolve, delayMs); });
+		}
+	}
+
+	throw new Error('Unreachable');
 }
 
 /**
