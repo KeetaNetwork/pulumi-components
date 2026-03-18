@@ -399,21 +399,21 @@ export class InternalLoadBalancer extends pulumi.ComponentResource {
 			parent: backend
 		});
 
-		let targetConfig: Pick<NonNullable<ConstructorParameters<typeof gcp.compute.TargetHttpsProxy>[1]>, 'description' | 'urlMap' | 'certificateManagerCertificates' | 'sslCertificates'>;
+		let targetCertConfig: Pick<NonNullable<ConstructorParameters<typeof gcp.compute.TargetHttpsProxy>[1]>, 'certificateManagerCertificates' | 'sslCertificates'>;
 		if (useCertificateManager) {
-			targetConfig = {
-				description: `Target HTTPS Proxy for the ${args.baseDescription}`,
-				urlMap: urlMap.name,
+			targetCertConfig = {
 				certificateManagerCertificates: [certificateID]
 			};
 		} else {
-			targetConfig = {
-				description: `Target HTTPS Proxy for the ${args.baseDescription}`,
-				urlMap: urlMap.name,
+			targetCertConfig = {
 				sslCertificates: [certificateID]
 			};
 		}
-		const target = new gcp.compute.TargetHttpsProxy(`${name}-target`, targetConfig, {
+		const target = new gcp.compute.TargetHttpsProxy(`${name}-target`, {
+			description: `Target HTTPS Proxy for the ${args.baseDescription}`,
+			urlMap: urlMap.name,
+			...targetCertConfig
+		}, {
 			parent: urlMap
 		});
 
@@ -637,12 +637,33 @@ export class ExternalLoadBalancer extends pulumi.ComponentResource {
 			parent: backend
 		});
 
-		let targetConfig: Pick<NonNullable<ConstructorParameters<typeof gcp.compute.TargetHttpsProxy>[1]>, 'description' | 'urlMap' | 'certificateManagerCertificates' | 'sslCertificates'>;
+		let targetConfig: Pick<NonNullable<ConstructorParameters<typeof gcp.compute.TargetHttpsProxy>[1]>, 'description' | 'urlMap' | 'certificateMap' | 'sslCertificates'>;
 		if (useCertificateManager) {
+			const certMap = new gcp.certificatemanager.CertificateMap(`${name}-ext-cert-map`, {
+				description: `Certificate map for the ${args.baseDescription}`
+			}, {
+				parent: urlMap
+			});
+
+			let certMapEntryHostConfig: Pick<NonNullable<ConstructorParameters<typeof gcp.certificatemanager.CertificateMapEntry>[1]>, 'hostname' | 'matcher'>;
+			if ('domainName' in config && config.domainName !== undefined) {
+				certMapEntryHostConfig = { hostname: config.domainName };
+			} else {
+				certMapEntryHostConfig = { matcher: 'PRIMARY' };
+			}
+			const certMapEntry = new gcp.certificatemanager.CertificateMapEntry(`${name}-ext-cert-map-entry`, {
+				map: certMap.name,
+				certificates: [certificateID],
+				...certMapEntryHostConfig
+			}, {
+				parent: certMap
+			});
+			toDependOn.push(certMapEntry);
+
 			targetConfig = {
 				description: `Target HTTPS Proxy for the ${args.baseDescription}`,
 				urlMap: urlMap.name,
-				certificateManagerCertificates: [certificateID]
+				certificateMap: pulumi.interpolate`//certificatemanager.googleapis.com/${certMap.id}`
 			};
 		} else {
 			targetConfig = {
@@ -652,7 +673,8 @@ export class ExternalLoadBalancer extends pulumi.ComponentResource {
 			};
 		}
 		const target = new gcp.compute.TargetHttpsProxy(`${name}-ext-target`, targetConfig, {
-			parent: urlMap
+			parent: urlMap,
+			dependsOn: toDependOn.splice(0)
 		});
 
 		const lb = new gcp.compute.GlobalForwardingRule(`${name}-lb`, {

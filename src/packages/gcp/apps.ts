@@ -189,11 +189,34 @@ function createLoadBalancer(
 	}
 
 	// Create HTTPS proxy
+	const toDependOn: pulumi.Resource[] = [];
 	let proxyConfig: ConstructorParameters<typeof gcp.compute.TargetHttpsProxy>[1];
 	if (useCertificateManager) {
+		const certMap = new gcp.certificatemanager.CertificateMap(`${name}-cert-map`, {
+			description: `[${name}] Certificate map for load balancer`
+		});
+
+		/*
+		 * We need to make the TargetHttpProxy depend on the
+		 * CertificateMapEntry to ensure the certificate is properly
+		 * associated before the proxy is created, or it will fail
+		 */
+		const certMapEntry = new gcp.certificatemanager.CertificateMapEntry(`${name}-cert-map-entry`, {
+			map: certMap.name,
+			certificates: [certificateID],
+			/*
+			 * Since we create one cert-map per Load Balancer we
+			 * can just use the "PRIMARY" matcher to match all
+			 * requests, and avoid having to specify which domains
+			 * to match in the entry.
+			 */
+			matcher: 'PRIMARY'
+		})
+		toDependOn.push(certMapEntry);
+
 		proxyConfig = {
 			urlMap: urlMap.id,
-			certificateManagerCertificates: [certificateID]
+			certificateMap: pulumi.interpolate`//certificatemanager.googleapis.com/${certMap.id}`
 		};
 	} else {
 		proxyConfig = {
@@ -201,7 +224,15 @@ function createLoadBalancer(
 			sslCertificates: [certificateID]
 		};
 	}
-	const httpsProxy = new gcp.compute.TargetHttpsProxy(`${name}-https-proxy`, proxyConfig, opts);
+	const httpsProxy = new gcp.compute.TargetHttpsProxy(`${name}-https-proxy`, proxyConfig, {
+		...opts,
+		dependsOn: toDependOn.splice(0),
+		/*
+		 * It seems like we need to replace the proxy when the kind
+		 * of certificate changes, or GCP gets confused
+		 */
+		replaceOnChanges: ['certificateMap', 'sslCertificates']
+	});
 
 	// Parse IP addresses
 	const ipAddresses = parseIPAddresses(name, config.ipAddress, opts);
