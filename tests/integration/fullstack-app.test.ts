@@ -71,7 +71,12 @@ describe('FullStackApp', function() {
 		expect(ips.length).toBeGreaterThan(0);
 
 		const ip = ips[0];
-		const response = await fetchWithRetry(`http://${ip}/`, { redirect: 'manual' });
+		const response = await fetchWithRetry(
+			`http://${ip}/`,
+			{ redirect: 'manual' },
+			// Wait for URL map to be ready
+			function(r) { return r.status >= 300 && r.status < 400; }
+		);
 		expect(response.status).toBeGreaterThanOrEqual(300);
 		expect(response.status).toBeLessThan(400);
 
