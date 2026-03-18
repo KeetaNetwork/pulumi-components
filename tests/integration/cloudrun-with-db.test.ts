@@ -4,11 +4,9 @@ import { deployStack, destroyStack, type StackOutputs } from '../helpers/pulumi'
 describe('CloudRunService with Database', function() {
 	const stackName = `test-${Date.now()}`;
 	let outputs: StackOutputs | undefined;
-	let deploymentSucceeded = false;
 
 	it('deploys and connects to database', async function() {
 		outputs = await deployStack('examples/cloudrun-with-db', stackName);
-		deploymentSucceeded = true;
 
 		// Verify outputs
 		expect(outputs.backend).toBeDefined();
@@ -53,8 +51,6 @@ describe('CloudRunService with Database', function() {
 	}, 1_800_000); // 30 min timeout for Cloud SQL + image build
 
 	afterAll(async function() {
-		if (deploymentSucceeded || outputs) {
-			await destroyStack('examples/cloudrun-with-db', stackName);
-		}
+		await destroyStack('examples/cloudrun-with-db', stackName);
 	}, 1_800_000); // 30 min timeout for destroy (Cloud SQL teardown is slow)
 });

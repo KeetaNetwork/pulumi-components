@@ -4,11 +4,9 @@ import { deployStack, destroyStack, type StackOutputs } from '../helpers/pulumi'
 describe('StaticWebApp', function() {
 	const stackName = `test-${Date.now()}`;
 	let outputs: StackOutputs | undefined;
-	let deploymentSucceeded = false;
 
 	it('deploys and serves content', async function() {
 		outputs = await deployStack('examples/static-webapp', stackName);
-		deploymentSucceeded = true;
 
 		// Verify component output exists
 		expect(outputs.staticApp).toBeDefined();
@@ -29,9 +27,6 @@ describe('StaticWebApp', function() {
 	}, 300_000); // 5 min timeout (simple GCS deployment)
 
 	afterAll(async function() {
-		// Only attempt cleanup if we have a stack to destroy
-		if (deploymentSucceeded || outputs) {
-			await destroyStack('examples/static-webapp', stackName);
-		}
+		await destroyStack('examples/static-webapp', stackName);
 	}, 1_800_000); // 30 min timeout for destroy
 });

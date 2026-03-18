@@ -7,7 +7,6 @@ const dnsZoneId = process.env.TEST_DNS_ZONE_ID;
 describe('FullStackApp', function() {
 	const stackName = `test-${Date.now()}`;
 	let outputs: StackOutputs | undefined;
-	let deploymentSucceeded = false;
 
 	it('deploys fullstack app with load balancer and database', async function() {
 		const extraConfig: { [key: string]: string } = {
@@ -18,7 +17,6 @@ describe('FullStackApp', function() {
 		}
 
 		outputs = await deployStack('examples/fullstack-app', stackName, extraConfig);
-		deploymentSucceeded = true;
 
 		expect(outputs.app).toBeDefined();
 		expect(outputs.serviceUrl).toBeDefined();
@@ -100,8 +98,6 @@ describe('FullStackApp', function() {
 	}, 60_000);
 
 	afterAll(async function() {
-		if (deploymentSucceeded || outputs) {
-			await destroyStack('examples/fullstack-app', stackName);
-		}
+		await destroyStack('examples/fullstack-app', stackName);
 	}, 1_800_000);
 });
