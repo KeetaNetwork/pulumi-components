@@ -32,8 +32,6 @@ jobs:
       - uses: google-github-actions/setup-gcloud@v3
 
       - uses: pulumi/actions@v6
-        with:
-          command: version
 
       - name: Login to Pulumi State Backend
         run: pulumi login gs://pulumi-liftoffs-truest-561598453/
