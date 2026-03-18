@@ -160,18 +160,18 @@ function createLoadBalancer(
 
 	// Create or use existing SSL certificate
 	let certificateID: pulumi.Output<string>;
-	let useCertificateManager = false;
+	let useCertificateManager: boolean;
 	if ('sslCertificate' in config.ssl && config.ssl.sslCertificate) {
 		const cert = config.ssl.sslCertificate;
+		certificateID = pulumi.output(cert.id);
+
 		// Discriminate based on presence of subjectAlternativeNames (compute.ManagedSslCertificate only)
 		if ('subjectAlternativeNames' in cert) {
 			// This is a compute.ManagedSslCertificate
-			certificateID = pulumi.output(cert.id);
 			useCertificateManager = false;
 		} else {
 			// This is a certificatemanager.Certificate
 			useCertificateManager = true;
-			certificateID = pulumi.output(cert.id);
 		}
 	} else {
 		// Create a new compute.ManagedSslCertificate
