@@ -42,3 +42,5 @@ jobs:
           GOOGLE_PROJECT: ${{ vars.GOOGLE_PROJECT }}
           TEST_DOMAIN: ${{ vars.TEST_DOMAIN }}
           TEST_DNS_ZONE_ID: ${{ vars.TEST_DNS_ZONE_ID }}
+          PULUMI_EXPERIMENTAL: "true"
+          PULUMI_SKIP_CHECKPOINTS: "true"
