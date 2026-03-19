@@ -29,3 +29,18 @@ export function buildDatabaseEnvVars(db: DatabaseConnectionInfo): EnvironmentVar
 		}
 	});
 }
+
+interface RedisConnectionInfo {
+	host: pulumi.Input<string>;
+	port: pulumi.Input<number>;
+	password: pulumi.Input<string>;
+}
+/**
+ * Build the standard MC_REDIS_* environment variables for Redis connectivity.
+ */
+export function buildRedisEnvVars(db: RedisConnectionInfo): EnvironmentVariables {
+	return({
+		MC_REDIS_URL: pulumi.interpolate`redis://${db.host}:${db.port}`,
+		MC_REDIS_PASSWORD: { value: db.password, secret: true }
+	});
+}

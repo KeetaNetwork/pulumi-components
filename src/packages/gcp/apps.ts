@@ -9,7 +9,7 @@ import { EnvManager } from './cloudrun';
 import { PostgresCloudSQL } from './sql';
 import { ContainerMIG } from './container';
 import { MigrationJob } from './migration';
-import { buildDatabaseEnvVars } from './database-env';
+import { buildDatabaseEnvVars, buildRedisEnvVars } from './database-env';
 import { createHttpRedirect } from './lb';
 import * as components from '../docker';
 import { generateName } from '../../utils';
@@ -626,6 +626,13 @@ export interface CloudRunServiceArgs {
 	};
 
 	/**
+	 * Key-value store configuration (optional)
+	 */
+	kv?: ({
+		type?: 'redis';
+	} & Omit<gcp.redis.InstanceArgs, 'region' | 'authorizedNetwork' | 'authEnabled'>)
+
+	/**
 	 * Cloud Run service configuration
 	 */
 	service?: {
@@ -784,6 +791,7 @@ export interface CloudRunServiceArgs {
 export class CloudRunService extends pulumi.ComponentResource {
 	readonly service: gcp.cloudrun.Service;
 	readonly database?: PostgresCloudSQL;
+	readonly kv?: gcp.redis.Instance;
 	readonly vpc?: gcp.compute.Network;
 	readonly subnet?: gcp.compute.Subnetwork;
 	readonly vpcConnector?: gcp.vpcaccess.Connector;
@@ -799,8 +807,9 @@ export class CloudRunService extends pulumi.ComponentResource {
 		let subnet: gcp.compute.Subnetwork | undefined;
 		let vpcConnector: gcp.vpcaccess.Connector | undefined;
 		let db: PostgresCloudSQL | undefined;
+		let kv: gcp.redis.Instance | undefined;
 
-		if (args.database || args.vpc || args.mig?.enabled) {
+		if (args.database || args.kv || args.vpc || args.mig?.enabled) {
 			vpc = args.vpc?.network ?? new gcp.compute.Network(`${name}-vpc`, {
 				description: `[${name}] VPC network`,
 				autoCreateSubnetworks: false
@@ -860,6 +869,40 @@ export class CloudRunService extends pulumi.ComponentResource {
 					dependsOn: [svcNetworkingConnection],
 					parent: this
 				});
+			}
+
+			if (args.kv) {
+				kv = new gcp.redis.Instance(`${name}-kv`, {
+					authEnabled: true,
+					authorizedNetwork: vpc.id,
+					region: args.region,
+					...args.kv
+				}, {
+					parent: this,
+					dependsOn: [ vpc, vpcConnector ]
+				});
+
+				new gcp.compute.Firewall(`${name}-kv-firewall`, {
+					description: `Allow VPC connector for to access KV (Redis)`,
+					network: vpc.id,
+					direction: 'EGRESS',
+					allows: [{
+						protocol: 'tcp',
+						ports: [ pulumi.interpolate`${kv.port}` ]
+					}],
+					sourceRanges: [
+						vpcConnector.ipCidrRange.apply(function(cidr) {
+							if (!cidr) {
+								throw(new Error('VPC connector does not have a CIDR range'));
+							}
+
+							return(cidr);
+						})
+					],
+					destinationRanges: [ pulumi.interpolate`${kv.host}/32` ],
+					priority: 850,
+					...args.gcp?.firewallConfig
+				}, { parent: vpc });
 			}
 		}
 
@@ -987,7 +1030,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 
 		let envManager: EnvManager | undefined;
 		// Create environment manager if we have environment variables OR a database (for auto-injected DB vars)
-		if (args.environment || db) {
+		if (args.environment || db || kv) {
 			const variables: EnvironmentVariables = {};
 
 			if (db) {
@@ -1000,6 +1043,16 @@ export class CloudRunService extends pulumi.ComponentResource {
 					caCertificate: hostInfo.caCertificate
 				});
 				Object.assign(variables, dbVars);
+			}
+
+			if (kv) {
+				const kvVars = buildRedisEnvVars({
+					host: kv.host,
+					port: kv.port,
+					password: kv.authString
+				});
+
+				Object.assign(variables, kvVars);
 			}
 
 			if (args.environment) {
@@ -1160,6 +1213,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 
 		this.service = service;
 		this.database = db;
+		this.kv = kv;
 		this.vpc = vpc;
 		this.subnet = subnet;
 		this.vpcConnector = vpcConnector;
