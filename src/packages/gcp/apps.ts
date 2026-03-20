@@ -872,7 +872,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 			}
 
 			if (args.kv) {
-				kv = new gcp.redis.Instance(`${name}-kv`, {
+				kv = new gcp.redis.Instance(generateName(name, 'kv', 38), {
 					authEnabled: true,
 					authorizedNetwork: vpc.id,
 					region: args.region,
