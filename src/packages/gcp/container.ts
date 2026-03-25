@@ -214,7 +214,7 @@ export class ContainerMIG extends pulumi.ComponentResource {
 
 				const url = parts[0];
 				const dockerPkgDevSuffix = '-docker.pkg.dev';
-				if (!url || !url.endsWith(dockerPkgDevSuffix)) {
+				if (!url?.endsWith(dockerPkgDevSuffix)) {
 					throw(new Error(`Image ${image} is not in a valid format, expected to start with a URL ending with 'docker.pkg.dev', got ${url}`));
 				}
 
@@ -226,7 +226,7 @@ export class ContainerMIG extends pulumi.ComponentResource {
 					throw(new Error(`Image ${image} is not in a valid format, expected to be in the format {region}-docker.pkg.dev/{project}/{registry}/{image}, got region=${location}, project=${project}, registry=${registry}`));
 				}
 
-                return(`${project}/${location}/${registry}`);
+				return(`${project}/${location}/${registry}`);
 			})));
 		}).filter(function(registry): registry is NonNullable<typeof registry> {
 			return(registry !== undefined);
