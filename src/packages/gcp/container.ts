@@ -201,7 +201,33 @@ export class ContainerMIG extends pulumi.ComponentResource {
 		 * from the containerSpec
 		 */
 		const registries = options.containerSpec.containers.map(function(container) {
-			return(container.registry);
+			if (container.registry) {
+				return(container.registry.id);
+			}
+
+			return(pulumi.output(pulumi.output(container.image).apply(function(image) {
+				const parts = image.split('/');
+
+				if (parts.length < 3) {
+					throw(new Error(`Image ${image} is not in a valid format, got ${parts.length} parts when split on '/', expected at least 3 ${image}`));
+				}
+
+				const url = parts[0];
+				const dockerPkgDevSuffix = '-docker.pkg.dev';
+				if (!url?.endsWith(dockerPkgDevSuffix)) {
+					throw(new Error(`Image ${image} is not in a valid format, expected to start with a URL ending with 'docker.pkg.dev', got ${url}`));
+				}
+
+				const location = url.substring(0, url.length - dockerPkgDevSuffix.length);
+				const project = parts[1];
+				const registry = parts[2];
+
+				if (!location || !project || !registry) {
+					throw(new Error(`Image ${image} is not in a valid format, expected to be in the format {region}-docker.pkg.dev/{project}/{registry}/{image}, got region=${location}, project=${project}, registry=${registry}`));
+				}
+
+				return(`${project}/${location}/${registry}`);
+			})));
 		}).filter(function(registry): registry is NonNullable<typeof registry> {
 			return(registry !== undefined);
 		});
@@ -344,11 +370,12 @@ export class ContainerMIG extends pulumi.ComponentResource {
 				registryIndex++;
 
 				const policyResource = new gcp.artifactregistry.RepositoryIamMember(`${name}-ar-${registryIndex}-iam`, {
-					repository: registry.id,
+					repository: registry,
 					member: pulumi.interpolate`serviceAccount:${serviceAccount}`,
 					role: 'roles/artifactregistry.reader'
 				}, {
-					parent: this
+					parent: this,
+					deleteBeforeReplace: true
 				});
 				policyChangeToDependOn.push(policyResource);
 			}
