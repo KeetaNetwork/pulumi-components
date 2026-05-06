@@ -241,7 +241,7 @@ export class MigrationJob extends pulumi.ComponentResource {
 		if (cloudSqlClient) {
 			executionDeps.push(cloudSqlClient);
 		}
-	
+
 		this.execution = new CloudRunJobExecution(`${name}-exec`, {
 			jobName: this.job.name,
 			projectId: args.gcp.project,
