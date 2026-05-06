@@ -173,11 +173,16 @@ export class MigrationJob extends pulumi.ComponentResource {
 		this.serviceAccount = serviceAccount;
 
 		// Grant Cloud SQL Client role to service account
-		new gcp.projects.IAMMember(`${name}-cloudsql-client`, {
-			project: args.gcp.project,
-			role: 'roles/cloudsql.client',
-			member: pulumi.interpolate`serviceAccount:${serviceAccount.email}`
-		}, { parent: this });
+		const cloudSqlClientMember = pulumi.interpolate`serviceAccount:${serviceAccount.email}`;
+		if (args.gcp.changeProjectIAMPolicy) {
+			void args.gcp.changeProjectIAMPolicy('roles/cloudsql.client', [cloudSqlClientMember]);
+		} else {
+			new gcp.projects.IAMMember(`${name}-cloudsql-client`, {
+				project: args.gcp.project,
+				role: 'roles/cloudsql.client',
+				member: cloudSqlClientMember
+			}, { parent: this });
+		}
 
 		// Build environment variables
 		const variables: EnvironmentVariables = {
