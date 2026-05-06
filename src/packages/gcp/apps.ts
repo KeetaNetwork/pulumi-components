@@ -988,14 +988,23 @@ export class CloudRunService extends pulumi.ComponentResource {
 
 		// Grant Cloud SQL client role if database is enabled
 		if (db && args.service?.grantIAMRoles !== false && !args.service?.serviceAccount) {
-			const cloudsqlClient = new gcp.projects.IAMMember(`${name}-cloudsql-client`, {
-				project: args.gcp.project,
-				role: 'roles/cloudsql.client',
-				member: pulumi.interpolate`serviceAccount:${serviceAccount.email}`
-			}, { parent: db });
-			serviceDependsOn = pulumi.output(serviceDependsOn ?? []).apply(function(deps) {
-				return([...deps, cloudsqlClient]);
-			});
+			const cloudSqlClientMember = pulumi.interpolate`serviceAccount:${serviceAccount.email}`;
+			let cloudSqlClient: pulumi.Input<pulumi.Resource> | undefined;
+			if (args.gcp.changeProjectIAMPolicy) {
+				cloudSqlClient = args.gcp.changeProjectIAMPolicy('roles/cloudsql.client', [cloudSqlClientMember]);
+			} else {
+				cloudSqlClient = new gcp.projects.IAMMember(`${name}-cloudsql-client`, {
+					project: args.gcp.project,
+					role: 'roles/cloudsql.client',
+					member: cloudSqlClientMember
+				}, { parent: db });
+			}
+
+			if (cloudSqlClient) {
+				serviceDependsOn = pulumi.all([serviceDependsOn ?? [], cloudSqlClient]).apply(function([deps, dep]) {
+					return([...deps, dep]);
+				});
+			}
 		}
 
 		// Create migration job if enabled and database is configured
