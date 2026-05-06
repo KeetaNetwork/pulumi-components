@@ -1001,8 +1001,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 			}
 
 			if (cloudSqlClient) {
-				const newDep: pulumi.Input<pulumi.Resource> = cloudSqlClient;
-				serviceDependsOn = pulumi.all([serviceDependsOn ?? [], newDep]).apply(function([deps, dep]) {
+				serviceDependsOn = pulumi.all([serviceDependsOn ?? [], cloudSqlClient]).apply(function([deps, dep]) {
 					return([...deps, dep]);
 				});
 			}
