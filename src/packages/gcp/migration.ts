@@ -174,10 +174,11 @@ export class MigrationJob extends pulumi.ComponentResource {
 
 		// Grant Cloud SQL Client role to service account
 		const cloudSqlClientMember = pulumi.interpolate`serviceAccount:${serviceAccount.email}`;
+		let cloudSqlClient: pulumi.Input<pulumi.Resource> | undefined;
 		if (args.gcp.changeProjectIAMPolicy) {
-			void args.gcp.changeProjectIAMPolicy('roles/cloudsql.client', [cloudSqlClientMember]);
+			cloudSqlClient = args.gcp.changeProjectIAMPolicy('roles/cloudsql.client', [cloudSqlClientMember]);
 		} else {
-			new gcp.projects.IAMMember(`${name}-cloudsql-client`, {
+			cloudSqlClient = new gcp.projects.IAMMember(`${name}-cloudsql-client`, {
 				project: args.gcp.project,
 				role: 'roles/cloudsql.client',
 				member: cloudSqlClientMember
@@ -236,6 +237,11 @@ export class MigrationJob extends pulumi.ComponentResource {
 
 		// Execute the job and wait for completion
 		const trigger = args.trigger ?? args.image;
+		const executionDeps: pulumi.Input<pulumi.Resource>[] = [this.job];
+		if (cloudSqlClient) {
+			executionDeps.push(cloudSqlClient);
+		}
+	
 		this.execution = new CloudRunJobExecution(`${name}-exec`, {
 			jobName: this.job.name,
 			projectId: args.gcp.project,
@@ -243,7 +249,7 @@ export class MigrationJob extends pulumi.ComponentResource {
 			trigger: pulumi.output(trigger).apply(function(t) { return(t); })
 		}, {
 			parent: this.job,
-			dependsOn: [this.job]
+			dependsOn: executionDeps
 		});
 
 		this.status = this.execution.status;
