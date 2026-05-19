@@ -305,6 +305,11 @@ export interface StaticWebAppArgs {
 	computeContentType?: ConstructorParameters<typeof GoogleCloudFolderWithArgs>[1]['computeContentType'];
 
 	/**
+	 * Custom headers to serve in replies, default is just 'X-Frame-Options: DENY'
+	 */
+	customResponseHeaders?: ConstructorParameters<typeof gcp.compute.BackendBucket>[1]['customResponseHeaders'];
+
+	/**
 	 * Cache control options for uploaded files
 	 */
 	cacheControl?: {
@@ -431,8 +436,34 @@ export class StaticWebApp extends pulumi.ComponentResource {
 			}
 		});
 
+		const customResponseHeadersInput = args.customResponseHeaders ?? [];
+		const customResponseHeaders = pulumi.output(customResponseHeadersInput).apply(function(headers) {
+			/*
+			 * Merge the headers using the Headers class
+			 */
+			const headersObject = new Headers();
+			headersObject.set('X-Frame-Options', 'DENY');
+			for (const header of headers) {
+				const key = header.split(':')[0].trim();
+				const value = header.split(':').slice(1).join(':').trim();
+
+				headersObject.set(key, value);
+			}
+
+			/*
+			 * Convert back to array format
+			 */
+			const retval: string[] = [];
+			headersObject.forEach(function(value, key) {
+				retval.push(`${key}: ${value}`);
+			});
+
+			return(retval);
+		});
+
 		const backendBucket = new gcp.compute.BackendBucket(`${name}-backend`, {
 			bucketName: bucket.name,
+			customResponseHeaders: customResponseHeaders,
 			enableCdn: false
 		});
 
