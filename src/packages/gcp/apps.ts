@@ -297,7 +297,12 @@ export interface StaticWebAppArgs {
 	/**
 	 * Optional filter for files to upload
 	 */
-	fileFilter?: (file: string) => boolean;
+	fileFilter?: ConstructorParameters<typeof GoogleCloudFolderWithArgs>[1]['filter'];
+
+	/**
+	 * Optional function to compute content type for uploaded files
+	 */
+	computeContentType?: ConstructorParameters<typeof GoogleCloudFolderWithArgs>[1]['computeContentType'];
 
 	/**
 	 * Cache control options for uploaded files
@@ -395,6 +400,7 @@ export class StaticWebApp extends pulumi.ComponentResource {
 			bucketName: bucket.name,
 			path: args.staticFilesPath,
 			filter: args.fileFilter,
+			computeContentType: args.computeContentType,
 			options: {
 				generated: function(fileName: string) {
 					let ttl: number;
