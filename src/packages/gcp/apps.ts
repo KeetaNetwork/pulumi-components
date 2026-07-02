@@ -180,7 +180,7 @@ function createLoadBalancer(
 		 * name of the resource so that it can be replaced when
 		 * the version changes
 		 */
-		let addToCertName: string = '';
+		let addToCertName = '';
 		if ('sslCertificateVersion' in config.ssl && config.ssl.sslCertificateVersion !== undefined) {
 			addToCertName = `-${config.ssl.sslCertificateVersion}`;
 		}
