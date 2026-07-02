@@ -35,6 +35,7 @@ interface SSLCertificateConfig {
 interface DomainsConfig {
 	domains: pulumi.Input<string[]>;
 	protectCert?: boolean;
+	sslCertificateVersion?: number;
 	sslCertificate?: never;
 }
 
@@ -174,15 +175,24 @@ function createLoadBalancer(
 			useCertificateManager = true;
 		}
 	} else {
+		/*
+		 * If a sslCertificateVersion is provided, use that as the
+		 * name of the resource so that it can be replaced when
+		 * the version changes
+		 */
+		let addToCertName = '';
+		if ('sslCertificateVersion' in config.ssl && config.ssl.sslCertificateVersion !== undefined) {
+			addToCertName = `-${config.ssl.sslCertificateVersion}`;
+		}
+
 		// Create a new compute.ManagedSslCertificate
-		const sslCertificate = new gcp.compute.ManagedSslCertificate(`${name}-cert`, {
+		const sslCertificate = new gcp.compute.ManagedSslCertificate(`${name}-cert${addToCertName}`, {
 			managed: {
 				domains: config.ssl.domains
 			}
 		}, {
 			...opts,
-			protect: config.ssl.protectCert,
-			deleteBeforeReplace: true
+			protect: config.ssl.protectCert
 		});
 		certificateID = sslCertificate.id;
 		useCertificateManager = false;
