@@ -246,7 +246,7 @@ function handleGenericOptions(name: string, options: ContainerGenericOptions<tru
 		 * For each image perform a callback to grant access to the image
 		 */
 		for (const image of images) {
-			const policyResource = options.common.gcp.changeRegistryIAMPolicy(image, 'read', [pulumi.interpolate`serviceAccount:${serviceAccount}`]);
+			const policyResource = options.common.gcp.changeRegistryIAMPolicy(image, 'read', [pulumi.interpolate`serviceAccount:${serviceAccountEmail}`]);
 
 			if (policyResource) {
 				policyChangeToDependOn.push(policyResource);
@@ -263,7 +263,7 @@ function handleGenericOptions(name: string, options: ContainerGenericOptions<tru
 
 			const policyResource = new gcp.artifactregistry.RepositoryIamMember(`${name}-ar-${registryIndex}-iam`, {
 				repository: registry,
-				member: pulumi.interpolate`serviceAccount:${serviceAccount}`,
+				member: pulumi.interpolate`serviceAccount:${serviceAccountEmail}`,
 				role: 'roles/artifactregistry.reader'
 			}, {
 				parent: parent,
@@ -280,8 +280,8 @@ function handleGenericOptions(name: string, options: ContainerGenericOptions<tru
 		/**
 		 * If a callback was specified, use it to grant permissions to logs/metrics
 		 */
-		const policyResourceLogging = options.common.gcp.changeProjectIAMPolicy('roles/logging.logWriter', [pulumi.interpolate`serviceAccount:${serviceAccount}`]);
-		const policyResourceMetric = options.common.gcp.changeProjectIAMPolicy('roles/monitoring.metricWriter', [pulumi.interpolate`serviceAccount:${serviceAccount}`]);
+		const policyResourceLogging = options.common.gcp.changeProjectIAMPolicy('roles/logging.logWriter', [pulumi.interpolate`serviceAccount:${serviceAccountEmail}`]);
+		const policyResourceMetric = options.common.gcp.changeProjectIAMPolicy('roles/monitoring.metricWriter', [pulumi.interpolate`serviceAccount:${serviceAccountEmail}`]);
 
 		if (policyResourceLogging) {
 			policyChangeToDependOn.push(policyResourceLogging);
@@ -296,7 +296,7 @@ function handleGenericOptions(name: string, options: ContainerGenericOptions<tru
 		 */
 		const policyResourceLogging = new gcp.projects.IAMMember(`${name}-iam-logging`, {
 			project: options.common.gcp.project,
-			member: pulumi.interpolate`serviceAccount:${serviceAccount}`,
+			member: pulumi.interpolate`serviceAccount:${serviceAccountEmail}`,
 			role: 'roles/logging.logWriter'
 		}, {
 			parent: parent
@@ -304,7 +304,7 @@ function handleGenericOptions(name: string, options: ContainerGenericOptions<tru
 
 		const policyResourceMetric = new gcp.projects.IAMMember(`${name}-iam-metric`, {
 			project: options.common.gcp.project,
-			member: pulumi.interpolate`serviceAccount:${serviceAccount}`,
+			member: pulumi.interpolate`serviceAccount:${serviceAccountEmail}`,
 			role: 'roles/monitoring.metricWriter'
 		}, {
 			parent: parent
