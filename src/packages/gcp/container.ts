@@ -127,15 +127,23 @@ interface ContainerMIGOptions extends ContainerGenericOptions<false> {
  */
 type ContainerCloudRunOptions = ContainerGenericOptions<true> & ({
 	/**
-	 * Cloud Run Worker Pool to use
+	 * Cloud Run Worker Pool instance size
 	 */
 	size?: {
+		/**
+		 * Amount of RAM for the container (in MiB)
+		 */
 		ram?: pulumi.Input<string>;
+		/**
+		 * Amount of CPU for the container (in cores)
+		 */
 		cpu?: pulumi.Input<string>;
 	}
 } | {
 	/**
-	 * Machine Type to use
+	 * Machine Type to use (provided for compatibility with MIGs) -- if this is specified it will override the size option
+	 *
+	 * You should use the "size" property instead
 	 */
 	machineType?: pulumi.Input<string>;
 
