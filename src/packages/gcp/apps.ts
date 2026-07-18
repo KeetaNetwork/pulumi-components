@@ -448,6 +448,8 @@ export class StaticWebApp extends pulumi.ComponentResource {
 
 		const customResponseHeadersInput = args.customResponseHeaders ?? [];
 		const customResponseHeaders = pulumi.output(customResponseHeadersInput).apply(function(headers) {
+			headers ??= [];
+
 			/*
 			 * Merge the headers using the Headers class
 			 */
