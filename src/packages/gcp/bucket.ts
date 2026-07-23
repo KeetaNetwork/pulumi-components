@@ -96,6 +96,8 @@ export class GoogleCloudFolderWithArgs extends pulumi.ComponentResource {
 			case '.jpg':
 			case '.jpeg':
 				return('image/jpeg');
+			case '.webp':
+				return('image/webp');
 			case '.gif':
 				return('image/gif');
 			case '.svg':
