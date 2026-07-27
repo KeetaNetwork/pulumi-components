@@ -1195,6 +1195,10 @@ export class CloudRunService extends pulumi.ComponentResource {
 		if (args.mig?.enabled && vpc && subnet) {
 			// Enable SSH firewall if requested
 			if (args.mig.enableSSH) {
+				if (args.mig.workerKind === 'crwp') {
+					throw(new Error('enableSSH is not supported for Cloud Run Worker Pool (crwp)'));
+				}
+
 				new gcp.compute.Firewall(`${name}-ssh-iap-firewall`, {
 					description: `[${name}] Allow SSH access to MIG instances via IAP`,
 					network: vpc.id,
@@ -1245,6 +1249,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 				if (args.mig.workerKind === 'crwp') {
 					throw(new Error('allocateExternalIP is not supported for Cloud Run Worker Pool (crwp) -- use a MIG instead OR create a NAT Gateway for the VPC'));
 				}
+
 				extIP = new gcp.compute.Address(`${name}-mig-ext-ip`, {
 					description: `[${name}] External IP for MIG`,
 					addressType: 'EXTERNAL',
@@ -1280,7 +1285,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 					}
 				}, { parent: this });
 			} else {
-				if (args.mig.enableSSH !== undefined) {
+				if (args.mig.enableSSH) {
 					throw(new Error('enableSSH is not supported for Cloud Run Worker Pool (crwp)'));
 				}
 
@@ -1303,9 +1308,11 @@ export class CloudRunService extends pulumi.ComponentResource {
 							image: imageUri,
 							name: `${name}-worker`,
 							restartPolicy: 'Always',
-							env: migEnvVars
+							env: migEnvManager.cloudRunJobVariableOutput
 						}]
 					}
+				}, {
+					parent: this
 				});
 			}
 		}

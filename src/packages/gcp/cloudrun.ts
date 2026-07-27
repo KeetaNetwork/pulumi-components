@@ -126,7 +126,11 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 				valueSourceContainer = { valueSource };
 			}
 
-			return({ name: variableName, value: variable.value, ...valueSourceContainer });
+			if (valueSourceContainer.valueSource) {
+				return({ name: variableName, ...valueSourceContainer });
+			} else {
+				return({ name: variableName, value: variable.value });
+			}
 		}));
 	}
 

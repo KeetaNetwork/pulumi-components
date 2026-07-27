@@ -11,6 +11,9 @@ interface ContainerCommonOptions {
 	gcp: Pick<GCPCommonOptions, 'project' | 'changeProjectIAMPolicy' | 'changeRegistryIAMPolicy'>;
 }
 
+
+type ContainerValueInputSupportingSecrets = Omit<gcp.types.input.cloudrunv2.JobTemplateTemplateContainerEnv, 'name'>;
+
 /**
  * Options relevant to all kinds of containers
  */
@@ -65,15 +68,7 @@ interface ContainerGenericOptions<SupportSecretRefEnvs extends boolean> {
 			args?: pulumi.Input<string>[] | pulumi.Input<string[]>;
 			env?: pulumi.Input<({
 				name: pulumi.Input<string>;
-			} & (SupportSecretRefEnvs extends true ? {
-				valueSource?: {
-					secretKeyRef: {
-						secret: pulumi.Input<string>;
-						version?: pulumi.Input<string>;
-					};
-				};
-				value?: pulumi.Input<string | undefined>;
-			} : {
+			} & (SupportSecretRefEnvs extends true ? ContainerValueInputSupportingSecrets : {
 				value: pulumi.Input<string | undefined>;
 			}))[]>;
 		}[];
