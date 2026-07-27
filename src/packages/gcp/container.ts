@@ -676,3 +676,5 @@ export class ContainerCloudRun extends pulumi.ComponentResource {
 		this.workerPool = workerPool;
 	}
 }
+
+export type ContainerGeneric = InstanceType<typeof ContainerMIG> | InstanceType<typeof ContainerCloudRun>;
