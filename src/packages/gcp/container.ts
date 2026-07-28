@@ -622,7 +622,6 @@ export class ContainerCloudRun extends pulumi.ComponentResource {
 				priority: 1000
 			}, {
 				parent: this,
-				retainOnDelete: true,
 				dependsOn: [nat]
 			});
 
