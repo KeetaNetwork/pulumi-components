@@ -574,6 +574,7 @@ export class ContainerCloudRun extends pulumi.ComponentResource {
 		router: gcp.compute.Router;
 		nat: gcp.compute.RouterNat;
 	};
+
 	readonly type = 'CloudRun' as const;
 
 	constructor(name: string, options: ContainerCloudRunOptions, args?: pulumi.CustomResourceOptions) {
