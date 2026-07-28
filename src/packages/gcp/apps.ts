@@ -7,7 +7,8 @@ import type { EnvironmentVariables } from './cloudrun';
 import { GoogleCloudFolderWithArgs } from './bucket';
 import { EnvManager } from './cloudrun';
 import { PostgresCloudSQL } from './sql';
-import { ContainerMIG } from './container';
+import type { ContainerGeneric } from './container';
+import { ContainerMIG, ContainerCloudRun } from './container';
 import { MigrationJob } from './migration';
 import { buildDatabaseEnvVars, buildRedisEnvVars } from './database-env';
 import { createHttpRedirect } from './lb';
@@ -782,6 +783,13 @@ export interface CloudRunServiceArgs {
 		 * These are merged with the main environment variables
 		 */
 		environmentOverrides?: { [key: string]: pulumi.Input<string> };
+
+		/**
+		 * Kind of worker to create for this:
+		 *   - mig: Managed Instance Group (default)
+		 *   - crwp: Cloud Run Worker Pool (more modern -- does not support "cosImage", "enableSSH", or "allocateExternalIP")
+		 */
+		workerKind?: 'mig' | 'crwp';
 	};
 
 	/**
@@ -846,7 +854,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 	readonly vpcConnector?: gcp.vpcaccess.Connector;
 	readonly backendService: gcp.compute.BackendService;
 	readonly serviceAccount?: gcp.serviceaccount.Account | Pick<gcp.serviceaccount.Account, 'email'>;
-	readonly mig?: ContainerMIG;
+	readonly mig?: ContainerGeneric;
 	readonly migration?: MigrationJob;
 
 	constructor(name: string, args: CloudRunServiceArgs, opts?: pulumi.ComponentResourceOptions) {
@@ -1183,10 +1191,14 @@ export class CloudRunService extends pulumi.ComponentResource {
 			}]
 		}, { parent: neg });
 
-		let mig: ContainerMIG | undefined;
+		let mig: ContainerGeneric | undefined;
 		if (args.mig?.enabled && vpc && subnet) {
 			// Enable SSH firewall if requested
 			if (args.mig.enableSSH) {
+				if (args.mig.workerKind === 'crwp') {
+					throw(new Error('enableSSH is not supported for Cloud Run Worker Pool (crwp)'));
+				}
+
 				new gcp.compute.Firewall(`${name}-ssh-iap-firewall`, {
 					description: `[${name}] Allow SSH access to MIG instances via IAP`,
 					network: vpc.id,
@@ -1234,6 +1246,10 @@ export class CloudRunService extends pulumi.ComponentResource {
 			// Create external IP if requested
 			let extIP: gcp.compute.Address | undefined;
 			if (args.mig.allocateExternalIP) {
+				if (args.mig.workerKind === 'crwp') {
+					throw(new Error('allocateExternalIP is not supported for Cloud Run Worker Pool (crwp) -- use a MIG instead OR create a NAT Gateway for the VPC'));
+				}
+
 				extIP = new gcp.compute.Address(`${name}-mig-ext-ip`, {
 					description: `[${name}] External IP for MIG`,
 					addressType: 'EXTERNAL',
@@ -1241,32 +1257,64 @@ export class CloudRunService extends pulumi.ComponentResource {
 				}, { parent: this });
 			}
 
-			mig = new ContainerMIG(`${name}-mig`, {
-				description: `[${name}] MIG worker for background tasks`,
-				serviceAccount: serviceAccount.email,
-				subnetwork: subnet,
-				machineType: args.mig.machineType ?? 'e2-micro',
-				cosImage: args.mig.cosImage,
-				tags: args.mig.tags,
-				enableVMSSH: args.mig.enableSSH,
-				count: args.mig.instanceCount,
-				networkInterfaces: extIP ? [{
-					accessConfigs: [{
-						natIp: extIP.address
-					}]
-				}] : undefined,
-				common: {
-					gcp: args.gcp
-				},
-				containerSpec: {
-					containers: [{
-						image: imageUri,
-						name: `${name}-worker`,
-						restartPolicy: 'Always',
-						env: migEnvVars
-					}]
+			if (args.mig.workerKind !== 'crwp') {
+				mig = new ContainerMIG(`${name}-mig`, {
+					description: `[${name}] MIG worker for background tasks`,
+					serviceAccount: serviceAccount.email,
+					subnetwork: subnet,
+					machineType: args.mig.machineType ?? 'e2-micro',
+					cosImage: args.mig.cosImage,
+					tags: args.mig.tags,
+					enableVMSSH: args.mig.enableSSH,
+					count: args.mig.instanceCount,
+					networkInterfaces: extIP ? [{
+						accessConfigs: [{
+							natIp: extIP.address
+						}]
+					}] : undefined,
+					common: {
+						gcp: args.gcp
+					},
+					containerSpec: {
+						containers: [{
+							image: imageUri,
+							name: `${name}-worker`,
+							restartPolicy: 'Always',
+							env: migEnvVars
+						}]
+					}
+				}, { parent: this });
+			} else {
+				if (args.mig.enableSSH) {
+					throw(new Error('enableSSH is not supported for Cloud Run Worker Pool (crwp)'));
 				}
-			}, { parent: this });
+
+				if (args.mig.cosImage !== undefined) {
+					throw(new Error('cosImage is not supported for Cloud Run Worker Pool (crwp)'));
+				}
+
+				mig = new ContainerCloudRun(`${name}-crwp`, {
+					description: `[${name}] Worker for background tasks`,
+					serviceAccount: serviceAccount.email,
+					subnetwork: subnet,
+					machineType: args.mig.machineType ?? 'e2-micro',
+					tags: args.mig.tags,
+					count: args.mig.instanceCount,
+					common: {
+						gcp: args.gcp
+					},
+					containerSpec: {
+						containers: [{
+							image: imageUri,
+							name: `${name}-worker`,
+							restartPolicy: 'Always',
+							env: migEnvManager.cloudRunJobVariableOutput
+						}]
+					}
+				}, {
+					parent: this
+				});
+			}
 		}
 
 		this.service = service;
@@ -1279,19 +1327,6 @@ export class CloudRunService extends pulumi.ComponentResource {
 		this.serviceAccount = serviceAccount;
 		this.mig = mig;
 		this.migration = migration;
-
-		const serviceOutputs: { [key: string]: unknown } = {
-			serviceUrl: service.statuses.apply(extractServiceURL),
-			backendService: backendService.id
-		};
-		if (mig) {
-			serviceOutputs.mig = mig.instanceGroupManager.id;
-		}
-		if (migration) {
-			serviceOutputs.migrationStatus = migration.status;
-		}
-
-		this.registerOutputs(serviceOutputs);
 	}
 
 	private getRemoteConfig(

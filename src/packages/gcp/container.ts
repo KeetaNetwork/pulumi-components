@@ -7,14 +7,17 @@ import { generateName } from '../../utils';
 /**
  * Common options for GCP
  */
-interface ContainerMIGCommonOptions {
+interface ContainerCommonOptions {
 	gcp: Pick<GCPCommonOptions, 'project' | 'changeProjectIAMPolicy' | 'changeRegistryIAMPolicy'>;
 }
 
+
+type ContainerValueInputSupportingSecrets = Omit<gcp.types.input.cloudrunv2.JobTemplateTemplateContainerEnv, 'name'>;
+
 /**
- * Create a managed instance group (MIG) for containers
+ * Options relevant to all kinds of containers
  */
-interface ContainerMIGOptions {
+interface ContainerGenericOptions<SupportSecretRefEnvs extends boolean> {
 	/**
 	 * Service Account to use for the VMs created to host this VMs
 	 */
@@ -28,30 +31,7 @@ interface ContainerMIGOptions {
 	/**
 	 * GCP Options
 	 */
-	common: ContainerMIGCommonOptions;
-
-	/**
-	 * Zone to deploy the VMs to -- if this is specified it will create a
-	 * zonal instance group manager instead of a regional one
-	 */
-	zone?: pulumi.Input<string>;
-
-	/**
-	 * Container OS (COS) Image to use for VMs.
-	 *
-	 * Default is the latest stable COS image
-	 */
-	cosImage?: pulumi.Input<string>;
-
-	/**
-	 * Machine Type to use
-	 */
-	machineType?: pulumi.Input<string>;
-
-	/**
-	 * Network tags to apply to the VMs
-	 */
-	tags?: pulumi.Input<string[]>;
+	common: ContainerCommonOptions;
 
 	/**
 	 * Description to provide to the VMs and to the Managed Instance Group (MIG)
@@ -64,9 +44,9 @@ interface ContainerMIGOptions {
 	count?: pulumi.Input<number>;
 
 	/**
-	 * Network Interface parameters
+	 * Network tags to apply to the VMs
 	 */
-	networkInterfaces?: NonNullable<ConstructorParameters<typeof gcp.compute.InstanceTemplate>[1]>['networkInterfaces'];
+	tags?: pulumi.Input<string[]>;
 
 	/**
 	 * Container specification, must conform to the GCP Container Spec
@@ -86,12 +66,41 @@ interface ContainerMIGOptions {
 			name: pulumi.Input<string>;
 			restartPolicy: 'Always';
 			args?: pulumi.Input<string>[] | pulumi.Input<string[]>;
-			env?: pulumi.Input<{
+			env?: pulumi.Input<({
 				name: pulumi.Input<string>;
-				value: pulumi.Input<string>;
-			}[]>;
+			} & (SupportSecretRefEnvs extends true ? ContainerValueInputSupportingSecrets : {
+				value: pulumi.Input<string | undefined>;
+			}))[]>;
 		}[];
 	};
+}
+
+/**
+ * Options for creating a managed instance group (MIG) for containers
+ */
+interface ContainerMIGOptions extends ContainerGenericOptions<false> {
+	/**
+	 * Zone to deploy the VMs to -- if this is specified it will create a
+	 * zonal instance group manager instead of a regional one
+	 */
+	zone?: pulumi.Input<string>;
+
+	/**
+	* Container OS (COS) Image to use for VMs.
+	*
+	* Default is the latest stable COS image
+	*/
+	cosImage?: pulumi.Input<string>;
+
+	/**
+	 * Machine Type to use
+	 */
+	machineType?: pulumi.Input<string>;
+
+	/**
+	 * Network Interface parameters
+	 */
+	networkInterfaces?: NonNullable<ConstructorParameters<typeof gcp.compute.InstanceTemplate>[1]>['networkInterfaces'];
 
 	/**
 	 * HTTP Server Port
@@ -108,6 +117,222 @@ interface ContainerMIGOptions {
 	enableVMSSH?: boolean;
 }
 
+/**
+ * Options for creating a Cloud Run Worker Pool (CRWP) for containers
+ */
+type ContainerCloudRunOptions = ContainerGenericOptions<true> & ({
+	/**
+	 * Cloud Run Worker Pool instance size
+	 */
+	size?: {
+		/**
+		 * Amount of RAM for the container (in MiB)
+		 */
+		ram?: pulumi.Input<string>;
+		/**
+		 * Amount of CPU for the container (in cores)
+		 */
+		cpu?: pulumi.Input<string>;
+	}
+} | {
+	/**
+	 * Machine Type to use (provided for compatibility with MIGs) -- if this is specified it will override the size option
+	 *
+	 * You should use the "size" property instead
+	 */
+	machineType?: pulumi.Input<string>;
+}) & {
+	/**
+	 * How to deal with egress traffic:
+	 *    - vpc: All egress traffic will be routed through the VPC (default)
+	 *    - vpc+nat: All egress traffic will be routed through the VPC,
+	 *      and Cloud NAT will be created to allow egress to the internet
+	 *    - vpc+direct: All egress traffic for non-private IPs will be routed
+	 *      directly to the internet, and egress traffic for private IPs will
+	 *      be sent over the VPC
+	 * This replaces the "networkInterfaces" option from MIGs, since Cloud
+	 * Run Worker Pools do not support specifying network interfaces directly.
+	 */
+	egress?: 'vpc' | 'vpc+nat' | 'vpc+direct';
+};
+
+
+function handleGenericOptions(name: string, options: ContainerGenericOptions<true> | ContainerGenericOptions<false>, parent: pulumi.ComponentResource) {
+	if (options.common.gcp.project === undefined) {
+		throw(new Error(`GCP project must be specified in options.common.gcp.project`));
+	}
+
+	if (options.serviceAccount === undefined) {
+		throw(new Error(`GCP service account must be specified in options.serviceAccount`));
+	}
+
+	if (options.subnetwork === undefined) {
+		throw(new Error(`GCP subnetwork must be specified in options.subnetwork`));
+	}
+
+	if (options.containerSpec === undefined) {
+		throw(new Error(`Container specification must be specified in options.containerSpec`));
+	}
+
+	/**
+	 * Compute the service account to use
+	 */
+	const serviceAccount = options.serviceAccount;
+	const serviceAccountEmail = pulumi.output(serviceAccount).apply(function(serviceAccountResolved) {
+		if (typeof serviceAccountResolved === 'string') {
+			return(pulumi.output(serviceAccountResolved));
+		}
+
+		return(serviceAccountResolved.email);
+	});
+
+	/**
+	 * The Subnet ID to deploy the container to
+	 */
+	const subnetwork = options.subnetwork;
+	const subnetworkID = pulumi.output(options.subnetwork).apply(function(subnetwork) {
+		return(subnetwork.id);
+	});
+
+	/**
+	 * The region to deploy the managed instance group to
+	 */
+	const region = pulumi.output(options.subnetwork).apply(function(subnetwork) {
+		return(subnetwork.region);
+	});
+
+	/**
+	 * Compute a list of images specified
+	 */
+	const images = options.containerSpec.containers.map(function(container) {
+		return(container.image);
+	});
+
+	/**
+	 * Compute a list of registry IDs specified, and remove that
+	 * from the containerSpec
+	 */
+	const registries = options.containerSpec.containers.map(function(container) {
+		if (container.registry) {
+			return(container.registry.id);
+		}
+
+		return(pulumi.output(pulumi.output(container.image).apply(function(image) {
+			const parts = image.split('/');
+
+			if (parts.length < 3) {
+				throw(new Error(`Image ${image} is not in a valid format, got ${parts.length} parts when split on '/', expected at least 3 ${image}`));
+			}
+
+			const url = parts[0];
+			const dockerPkgDevSuffix = '-docker.pkg.dev';
+			if (!url?.endsWith(dockerPkgDevSuffix)) {
+				throw(new Error(`Image ${image} is not in a valid format, expected to start with a URL ending with 'docker.pkg.dev', got ${url}`));
+			}
+
+			const location = url.substring(0, url.length - dockerPkgDevSuffix.length);
+			const project = parts[1];
+			const registry = parts[2];
+
+			if (!location || !project || !registry) {
+				throw(new Error(`Image ${image} is not in a valid format, expected to be in the format {region}-docker.pkg.dev/{project}/{registry}/{image}, got region=${location}, project=${project}, registry=${registry}`));
+			}
+
+			return(`projects/${project}/locations/${location}/repositories/${registry}`);
+		})));
+	}).filter(function(registry): registry is NonNullable<typeof registry> {
+		return(registry !== undefined);
+	});
+
+	/*
+	 * Grant access to the image to the service account
+	 */
+	const policyChangeToDependOn: pulumi.Input<pulumi.Resource>[] = [];
+	if (options.common.gcp.changeRegistryIAMPolicy) {
+		/**
+		 * For each image perform a callback to grant access to the image
+		 */
+		for (const image of images) {
+			const policyResource = options.common.gcp.changeRegistryIAMPolicy(image, 'read', [pulumi.interpolate`serviceAccount:${serviceAccountEmail}`]);
+
+			if (policyResource) {
+				policyChangeToDependOn.push(policyResource);
+			}
+		}
+	} else {
+		/**
+		 * Grant access to the image to the service account
+		 * to the new Artifact Registry
+		 */
+		let registryIndex = 0;
+		for (const registry of registries) {
+			registryIndex++;
+
+			const policyResource = new gcp.artifactregistry.RepositoryIamMember(`${name}-ar-${registryIndex}-iam`, {
+				repository: registry,
+				member: pulumi.interpolate`serviceAccount:${serviceAccountEmail}`,
+				role: 'roles/artifactregistry.reader'
+			}, {
+				parent: parent,
+				deleteBeforeReplace: true
+			});
+			policyChangeToDependOn.push(policyResource);
+		}
+	}
+
+	/**
+	 * Grant project access to write logs
+	 */
+	if (options.common.gcp.changeProjectIAMPolicy) {
+		/**
+		 * If a callback was specified, use it to grant permissions to logs/metrics
+		 */
+		const policyResourceLogging = options.common.gcp.changeProjectIAMPolicy('roles/logging.logWriter', [pulumi.interpolate`serviceAccount:${serviceAccountEmail}`]);
+		const policyResourceMetric = options.common.gcp.changeProjectIAMPolicy('roles/monitoring.metricWriter', [pulumi.interpolate`serviceAccount:${serviceAccountEmail}`]);
+
+		if (policyResourceLogging) {
+			policyChangeToDependOn.push(policyResourceLogging);
+		}
+
+		if (policyResourceMetric) {
+			policyChangeToDependOn.push(policyResourceMetric);
+		}
+	} else {
+		/**
+		 * Grant project access to write logs/metrics
+		 */
+		const policyResourceLogging = new gcp.projects.IAMMember(`${name}-iam-logging`, {
+			project: options.common.gcp.project,
+			member: pulumi.interpolate`serviceAccount:${serviceAccountEmail}`,
+			role: 'roles/logging.logWriter'
+		}, {
+			parent: parent
+		});
+
+		const policyResourceMetric = new gcp.projects.IAMMember(`${name}-iam-metric`, {
+			project: options.common.gcp.project,
+			member: pulumi.interpolate`serviceAccount:${serviceAccountEmail}`,
+			role: 'roles/monitoring.metricWriter'
+		}, {
+			parent: parent
+		});
+
+		policyChangeToDependOn.push(policyResourceLogging);
+		policyChangeToDependOn.push(policyResourceMetric);
+	}
+
+	return({
+		subnetwork,
+		subnetworkID,
+		serviceAccount,
+		serviceAccountEmail,
+		region,
+		registries,
+		images,
+		policyChangeToDependOn
+	});
+}
+
 export class ContainerMIG extends pulumi.ComponentResource {
 	private static defaultCOSImage?: ReturnType<typeof gcp.compute.getImage>;
 	instanceGroupManager: gcp.compute.RegionInstanceGroupManager | gcp.compute.InstanceGroupManager;
@@ -118,8 +343,17 @@ export class ContainerMIG extends pulumi.ComponentResource {
 	constructor(name: string, options: ContainerMIGOptions, args?: pulumi.CustomResourceOptions) {
 		super('Keeta:GCP:ContainerMIG', name, options, args);
 
-		this.subnetwork = options.subnetwork;
-		this.serviceAccount = options.serviceAccount;
+		const {
+			subnetwork,
+			subnetworkID,
+			serviceAccount,
+			serviceAccountEmail,
+			region,
+			policyChangeToDependOn
+		} = handleGenericOptions(name, options, this);
+
+		this.subnetwork = subnetwork;
+		this.serviceAccount = serviceAccount;
 
 		/**
 		 * The "Container OS" image to use for the instances, if not
@@ -158,78 +392,10 @@ export class ContainerMIG extends pulumi.ComponentResource {
 		});
 
 		/**
-		 * The Subnet ID to deploy the managed instance group to
-		 */
-		const subnetID = pulumi.output(options.subnetwork).apply(function(subnetwork) {
-			return(subnetwork.id);
-		});
-
-		/**
 		 * The Network ID to deploy the managed instance group to
 		 */
-		const networkID = pulumi.output(options.subnetwork).apply(function(subnetwork) {
-			return(subnetwork.network);
-		});
-
-		/**
-		 * The region to deploy the managed instance group to
-		 */
-		const region = pulumi.output(options.subnetwork).apply(function(subnetwork) {
-			return(subnetwork.region);
-		});
-
-		/**
-		 * Compute the service account to use
-		 */
-		const serviceAccount = pulumi.output(options.serviceAccount).apply(function(serviceAccountResolved) {
-			if (typeof serviceAccountResolved === 'string') {
-				return(pulumi.output(serviceAccountResolved));
-			}
-
-			return(serviceAccountResolved.email);
-		});
-
-		/**
-		 * Compute a list of images specified
-		 */
-		const images = options.containerSpec.containers.map(function(container) {
-			return(container.image);
-		});
-
-		/**
-		 * Compute a list of registry IDs specified, and remove that
-		 * from the containerSpec
-		 */
-		const registries = options.containerSpec.containers.map(function(container) {
-			if (container.registry) {
-				return(container.registry.id);
-			}
-
-			return(pulumi.output(pulumi.output(container.image).apply(function(image) {
-				const parts = image.split('/');
-
-				if (parts.length < 3) {
-					throw(new Error(`Image ${image} is not in a valid format, got ${parts.length} parts when split on '/', expected at least 3 ${image}`));
-				}
-
-				const url = parts[0];
-				const dockerPkgDevSuffix = '-docker.pkg.dev';
-				if (!url?.endsWith(dockerPkgDevSuffix)) {
-					throw(new Error(`Image ${image} is not in a valid format, expected to start with a URL ending with 'docker.pkg.dev', got ${url}`));
-				}
-
-				const location = url.substring(0, url.length - dockerPkgDevSuffix.length);
-				const project = parts[1];
-				const registry = parts[2];
-
-				if (!location || !project || !registry) {
-					throw(new Error(`Image ${image} is not in a valid format, expected to be in the format {region}-docker.pkg.dev/{project}/{registry}/{image}, got region=${location}, project=${project}, registry=${registry}`));
-				}
-
-				return(`${project}/${location}/${registry}`);
-			})));
-		}).filter(function(registry): registry is NonNullable<typeof registry> {
-			return(registry !== undefined);
+		const networkID = pulumi.output(subnetwork).apply(function(subnetworkResolved) {
+			return(subnetworkResolved.network);
 		});
 
 		/**
@@ -273,7 +439,7 @@ export class ContainerMIG extends pulumi.ComponentResource {
 				diskSizeGb: 50
 			}],
 			serviceAccount: {
-				email: serviceAccount,
+				email: serviceAccountEmail,
 				scopes: [
 					/* XXX:TODO: Should the user be allowed to specify this in some way ? */
 					'https://www.googleapis.com/auth/cloud-platform',
@@ -285,7 +451,7 @@ export class ContainerMIG extends pulumi.ComponentResource {
 					'https://www.googleapis.com/auth/service.management.readonly'
 				]
 			},
-			networkInterfaces: pulumi.all([options.networkInterfaces, networkID, subnetID]).apply(function([networkInterfaces, networkIDResolved, subnetIDResolved]) {
+			networkInterfaces: pulumi.all([options.networkInterfaces, networkID, subnetworkID]).apply(function([networkInterfaces, networkIDResolved, subnetworkIDResolved]) {
 				if (networkInterfaces === undefined) {
 					networkInterfaces = [];
 				} else {
@@ -302,7 +468,7 @@ export class ContainerMIG extends pulumi.ComponentResource {
 				const interfaces: NonNullable<typeof networkInterfaces> = [
 					{
 						network: networkIDResolved,
-						subnetwork: subnetIDResolved,
+						subnetwork: subnetworkIDResolved,
 						accessConfigs: [],
 						...networkInterfaces[0]
 					}
@@ -331,96 +497,6 @@ export class ContainerMIG extends pulumi.ComponentResource {
 		}, {
 			parent: this
 		});
-
-		/*
-		 * Grant access to the image to the service account
-		 */
-		const policyChangeToDependOn: pulumi.Input<pulumi.Resource>[] = [];
-		if (options.common.gcp.changeRegistryIAMPolicy) {
-			/**
-			 * For each image perform a callback to grant access to the image
-			 */
-			for (const image of images) {
-				const policyResource = options.common.gcp.changeRegistryIAMPolicy(image, 'read', [pulumi.interpolate`serviceAccount:${serviceAccount}`]);
-
-				if (policyResource) {
-					policyChangeToDependOn.push(policyResource);
-				}
-			}
-		} else {
-			/**
-			 * Grant access to the image to the service account
-			 * to the old Container Registry
-			 */
-			const oldPolicyResource = new gcp.storage.BucketIAMMember(`${name}-iam`, {
-				bucket: pulumi.interpolate`artifacts.${options.common.gcp.project}.appspot.com`,
-				member: pulumi.interpolate`serviceAccount:${serviceAccount}`,
-				role: 'roles/storage.objectViewer'
-			}, {
-				parent: this
-			});
-			policyChangeToDependOn.push(oldPolicyResource);
-
-			/**
-			 * Grant access to the image to the service account
-			 * to the new Artifact Registry
-			 */
-			let registryIndex = 0;
-			for (const registry of registries) {
-				registryIndex++;
-
-				const policyResource = new gcp.artifactregistry.RepositoryIamMember(`${name}-ar-${registryIndex}-iam`, {
-					repository: registry,
-					member: pulumi.interpolate`serviceAccount:${serviceAccount}`,
-					role: 'roles/artifactregistry.reader'
-				}, {
-					parent: this,
-					deleteBeforeReplace: true
-				});
-				policyChangeToDependOn.push(policyResource);
-			}
-		}
-
-		/**
-		 * Grant project access to write logs
-		 */
-		if (options.common.gcp.changeProjectIAMPolicy) {
-			/**
-			 * If a callback was specified, use it to grant permissions to logs/metrics
-			 */
-			const policyResourceLogging = options.common.gcp.changeProjectIAMPolicy('roles/logging.logWriter', [pulumi.interpolate`serviceAccount:${serviceAccount}`]);
-			const policyResourceMetric = options.common.gcp.changeProjectIAMPolicy('roles/monitoring.metricWriter', [pulumi.interpolate`serviceAccount:${serviceAccount}`]);
-
-			if (policyResourceLogging) {
-				policyChangeToDependOn.push(policyResourceLogging);
-			}
-
-			if (policyResourceMetric) {
-				policyChangeToDependOn.push(policyResourceMetric);
-			}
-		} else {
-			/**
-			 * Grant project access to write logs/metrics
-			 */
-			const policyResourceLogging = new gcp.projects.IAMMember(`${name}-iam-logging`, {
-				project: options.common.gcp.project,
-				member: pulumi.interpolate`serviceAccount:${serviceAccount}`,
-				role: 'roles/logging.logWriter'
-			}, {
-				parent: this
-			});
-
-			const policyResourceMetric = new gcp.projects.IAMMember(`${name}-iam-metric`, {
-				project: options.common.gcp.project,
-				member: pulumi.interpolate`serviceAccount:${serviceAccount}`,
-				role: 'roles/monitoring.metricWriter'
-			}, {
-				parent: this
-			});
-
-			policyChangeToDependOn.push(policyResourceLogging);
-			policyChangeToDependOn.push(policyResourceMetric);
-		}
 
 		/**
 		 * Base name for the instances
@@ -489,3 +565,177 @@ export class ContainerMIG extends pulumi.ComponentResource {
 		this.instanceGroupManager = igm;
 	}
 }
+
+export class ContainerCloudRun extends pulumi.ComponentResource {
+	subnetwork: ContainerCloudRunOptions['subnetwork'];
+	serviceAccount: ContainerCloudRunOptions['serviceAccount'];
+	workerPool: gcp.cloudrunv2.WorkerPool;
+	cloudNAT?: {
+		router: gcp.compute.Router;
+		nat: gcp.compute.RouterNat;
+	};
+
+	readonly type = 'CloudRun' as const;
+
+	constructor(name: string, options: ContainerCloudRunOptions, args?: pulumi.CustomResourceOptions) {
+		super('Keeta:GCP:ContainerCloudRun', name, options, args);
+
+		const {
+			subnetwork,
+			subnetworkID,
+			serviceAccount,
+			serviceAccountEmail,
+			region,
+			policyChangeToDependOn
+		} = handleGenericOptions(name, options, this);
+
+		this.subnetwork = subnetwork;
+		this.serviceAccount = serviceAccount;
+
+		const toDependOn: pulumi.Resource[] = [];
+		if (options.egress === 'vpc+nat') {
+			const networkID = pulumi.output(subnetwork).apply(function(subnetworkResolved) {
+				return(subnetworkResolved.network);
+			});
+
+			const router = new gcp.compute.Router(`${name}-cloudnat-router`, {
+				description: `[${name}] Cloud NAT router for Cloud Run Worker Pool`,
+				network: networkID,
+				region: region
+			}, {
+				parent: this
+			});
+
+			const nat = new gcp.compute.RouterNat(`${name}-cloudnat`, {
+				router: router.name,
+				region: region,
+				natIpAllocateOption: 'AUTO_ONLY',
+				sourceSubnetworkIpRangesToNat: 'ALL_SUBNETWORKS_ALL_IP_RANGES'
+			}, {
+				parent: this
+			});
+
+			new gcp.compute.Route(`${name}-nat-default-route`, {
+				network: networkID,
+				destRange: "0.0.0.0/0",
+				nextHopGateway: "default-internet-gateway",
+				priority: 1000
+			}, {
+				parent: this,
+				dependsOn: [nat]
+			});
+
+			this.cloudNAT = {
+				router: router,
+				nat: nat
+			};
+
+			toDependOn.push(router);
+			toDependOn.push(nat);
+		}
+
+		/*
+		 * Define the CPU and RAM based in the input either as machine-type or size
+		 */
+		let cpuCount: pulumi.Input<string> | undefined;
+		let ramSize: pulumi.Input<string> | undefined;
+		if ('machineType' in options && options.machineType !== undefined) {
+			cpuCount = pulumi.output(options.machineType).apply(function(machineType) {
+				switch (machineType) {
+					case 'e2-micro':
+						return('1');
+					case 'e2-small':
+						return('2');
+					case 'e2-medium':
+						return('2');
+					case 'e2-standard-2':
+						return('2');
+					case 'e2-standard-4':
+						return('4');
+					default:
+						throw(new Error(`Machine type ${machineType} is not supported for Cloud Run Worker Pools -- please add it to the CPU detector`));
+				}
+			});
+
+			/* In MiB */
+			ramSize = pulumi.output(options.machineType).apply(function(machineType) {
+				switch (machineType) {
+					case 'e2-micro':
+						return('1024');
+					case 'e2-small':
+						return('2048');
+					case 'e2-medium':
+						return('4096');
+					case 'e2-standard-2':
+						return('8192');
+					case 'e2-standard-4':
+						return('16384');
+					default:
+						throw(new Error(`Machine type ${machineType} is not supported for Cloud Run Worker Pools -- please add it to the RAM detector`));
+				}
+			});
+		}
+		if ('size' in options && options.size !== undefined) {
+			if (options?.size?.cpu !== undefined) {
+				cpuCount = options.size.cpu;
+			}
+			if (options?.size?.ram !== undefined) {
+				ramSize = options.size.ram;
+			}
+		}
+		if (cpuCount === undefined) {
+			cpuCount = '2';
+		}
+		if (ramSize === undefined) {
+			ramSize = '4096';
+		}
+
+		/**
+		 * Determine VPC Access type
+		 */
+		let vpcAccessType: pulumi.Input<'PRIVATE_RANGES_ONLY' | 'ALL_TRAFFIC'> = 'ALL_TRAFFIC';
+		if (options.egress === 'vpc+direct') {
+			vpcAccessType = 'PRIVATE_RANGES_ONLY';
+		}
+
+		const workerPool = new gcp.cloudrunv2.WorkerPool(`${name}-pool`, {
+			location: region,
+			template: {
+				containers: options.containerSpec.containers.map(function(container) {
+					return({
+						name: container.name,
+						image: container.image,
+						args: container.args,
+						envs: container.env,
+						resources: {
+							limits: {
+								cpu: cpuCount,
+								memory: pulumi.interpolate`${ramSize}Mi`
+							}
+						}
+					});
+				}),
+				serviceAccount: serviceAccountEmail,
+				vpcAccess: {
+					networkInterfaces: [{
+						subnetwork: subnetworkID,
+						tags: options.tags
+					}],
+					egress: vpcAccessType
+				}
+			},
+			scaling: {
+				manualInstanceCount: options.count ?? 1
+			},
+			deletionProtection: false,
+			deletionPolicy: 'DELETE'
+		}, {
+			parent: this,
+			dependsOn: [...policyChangeToDependOn.splice(0), ...toDependOn.splice(0)]
+		});
+
+		this.workerPool = workerPool;
+	}
+}
+
+export type ContainerGeneric = InstanceType<typeof ContainerMIG> | InstanceType<typeof ContainerCloudRun>;
