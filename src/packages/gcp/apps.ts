@@ -774,9 +774,17 @@ export interface CloudRunServiceArgs {
 		tags?: string[];
 
 		/**
-		 * Whether to allocate an external IP
+		 * Type of external access
+		 *
+		 *   - vpc: No external IP, only VPC access (default)
+		 *   - vpc+direct: External IP automatically assigned for
+		 *                 internet access, VPC for private access
+		 *   - vpc+nat: Create a NAT for internet access, VPC for
+		 *              private access (this is the old
+		 *              "allocateExternalIP" option).  For CRWP
+		 *              this will create a NAT Router.
 		 */
-		allocateExternalIP?: boolean;
+		egress?: 'vpc' | 'vpc+direct' | 'vpc+nat';
 
 		/**
 		 * Additional environment variables specific to the MIG worker
@@ -1245,16 +1253,15 @@ export class CloudRunService extends pulumi.ComponentResource {
 
 			// Create external IP if requested
 			let extIP: gcp.compute.Address | undefined;
-			if (args.mig.allocateExternalIP) {
-				if (args.mig.workerKind === 'crwp') {
-					throw(new Error('allocateExternalIP is not supported for Cloud Run Worker Pool (crwp) -- use a MIG instead OR create a NAT Gateway for the VPC'));
+			const crwpEgress: 'vpc' | 'vpc+direct' | 'vpc+nat' = args.mig.egress ?? 'vpc';
+			if (args.mig.egress === 'vpc+nat') {
+				if (args.mig.workerKind !== 'crwp') {
+					extIP = new gcp.compute.Address(`${name}-mig-ext-ip`, {
+						description: `[${name}] External IP for MIG`,
+						addressType: 'EXTERNAL',
+						region: args.region
+					}, { parent: this });
 				}
-
-				extIP = new gcp.compute.Address(`${name}-mig-ext-ip`, {
-					description: `[${name}] External IP for MIG`,
-					addressType: 'EXTERNAL',
-					region: args.region
-				}, { parent: this });
 			}
 
 			if (args.mig.workerKind !== 'crwp') {
@@ -1300,6 +1307,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 					machineType: args.mig.machineType ?? 'e2-micro',
 					tags: args.mig.tags,
 					count: args.mig.instanceCount,
+					egress: crwpEgress,
 					common: {
 						gcp: args.gcp
 					},
