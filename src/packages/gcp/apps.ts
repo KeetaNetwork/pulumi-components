@@ -1253,7 +1253,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 
 			// Create external IP if requested
 			let extIP: gcp.compute.Address | undefined;
-			let crwpEgress: 'vpc' | 'vpc+direct' | 'vpc+nat' = args.mig.egress ?? 'vpc';
+			const crwpEgress: 'vpc' | 'vpc+direct' | 'vpc+nat' = args.mig.egress ?? 'vpc';
 			if (args.mig.egress === 'vpc+nat') {
 				if (args.mig.workerKind !== 'crwp') {
 					extIP = new gcp.compute.Address(`${name}-mig-ext-ip`, {
