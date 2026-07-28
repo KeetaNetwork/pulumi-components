@@ -141,8 +141,16 @@ type ContainerCloudRunOptions = ContainerGenericOptions<true> & ({
 	 * You should use the "size" property instead
 	 */
 	machineType?: pulumi.Input<string>;
-
-});
+}) & {
+	/**
+	 * If this option is supplied a Cloud NAT will be created for the
+	 * subnetwork to allow the containers to access the internet.
+	 *
+	 * This replaces the "networkInterfaces" option from MIGs, since Cloud
+	 * Run Worker Pools do not support specifying network interfaces directly.
+	 */
+	createCloudNAT?: boolean;
+};
 
 
 function handleGenericOptions(name: string, options: ContainerGenericOptions<true> | ContainerGenericOptions<false>, parent: pulumi.ComponentResource) {
@@ -226,7 +234,7 @@ function handleGenericOptions(name: string, options: ContainerGenericOptions<tru
 				throw(new Error(`Image ${image} is not in a valid format, expected to be in the format {region}-docker.pkg.dev/{project}/{registry}/{image}, got region=${location}, project=${project}, registry=${registry}`));
 			}
 
-			return(`${project}/${location}/${registry}`);
+			return(`projects/${project}/locations/${location}/repositories/${registry}`);
 		})));
 	}).filter(function(registry): registry is NonNullable<typeof registry> {
 		return(registry !== undefined);
@@ -308,7 +316,6 @@ function handleGenericOptions(name: string, options: ContainerGenericOptions<tru
 		policyChangeToDependOn.push(policyResourceLogging);
 		policyChangeToDependOn.push(policyResourceMetric);
 	}
-
 
 	return({
 		subnetwork,
@@ -559,6 +566,10 @@ export class ContainerCloudRun extends pulumi.ComponentResource {
 	subnetwork: ContainerCloudRunOptions['subnetwork'];
 	serviceAccount: ContainerCloudRunOptions['serviceAccount'];
 	workerPool: gcp.cloudrunv2.WorkerPool;
+	cloudNAT?: {
+		router: gcp.compute.Router;
+		nat: gcp.compute.RouterNat;
+	};
 	readonly type = 'CloudRun' as const;
 
 	constructor(name: string, options: ContainerCloudRunOptions, args?: pulumi.CustomResourceOptions) {
@@ -575,6 +586,49 @@ export class ContainerCloudRun extends pulumi.ComponentResource {
 
 		this.subnetwork = subnetwork;
 		this.serviceAccount = serviceAccount;
+
+		const toDependOn: pulumi.Resource[] = [];
+		if (options.createCloudNAT === true) {
+			const networkID = pulumi.output(subnetwork).apply(function(subnetworkResolved) {
+				return(subnetworkResolved.network);
+			});
+
+			const router = new gcp.compute.Router(`${name}-cloudnat-router`, {
+				description: `[${name}] Cloud NAT router for Cloud Run Worker Pool`,
+				network: networkID,
+				region: region
+			}, {
+				parent: this
+			});
+
+			const nat = new gcp.compute.RouterNat(`${name}-cloudnat`, {
+				router: router.name,
+				region: region,
+				natIpAllocateOption: 'AUTO_ONLY',
+				sourceSubnetworkIpRangesToNat: 'ALL_SUBNETWORKS_ALL_IP_RANGES'
+			}, {
+				parent: this
+			});
+
+			new gcp.compute.Route(`${name}-nat-default-route`, {
+				network: networkID,
+				destRange: "0.0.0.0/0",
+				nextHopGateway: "default-internet-gateway",
+				priority: 1000
+			}, {
+				parent: this,
+				retainOnDelete: true,
+				dependsOn: [nat]
+			});
+
+			this.cloudNAT = {
+				router: router,
+				nat: nat
+			};
+
+			toDependOn.push(router);
+			toDependOn.push(nat);
+		}
 
 		/*
 		 * Define the CPU and RAM based in the input either as machine-type or size
@@ -665,7 +719,7 @@ export class ContainerCloudRun extends pulumi.ComponentResource {
 			deletionPolicy: 'DELETE'
 		}, {
 			parent: this,
-			dependsOn: policyChangeToDependOn.splice(0)
+			dependsOn: [...policyChangeToDependOn.splice(0), ...toDependOn.splice(0)]
 		});
 
 		this.workerPool = workerPool;
