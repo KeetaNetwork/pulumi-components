@@ -143,13 +143,17 @@ type ContainerCloudRunOptions = ContainerGenericOptions<true> & ({
 	machineType?: pulumi.Input<string>;
 }) & {
 	/**
-	 * If this option is supplied a Cloud NAT will be created for the
-	 * subnetwork to allow the containers to access the internet.
-	 *
+	 * How to deal with egress traffic:
+	 *    - vpc: All egress traffic will be routed through the VPC (default)
+	 *    - vpc+nat: All egress traffic will be routed through the VPC,
+	 *      and Cloud NAT will be created to allow egress to the internet
+	 *    - vpc+direct: All egress traffic for non-private IPs will be routed
+	 *      directly to the internet, and egress traffic for private IPs will
+	 *      be sent over the VPC
 	 * This replaces the "networkInterfaces" option from MIGs, since Cloud
 	 * Run Worker Pools do not support specifying network interfaces directly.
 	 */
-	createCloudNAT?: boolean;
+	egress?: 'vpc' | 'vpc+nat' | 'vpc+direct';
 };
 
 
@@ -588,7 +592,7 @@ export class ContainerCloudRun extends pulumi.ComponentResource {
 		this.serviceAccount = serviceAccount;
 
 		const toDependOn: pulumi.Resource[] = [];
-		if (options.createCloudNAT === true) {
+		if (options.egress === 'vpc+nat') {
 			const networkID = pulumi.output(subnetwork).apply(function(subnetworkResolved) {
 				return(subnetworkResolved.network);
 			});
@@ -686,6 +690,14 @@ export class ContainerCloudRun extends pulumi.ComponentResource {
 			ramSize = '4096';
 		}
 
+		/**
+		 * Determine VPC Access type
+		 */
+		let vpcAccessType: pulumi.Input<'PRIVATE_RANGES_ONLY' | 'ALL_TRAFFIC'> = 'ALL_TRAFFIC';
+		if (options.egress === 'vpc+direct') {
+			vpcAccessType = 'PRIVATE_RANGES_ONLY';
+		}
+
 		const workerPool = new gcp.cloudrunv2.WorkerPool(`${name}-pool`, {
 			location: region,
 			template: {
@@ -709,7 +721,7 @@ export class ContainerCloudRun extends pulumi.ComponentResource {
 						subnetwork: subnetworkID,
 						tags: options.tags
 					}],
-					egress: 'ALL_TRAFFIC'
+					egress: vpcAccessType
 				}
 			},
 			scaling: {
