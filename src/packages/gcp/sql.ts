@@ -68,6 +68,11 @@ interface DBFlags {
 	 * @default none
 	 */
 	log_statement?: 'none' | 'ddl' | 'mod' | 'all';
+
+	/**
+	 * Controls whether or not IAM Authentication is supported
+	 */
+	"cloudsql.iam_authentication"?: 'on' | 'off';
 }
 
 export interface PostgresCloudSQLArgs {
