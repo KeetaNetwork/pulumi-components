@@ -9,9 +9,13 @@ jobs:
     steps:
       - uses: actions/checkout@v1
 
+      - name: Read Node Version
+        id: node_version
+        run: echo "NODE_VERSION=$(jq -crM .engines.node < package.json)" >> $GITHUB_OUTPUT
+
       - uses: actions/setup-node@v1
         with:
-          node-version: 20.18.0
+          node-version: ${{ steps.node_version.outputs.NODE_VERSION }}
           registry-url: 'https://npm.pkg.github.com'
 
       - name: Install Packages
