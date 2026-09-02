@@ -50,7 +50,8 @@ function buildRunScript(input: ContainerCloudConfigInput, containerName: string)
 	];
 
 	for (const envVar of input.env) {
-		runArguments.push(`-e ${shellQuote(`${envVar.name}=${envVar.value ?? ''}`)}`);
+		const assignment = `${envVar.name}=${envVar.value ?? ''}`;
+		runArguments.push(`-e ${shellQuote(assignment)}`);
 	}
 
 	runArguments.push(shellQuote(input.image));
