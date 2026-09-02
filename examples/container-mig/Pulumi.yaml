@@ -1,0 +1,4 @@
+name: container-mig
+runtime: nodejs
+main: index.ts
+description: Example - ContainerMIG running a container on COS via cloud-init
