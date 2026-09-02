@@ -3,6 +3,7 @@ import * as gcp from '@pulumi/gcp';
 import * as components from '../../';
 import type { GCPCommonOptions } from './common';
 import { generateName } from '../../utils';
+import { buildContainerCloudConfig } from './container-cloudinit';
 
 /**
  * Common options for GCP
@@ -49,8 +50,7 @@ interface ContainerGenericOptions<SupportSecretRefEnvs extends boolean> {
 	tags?: pulumi.Input<string[]>;
 
 	/**
-	 * Container specification, must conform to the GCP Container Spec
-	 *    https://cloud.google.com/compute/docs/containers/configuring-options-to-run-containers
+	 * Container specification (ContainerMIG supports exactly one container)
 	 */
 	containerSpec: {
 		containers: {
@@ -398,17 +398,10 @@ export class ContainerMIG extends pulumi.ComponentResource {
 			return(subnetworkResolved.network);
 		});
 
-		/**
-		 * Remove the registry from the container spec
-		 */
-		const containerSpec = {
-			...options.containerSpec,
-			containers: options.containerSpec.containers.map(function(container) {
-				// eslint-disable-next-line @typescript-eslint/no-unused-vars
-				const { registry: _ignore_registry, ...newContainerSpec } = container;
-				return(newContainerSpec);
-			})
-		};
+		const container = options.containerSpec.containers[0];
+		if (container === undefined || options.containerSpec.containers.length !== 1) {
+			throw(new Error(`ContainerMIG supports exactly one container, got ${options.containerSpec.containers.length}`));
+		}
 
 		/**
 		 * Run commands to execute on the VMs when they start up
@@ -424,6 +417,26 @@ export class ContainerMIG extends pulumi.ComponentResource {
 			runCommands.push('systemctl stop sshd');
 			runCommands.push('pkill -9 -x sshd');
 		}
+
+		/**
+		 * cloud-init configuration which runs the container
+		 */
+		const userData = pulumi.all([
+			pulumi.output(container.image),
+			pulumi.output(container.name),
+			pulumi.output(container.args ?? []),
+			pulumi.output(container.env ?? [])
+		]).apply(function([image, containerName, args, env]) {
+			const cloudConfig = buildContainerCloudConfig({
+				image: image,
+				name: containerName,
+				args: args,
+				env: env,
+				runCommands: runCommands
+			});
+
+			return('#cloud-config\n' + JSON.stringify(cloudConfig));
+		});
 
 		/**
 		 * Create the Managed Instance Group Template, from which each instance will be created
@@ -479,15 +492,7 @@ export class ContainerMIG extends pulumi.ComponentResource {
 				return(interfaces);
 			}),
 			metadata: {
-				/*
-				 * Container Specification for the container
-				 */
-				'gce-container-declaration': pulumi.jsonStringify({
-					spec: containerSpec
-				}),
-				'user-data': '#cloud-config\n' + JSON.stringify({
-					'runcmd': runCommands
-				}),
+				'user-data': userData,
 				'google-logging-enabled': 'true',
 				'block-project-ssh-keys': 'TRUE'
 			},
