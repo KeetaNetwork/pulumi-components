@@ -72,7 +72,7 @@ describe('ContainerMIG', function() {
 			return(output.indexOf(heartbeat(), lastBoot) !== -1 ? output : undefined);
 		}, 40, 15_000);
 
-		expect(lastCloudInitFinishedAt(serial) !== bootBefore).toBe(true);
+		expect(lastCloudInitFinishedAt(serial)).not.toBe(bootBefore);
 	}, 900_000);
 
 	afterAll(async function() {

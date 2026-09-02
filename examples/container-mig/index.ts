@@ -7,6 +7,9 @@ if (!gcpProject) {
 	throw new Error('GCP project not configured');
 }
 
+const config = new pulumi.Config();
+const subnetCIDR = config.require('subnetCIDR');
+
 const region: gcpComponents.constants.GCPRegion = 'us-central1';
 const stack = pulumi.getStack();
 const name = `cm-test-${stack}`.substring(0, 25);
@@ -18,7 +21,7 @@ const network = new gcp.compute.Network(`${name}-vpc`, {
 const subnet = new gcp.compute.Subnetwork(`${name}-subnet`, {
 	network: network.selfLink,
 	region: region,
-	ipCidrRange: '10.0.0.0/24',
+	ipCidrRange: subnetCIDR,
 	privateIpGoogleAccess: true
 });
 

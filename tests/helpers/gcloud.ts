@@ -1,7 +1,9 @@
 import { execFileSync } from 'node:child_process';
 
+const GCLOUD = process.env.GCLOUD_PATH ?? 'gcloud';
+
 export function gcloud(args: string[]): string {
-	return(execFileSync('gcloud', args, {
+	return(execFileSync(GCLOUD, args, {
 		encoding: 'utf8',
 		stdio: ['ignore', 'pipe', 'pipe'],
 		maxBuffer: 64 * 1024 * 1024
@@ -64,5 +66,10 @@ export async function waitFor<T>(description: string, probe: () => T | undefined
 		await new Promise(function(resolve) { setTimeout(resolve, delayMs); });
 	}
 
-	throw(new Error(`Timed out waiting for ${description} after ${maxAttempts} attempts${lastError ? `: ${String(lastError)}` : ''}`));
+	let message = `Timed out waiting for ${description} after ${maxAttempts} attempts`;
+	if (lastError !== undefined) {
+		message += ': ' + (lastError instanceof Error ? lastError.message : JSON.stringify(lastError));
+	}
+
+	throw(new Error(message));
 }
