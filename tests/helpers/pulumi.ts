@@ -11,7 +11,7 @@ export interface StackOutputs {
 	[key: string]: unknown;
 }
 
-const SECRETS_PROVIDER = 'gcpkms://projects/mimetic-algebra-344104/locations/nam8/keyRings/pulumi-secrets/cryptoKeys/dev';
+const SECRETS_PROVIDER = process.env.TEST_SECRETS_PROVIDER ?? 'gcpkms://projects/mimetic-algebra-344104/locations/nam8/keyRings/pulumi-secrets/cryptoKeys/dev';
 
 /**
  * The GitHub Actions run this process belongs to, or undefined outside one
