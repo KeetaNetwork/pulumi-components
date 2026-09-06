@@ -24,7 +24,7 @@ export function buildDatabaseEnvVars(db: DatabaseConnectionInfo): EnvironmentVar
 		MC_PSQL_DB_SSLMODE: 'require',
 		MC_PSQL_DB_CA_CERT: db.caCertificate,
 		MC_PSQL_DB_URL: {
-			value: pulumi.interpolate`postgresql://${db.username}:${db.password}@${db.host}:5432/${db.databaseName}?sslmode=require`,
+			value: pulumi.interpolate`postgres://${db.username}:${db.password}@${db.host}:5432/${db.databaseName}?sslmode=require`,
 			secret: true
 		}
 	});
