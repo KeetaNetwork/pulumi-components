@@ -296,6 +296,11 @@ function createLoadBalancer(
  */
 export interface StaticWebAppArgs {
 	/**
+	 * An optional description of this resource
+	 */
+	description?: pulumi.Input<string>;
+
+	/**
 	 * Path to the directory containing static files
 	 */
 	staticFilesPath: string;
@@ -547,6 +552,11 @@ export class StaticWebApp extends pulumi.ComponentResource {
  * Configuration for Cloud Run backend service
  */
 export interface CloudRunServiceArgs {
+	/**
+	 * An optional description of this resource
+	 */
+	description?: pulumi.Input<string>;
+
 	/**
 	 * GCP project and common options
 	 */
@@ -1383,6 +1393,11 @@ export class CloudRunService extends pulumi.ComponentResource {
  * Combines a static frontend with a Cloud Run backend
  */
 export interface FullStackAppArgs {
+	/**
+	 * An optional description of this resource
+	 */
+	description?: pulumi.Input<string>;
+
 	/**
 	 * Load balancer configuration (domain, SSL, IPs, DNS)
 	 */
