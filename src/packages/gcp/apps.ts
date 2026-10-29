@@ -346,6 +346,25 @@ export interface StaticWebAppArgs {
 	};
 
 	/**
+	 * Cloud CDN options for the backend bucket (default: disabled)
+	 */
+	cdn?: { enabled: false } | {
+		enabled: true;
+
+		/**
+		 * Dynamic gzip or Brotli compression, from the client Accept-Encoding (default: 'AUTOMATIC')
+		 */
+		compressionMode?: pulumi.Input<'AUTOMATIC' | 'DISABLED'>;
+
+		/**
+		 * Cache policy (default: cache mode 'USE_ORIGIN_HEADERS', which follows the cacheControl TTLs)
+		 */
+		cdnPolicy?: pulumi.Input<gcp.types.input.compute.BackendBucketCdnPolicy & {
+			cacheMode: pulumi.Input<'CACHE_ALL_STATIC' | 'USE_ORIGIN_HEADERS' | 'FORCE_CACHE_ALL'>;
+		}>;
+	};
+
+	/**
 	 * Optional load balancer configuration
 	 * If provided, creates a complete HTTPS load balancer for standalone SPA deployment
 	 * If not provided, only creates backend bucket for use in composed deployments
@@ -474,10 +493,16 @@ export class StaticWebApp extends pulumi.ComponentResource {
 			return(retval);
 		});
 
+		const cdn = args.cdn;
+		const cdnEnabled = cdn?.enabled === true;
 		const backendBucket = new gcp.compute.BackendBucket(`${name}-backend`, {
 			bucketName: bucket.name,
 			customResponseHeaders: customResponseHeaders,
-			enableCdn: false
+			enableCdn: cdnEnabled,
+			...(cdnEnabled ? {
+				compressionMode: cdn.compressionMode ?? 'AUTOMATIC',
+				cdnPolicy: cdn.cdnPolicy ?? { cacheMode: 'USE_ORIGIN_HEADERS' }
+			} : {})
 		});
 
 		this.bucket = bucket;

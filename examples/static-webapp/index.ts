@@ -18,5 +18,16 @@ export const staticApp = new gcpComponents.apps.StaticWebApp(name, {
 		indexTTL: 10,
 		assetsTTL: 86400,
 		defaultTTL: 300
+	},
+	cdn: { enabled: true }
+});
+
+export const staticAppCDNOverride = new gcpComponents.apps.StaticWebApp(`tf-static-cdn-${pulumi.getStack()}`.substring(0, 25), {
+	staticFilesPath: path.join(__dirname, 'static'),
+	bucketConfig: { location: 'US' },
+	cdn: {
+		enabled: true,
+		compressionMode: 'DISABLED',
+		cdnPolicy: { cacheMode: 'FORCE_CACHE_ALL', defaultTtl: 120 }
 	}
 });
