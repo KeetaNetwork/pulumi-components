@@ -12,8 +12,24 @@ describe('StaticWebApp', function() {
 		expect(outputs.staticApp).toBeDefined();
 
 		// Get bucket name from component's registered outputs
-		const staticApp = outputs.staticApp as { bucket: { name: string } };
+		const staticApp = outputs.staticApp as {
+			bucket: { name: string };
+			backendBucket: { enableCdn: boolean; compressionMode: string; cdnPolicy: { cacheMode: string } };
+		};
 		expect(staticApp.bucket?.name).toBeDefined();
+
+		/* cdn: { enabled: true } turns on CDN with the defaults */
+		expect(staticApp.backendBucket.enableCdn).toBe(true);
+		expect(staticApp.backendBucket.compressionMode).toBe('AUTOMATIC');
+		expect(staticApp.backendBucket.cdnPolicy.cacheMode).toBe('USE_ORIGIN_HEADERS');
+
+		const staticAppCDNOverride = outputs.staticAppCDNOverride as {
+			backendBucket: { enableCdn: boolean; compressionMode: string; cdnPolicy: { cacheMode: string; defaultTtl: number } };
+		};
+		expect(staticAppCDNOverride.backendBucket.enableCdn).toBe(true);
+		expect(staticAppCDNOverride.backendBucket.compressionMode).toBe('DISABLED');
+		expect(staticAppCDNOverride.backendBucket.cdnPolicy.cacheMode).toBe('FORCE_CACHE_ALL');
+		expect(staticAppCDNOverride.backendBucket.cdnPolicy.defaultTtl).toBe(120);
 
 		// Fetch the deployed content
 		const bucketUrl = `https://storage.googleapis.com/${staticApp.bucket.name}/index.html`;

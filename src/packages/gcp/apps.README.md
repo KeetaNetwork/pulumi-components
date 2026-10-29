@@ -20,6 +20,7 @@ const app = new components.gcp.apps.StaticWebApp('my-app', {
 		assetsTTL: 86400,
 		defaultTTL: 300
 	},
+	cdn: { enabled: true },
 	loadBalancer: {
 		domain: 'app.example.com',
 		dnsZoneId: 'my-dns-zone',
@@ -31,6 +32,15 @@ const app = new components.gcp.apps.StaticWebApp('my-app', {
 ```
 
 When used inside `FullStackApp`, omit `loadBalancer` -- the parent component manages routing.
+
+### Cloud CDN
+
+Set `cdn: { enabled: true }` to turn on Cloud CDN for the backend bucket. If `cdn` is not set or `enabled` is `false`, CDN stays off. The options below are accepted only when `enabled` is `true`.
+
+- `compressionMode`: dynamic compression (gzip or Brotli). The default is `'AUTOMATIC'`.
+- `cdnPolicy`: the cache policy. If you supply it, you must also supply `cacheMode`. The default is `{ cacheMode: 'USE_ORIGIN_HEADERS' }`.
+
+With the default cache mode, the edge TTLs follow `cacheControl`. After a deploy, the edge can serve the old `index.html` for up to `indexTTL` seconds. It can serve other non-hashed files for up to `defaultTTL` seconds.
 
 ## CloudRunService
 

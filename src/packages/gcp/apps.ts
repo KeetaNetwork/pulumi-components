@@ -348,18 +348,20 @@ export interface StaticWebAppArgs {
 	/**
 	 * Cloud CDN options for the backend bucket (default: disabled)
 	 */
-	cdn?: {
-		enabled: boolean;
+	cdn?: { enabled: false } | {
+		enabled: true;
 
 		/**
-		 * Dynamic compression (gzip or Brotli, from the client Accept-Encoding), requires Cloud CDN (default: 'AUTOMATIC')
+		 * Dynamic gzip or Brotli compression, from the client Accept-Encoding (default: 'AUTOMATIC')
 		 */
-		compressionMode?: 'AUTOMATIC' | 'DISABLED';
+		compressionMode?: pulumi.Input<'AUTOMATIC' | 'DISABLED'>;
 
 		/**
 		 * Cache policy (default: cache mode 'USE_ORIGIN_HEADERS', which follows the cacheControl TTLs)
 		 */
-		cdnPolicy?: gcp.types.input.compute.BackendBucketCdnPolicy;
+		cdnPolicy?: pulumi.Input<gcp.types.input.compute.BackendBucketCdnPolicy & {
+			cacheMode: pulumi.Input<'CACHE_ALL_STATIC' | 'USE_ORIGIN_HEADERS' | 'FORCE_CACHE_ALL'>;
+		}>;
 	};
 
 	/**
@@ -491,14 +493,15 @@ export class StaticWebApp extends pulumi.ComponentResource {
 			return(retval);
 		});
 
-		const cdnEnabled = args.cdn?.enabled ?? false;
+		const cdn = args.cdn;
+		const cdnEnabled = cdn?.enabled === true;
 		const backendBucket = new gcp.compute.BackendBucket(`${name}-backend`, {
 			bucketName: bucket.name,
 			customResponseHeaders: customResponseHeaders,
 			enableCdn: cdnEnabled,
 			...(cdnEnabled ? {
-				compressionMode: args.cdn?.compressionMode ?? 'AUTOMATIC',
-				cdnPolicy: args.cdn?.cdnPolicy ?? { cacheMode: 'USE_ORIGIN_HEADERS' }
+				compressionMode: cdn.compressionMode ?? 'AUTOMATIC',
+				cdnPolicy: cdn.cdnPolicy ?? { cacheMode: 'USE_ORIGIN_HEADERS' }
 			} : {})
 		});
 

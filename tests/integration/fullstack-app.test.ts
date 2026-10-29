@@ -91,8 +91,14 @@ describe('FullStackApp', function() {
 	it('serves frontend content', async function() {
 		expect(outputs).toBeDefined();
 
-		const appOutputs = outputs!.app as { frontendBucket: string };
+		const appOutputs = outputs!.app as {
+			frontendBucket: string;
+			frontend: { backendBucket: { enableCdn: boolean } };
+		};
 		expect(appOutputs.frontendBucket).toBeDefined();
+
+		/* The frontend sets no cdn, so the backend bucket keeps CDN off */
+		expect(appOutputs.frontend.backendBucket.enableCdn).toBe(false);
 
 		const bucketUrl = `https://storage.googleapis.com/${appOutputs.frontendBucket}/index.html`;
 		const response = await fetch(bucketUrl);
