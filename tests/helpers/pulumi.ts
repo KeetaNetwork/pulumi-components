@@ -26,7 +26,7 @@ export async function deployStack(
 
 	const stack = await automation.LocalWorkspace.createOrSelectStack(
 		{ stackName, workDir },
-		{ secretsProvider: 'gcpkms://projects/mimetic-algebra-344104/locations/nam8/keyRings/pulumi-secrets/cryptoKeys/dev' }
+		{ secretsProvider: process.env.TEST_SECRETS_PROVIDER ?? 'gcpkms://projects/mimetic-algebra-344104/locations/nam8/keyRings/pulumi-secrets/cryptoKeys/dev' }
 	);
 
 	// Set required config
