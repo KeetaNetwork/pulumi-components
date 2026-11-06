@@ -27,7 +27,13 @@ function updateHashWithMultipleFiles(filePath: string, hashState: crypto.Hash) {
 		return;
 	}
 
-	const info = fs.readdirSync(filePath, { withFileTypes: true });
+	/*
+	 * Sort the entries so the hash does not depend on the order the
+	 * filesystem returns them in
+	 */
+	const info = fs.readdirSync(filePath, { withFileTypes: true }).sort(function(a, b) {
+		return(a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+	});
 
 	for (const item of info) {
 		const fullPath = path.join(filePath, item.name);
@@ -205,6 +211,11 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 	readonly inputCacheTag?: string;
 
 	/**
+	 * Version identifier used as the image tag
+	 */
+	protected readonly versionIdentifier: string;
+
+	/**
 	 * Directories to clean after completion
 	 */
 	protected toCleanDirectories: string[] = [];
@@ -282,6 +293,8 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 			default:
 				throw(new Error(`Invalid docker versioning input ${JSON.stringify(input.versioning)}`));
 		}
+
+		this.versionIdentifier = versionIdentifier;
 
 		this.imageBase = registryUrlOutput.apply((registryUrl) => {
 			let forwardSlash = '';
@@ -460,17 +473,15 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 		 */
 		const source = this.getBuildTarball(input.buildDirectory, cacheID);
 
-		const imageSourceObject = new gcp.storage.BucketObject(`${prefix}-cloudbuild-src`, {
-			bucket: input.bucket.name,
-			source: source
-		}, {
-			/*
-			 * We keep a copy of the source in the bucket so that we can
-			 * access it if needed, since the build output is also kept
-			 */
-			retainOnDelete: true,
-			parent: this
-		});
+		/*
+		 * The object is named after the image version rather than
+		 * tracking the tarball bytes, since the bytes differ between
+		 * machines (tar metadata, gzip implementation) even when the
+		 * contents are the same.  The upload is done by the build
+		 * itself and objects are never deleted, so a copy of the
+		 * source is kept alongside the build output.
+		 */
+		const sourceObjectName = `${name}/${this.versionIdentifier}.tar.gz`;
 
 		let imageDependsOn: pulumi.Resource[] = [];
 
@@ -500,17 +511,11 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 
 			/**
 			 * An ID to pass to the build, which will be used to create
-			 * a temporary secret in Secret Manager
+			 * a temporary secret in Secret Manager.  It does not include
+			 * the secret value so that a different token (e.g., from
+			 * another user) does not change the build definition.
 			 */
-			const secretId = secrets.apply(function(secretsPlain) {
-				const hashParts = [
-					prefix,
-					secretsPlain,
-					cacheID
-				];
-
-				return(`temporary-delete-me-build-secret-${hash(hashParts.join('|'), 8)}`);
-			});
+			const secretId = `temporary-delete-me-build-secret-${hash([ prefix, cacheID ].join('|'), 8)}`;
 
 			/**
 			 * Structure to pass to the build, which will be used to create
@@ -629,10 +634,15 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 				},
 				source: {
 					storageSource: {
-						bucket: imageSourceObject.bucket,
-						object: imageSourceObject.outputName
+						bucket: input.bucket.name,
+						object: sourceObjectName
 					}
 				}
+			},
+			sourceUpload: {
+				bucket: input.bucket.name,
+				object: sourceObjectName,
+				path: source.path
 			}
 		}, { parent: this, dependsOn: imageDependsOn });
 

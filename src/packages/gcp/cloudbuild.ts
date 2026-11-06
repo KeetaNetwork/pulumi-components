@@ -5,6 +5,8 @@ import type * as cloudbuildTypeImport from '@google-cloud/cloudbuild';
 import type * as secretManagerTypeImport from '@google-cloud/secret-manager';
 
 import { randomUUID } from 'crypto';
+import type * as fsTypeImport from 'fs';
+import type * as utilTypeImport from 'util';
 
 import type { DeepInput, DeepOutput } from '../../types';
 
@@ -18,9 +20,20 @@ interface TemporarySecretInput {
 	secretId: string;
 }
 
+interface SourceUploadInput {
+	bucket: string;
+	object: string;
+	/**
+	 * Local path of the tarball, which differs between machines so it
+	 * is not considered when diffing
+	 */
+	path: string;
+}
+
 interface CloudBuildInputs {
 	build: IBuild;
 	temporarySecret?: TemporarySecretInput;
+	sourceUpload?: SourceUploadInput;
 	projectId: string | undefined;
 	accessToken: string | undefined;
 }
@@ -33,6 +46,62 @@ export enum HashType {
 
 type BuildOutput = Awaited<ReturnType<typeof createBuild>>;
 type PulumiBuildOutput = DeepOutput<BuildOutput>;
+
+/**
+ * Upload the source tarball unless an object with that name already
+ * exists -- object names are derived from the image version so an
+ * existing object already holds the same source
+ */
+async function uploadSource(upload: SourceUploadInput) {
+	// eslint-disable-next-line @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-require-imports
+	const fs = require('fs') as typeof fsTypeImport;
+
+	const auth = new googleAuth.GoogleAuth({
+		scopes: [ 'https://www.googleapis.com/auth/devstorage.read_write' ]
+	});
+	const client = await auth.getClient();
+
+	try {
+		await client.request({
+			url: `https://storage.googleapis.com/upload/storage/v1/b/${encodeURIComponent(upload.bucket)}/o`,
+			method: 'POST',
+			params: {
+				uploadType: 'media',
+				name: upload.object,
+				ifGenerationMatch: '0'
+			},
+			headers: {
+				'Content-Type': 'application/gzip'
+			},
+			data: fs.readFileSync(upload.path)
+		});
+	} catch (error: unknown) {
+		// eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+		const requestError = (error as { status?: number; response?: { status?: number }} | undefined);
+		if (requestError?.status === 412 || requestError?.response?.status === 412) {
+			return;
+		}
+
+		throw(error);
+	}
+}
+
+/**
+ * Determine if a build needs to be re-run.  Only the build definition
+ * and project are compared, so the secret value and the local path of
+ * the source tarball (which vary between users and machines) do not
+ * cause a rebuild.
+ */
+export function cloudBuildHasChanges(olds: Partial<Pick<CloudBuildInputs, 'build' | 'projectId'>>, news: Pick<CloudBuildInputs, 'build' | 'projectId'>): boolean {
+	// eslint-disable-next-line @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-require-imports
+	const { isDeepStrictEqual } = require('util') as typeof utilTypeImport;
+
+	if (!isDeepStrictEqual(olds.build, news.build)) {
+		return(true);
+	}
+
+	return((olds.projectId ?? undefined) !== (news.projectId ?? undefined));
+}
 
 async function createBuild(inputs: CloudBuildInputs) {
 	// eslint-disable-next-line @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-member-access
@@ -68,6 +137,10 @@ async function createBuild(inputs: CloudBuildInputs) {
 	let error: unknown;
 
 	try {
+		if (inputs.sourceUpload !== undefined) {
+			await uploadSource(inputs.sourceUpload);
+		}
+
 		if (inputs.temporarySecret !== undefined) {
 			const { secretId, input, secretParent } = inputs.temporarySecret;
 
@@ -204,6 +277,11 @@ const cloudbuildProvider: pulumi.dynamic.ResourceProvider = {
 
 		return(retval);
 	},
+	async diff(_ignore_id, olds: Partial<CloudBuildInputs>, news: CloudBuildInputs) {
+		return({
+			changes: cloudBuildHasChanges(olds, news)
+		});
+	},
 	async create(inputs: CloudBuildInputs) {
 		const id = randomUUID();
 		const output = await createBuild(inputs);
@@ -232,6 +310,7 @@ interface CloudBuildInputsArg {
 	gcpProvider: Pick<gcp.Provider, 'project'>;
 	build: DeepInput<IBuild>;
 	temporarySecret?: DeepInput<TemporarySecretInput>;
+	sourceUpload?: DeepInput<SourceUploadInput>;
 }
 
 export class CloudBuild extends pulumi.dynamic.Resource implements PulumiBuildOutput {
@@ -249,6 +328,7 @@ export class CloudBuild extends pulumi.dynamic.Resource implements PulumiBuildOu
 			build: args.build,
 			projectId: args.gcpProvider.project,
 			temporarySecret: args.temporarySecret,
+			sourceUpload: args.sourceUpload,
 
 			/* XXX:TODO: Figure out how to pass in the access token */
 			accessToken: undefined
