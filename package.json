@@ -1,6 +1,6 @@
 {
 	"name": "@keetanetwork/pulumi-components",
-	"version": "1.0.94",
+	"version": "1.0.95",
 	"description": "KeetaNetwork Pulumi Components",
 	"repository": "https://github.com/keetanetwork/pulumi-components.git",
 	"main": "dist/index.js",

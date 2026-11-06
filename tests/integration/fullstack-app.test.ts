@@ -1,5 +1,8 @@
 import { describe, it, expect, afterAll } from 'vitest';
-import { deployStack, destroyStack, fetchWithRetry, type StackOutputs } from '../helpers/pulumi';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { deployStack, destroyStack, fetchWithRetry, previewStack, type StackOutputs } from '../helpers/pulumi';
 
 const domain = process.env.TEST_DOMAIN || 'fullstack.pulumi-components-test-zone.test.keeta.com';
 const dnsZoneId = process.env.TEST_DNS_ZONE_ID;
@@ -107,6 +110,26 @@ describe('FullStackApp', function() {
 		const html = await response.text();
 		expect(html).toContain('FullStack App Frontend');
 	}, 60_000);
+
+	it('does not rebuild the image when the source tarball is regenerated', async function() {
+		expect(outputs).toBeDefined();
+
+		/*
+		 * Regenerate the tarball, as happens on another machine, and
+		 * check that the build is not re-run
+		 */
+		fs.rmSync(path.join(os.homedir(), '.cache', 'pulumi-tarballs'), { recursive: true, force: true });
+
+		const operations = await previewStack('examples/fullstack-app', stackName);
+		const buildOperations = Object.entries(operations).filter(function([urn]) {
+			return(urn.endsWith('-build'));
+		});
+
+		expect(buildOperations.length).toBeGreaterThan(0);
+		for (const [urn, op] of buildOperations) {
+			expect(op, urn).toBe('same');
+		}
+	}, 600_000);
 
 	afterAll(async function() {
 		await destroyStack('examples/fullstack-app', stackName);
