@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { cloudBuildHasChanges } from '../../src/packages/gcp/cloudbuild';
+import { _Testing } from '../../src/packages/gcp/cloudbuild';
+
+const { cloudBuildHasChanges } = _Testing;
 
 describe('cloudBuildHasChanges', function() {
 	const build = {

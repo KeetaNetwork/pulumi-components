@@ -92,7 +92,7 @@ async function uploadSource(upload: SourceUploadInput) {
  * the source tarball (which vary between users and machines) do not
  * cause a rebuild.
  */
-export function cloudBuildHasChanges(olds: Partial<Pick<CloudBuildInputs, 'build' | 'projectId'>>, news: Pick<CloudBuildInputs, 'build' | 'projectId'>): boolean {
+function cloudBuildHasChanges(olds: Partial<Pick<CloudBuildInputs, 'build' | 'projectId'>>, news: Pick<CloudBuildInputs, 'build' | 'projectId'>): boolean {
 	// eslint-disable-next-line @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-require-imports
 	const { isDeepStrictEqual } = require('util') as typeof utilTypeImport;
 
@@ -266,6 +266,10 @@ async function createBuild(inputs: CloudBuildInputs) {
 
 	return(retval);
 }
+
+export const _Testing = {
+	cloudBuildHasChanges
+};
 
 const cloudbuildProvider: pulumi.dynamic.ResourceProvider = {
 	async check(_ignore_oldInput: CloudBuildInputs, newInput: CloudBuildInputs) {

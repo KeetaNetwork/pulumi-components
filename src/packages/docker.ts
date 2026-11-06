@@ -21,7 +21,7 @@ function updateHashWithSingleFile(fullPath: string, hashState: crypto.Hash) {
 	hashState.update(fs.readFileSync(fullPath));
 }
 
-function updateHashWithMultipleFiles(filePath: string, hashState: crypto.Hash) {
+function updateHashWithMultipleFiles(filePath: string, hashState: crypto.Hash, relativePath: string = '') {
 	if (fs.statSync(filePath).isFile()) {
 		updateHashWithSingleFile(filePath, hashState);
 		return;
@@ -32,18 +32,33 @@ function updateHashWithMultipleFiles(filePath: string, hashState: crypto.Hash) {
 	 * filesystem returns them in
 	 */
 	const info = fs.readdirSync(filePath, { withFileTypes: true }).sort(function(a, b) {
-		return(a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+		if (a.name < b.name) {
+			return(-1);
+		}
+
+		if (a.name > b.name) {
+			return(1);
+		}
+
+		return(0);
 	});
 
+	/*
+	 * Each entry's relative path is part of the hash, so renaming or
+	 * moving a file changes the version
+	 */
 	for (const item of info) {
 		const fullPath = path.join(filePath, item.name);
+		const itemRelativePath = path.posix.join(relativePath, item.name);
 		if (item.isFile()) {
+			hashState.update(`file:${itemRelativePath}\0`);
 			updateHashWithSingleFile(fullPath, hashState);
 			continue;
 		}
 
 		if (item.isDirectory()) {
-			updateHashWithMultipleFiles(fullPath, hashState);
+			hashState.update(`dir:${itemRelativePath}\0`);
+			updateHashWithMultipleFiles(fullPath, hashState, itemRelativePath);
 		}
 	}
 }
@@ -474,12 +489,9 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 		const source = this.getBuildTarball(input.buildDirectory, cacheID);
 
 		/*
-		 * The object is named after the image version rather than
-		 * tracking the tarball bytes, since the bytes differ between
-		 * machines (tar metadata, gzip implementation) even when the
-		 * contents are the same.  The upload is done by the build
-		 * itself and objects are never deleted, so a copy of the
-		 * source is kept alongside the build output.
+		 * The source object is named "<imageName>/<version>.tar.gz"
+		 * because the tarball bytes vary by machine.  The build uploads
+		 * it and never deletes it, so a copy of the source is kept.
 		 */
 		const sourceObjectName = `${name}/${this.versionIdentifier}.tar.gz`;
 
@@ -511,9 +523,8 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 
 			/**
 			 * An ID to pass to the build, which will be used to create
-			 * a temporary secret in Secret Manager.  It does not include
-			 * the secret value so that a different token (e.g., from
-			 * another user) does not change the build definition.
+			 * a temporary secret in Secret Manager.  Derived from the
+			 * prefix and cache ID so it stays the same for every deployer.
 			 */
 			const secretId = `temporary-delete-me-build-secret-${hash([ prefix, cacheID ].join('|'), 8)}`;
 

@@ -151,3 +151,33 @@ export async function refreshStack(projectDir: string, stackName: string): Promi
 		}
 	});
 }
+
+/**
+ * Preview a Pulumi stack and return the planned operation for each resource
+ * @param projectDir - Path to the Pulumi project directory
+ * @param stackName - Name of the stack
+ * @returns Map of resource URN to planned operation (e.g., "same", "update")
+ */
+export async function previewStack(projectDir: string, stackName: string): Promise<{ [urn: string]: string }> {
+	const workDir = path.resolve(process.cwd(), projectDir);
+
+	const stack = await automation.LocalWorkspace.selectStack({
+		stackName,
+		workDir
+	});
+
+	const operations: { [urn: string]: string } = {};
+	await stack.preview({
+		onOutput: function(msg) {
+			process.stdout.write(msg);
+		},
+		onEvent: function(event) {
+			const metadata = event.resourcePreEvent?.metadata;
+			if (metadata) {
+				operations[metadata.urn] = metadata.op;
+			}
+		}
+	});
+
+	return(operations);
+}
