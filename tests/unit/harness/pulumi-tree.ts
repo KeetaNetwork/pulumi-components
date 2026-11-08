@@ -1,8 +1,8 @@
-import fs from 'fs';
-import { createRequire } from 'module';
-import os from 'os';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import fs from 'node:fs';
+import { createRequire } from 'node:module';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll } from 'vitest';
 import * as pulumi from '@pulumi/pulumi';
 import type * as resourceProto from '@pulumi/pulumi/proto/resource_pb';
@@ -67,7 +67,9 @@ type OutputsOf = (name: string, inputs: UnknownRecord) => UnknownRecord;
  */
 const KNOWN_OUTPUTS: { [type: string]: OutputsOf } = {
 	'gcp:serviceaccount/account:Account': function(name, inputs) {
-		return({ email: `${String(inputs.accountId ?? name)}@mock.iam.gserviceaccount.com` });
+		const accountId = typeof inputs.accountId === 'string' ? inputs.accountId : name;
+
+		return({ email: `${accountId}@mock.iam.gserviceaccount.com` });
 	},
 	'gcp:sql/databaseInstance:DatabaseInstance': function(name) {
 		return({
@@ -157,7 +159,7 @@ const mocks: pulumi.runtime.Mocks = {
 /** Calls a method of an object whose type the SDK does not publish */
 function callMethod(target: object, method: unknown, args: unknown[]): void {
 	if (typeof method !== 'function') {
-		throw(new Error('The mock resource monitor does not have the method this harness wraps; the SDK changed'));
+		throw(new TypeError('The mock resource monitor does not have the method this harness wraps; the SDK changed'));
 	}
 
 	Reflect.apply(method, target, args);
@@ -226,7 +228,7 @@ function normalizeValue(value: unknown, roots: [string, string][]): unknown {
 	}
 
 	const normalized: UnknownRecord = {};
-	for (const key of Object.keys(record).sort()) {
+	for (const key of Object.keys(record).sort(compareStrings)) {
 		normalized[key] = normalizeValue(record[key], roots);
 	}
 
@@ -247,13 +249,11 @@ interface CaptureState {
 }
 
 /** Turns the alias list of a request into URNs, the way the engine reads it */
-async function aliasUrns(request: resourceProto.RegisterResourceRequest, state: CaptureState) {
-	const urns: string[] = [];
-	for (const alias of request.getAliasesList()) {
+function aliasUrns(request: resourceProto.RegisterResourceRequest, state: CaptureState) {
+	return(Promise.all(request.getAliasesList().map(async function(alias) {
 		const spec = alias.getSpec();
 		if (spec === undefined) {
-			urns.push(alias.getUrn());
-			continue;
+			return(alias.getUrn());
 		}
 
 		let parentUrn: string | undefined;
@@ -268,10 +268,9 @@ async function aliasUrns(request: resourceProto.RegisterResourceRequest, state: 
 			spec.getProject() || state.project,
 			spec.getStack() || state.stack
 		);
-		urns.push(await resolveOutput(urn));
-	}
 
-	return(urns);
+		return(await resolveOutput(urn));
+	})));
 }
 
 async function recordRegistration(request: resourceProto.RegisterResourceRequest, response: resourceProto.RegisterResourceResponse, state: CaptureState) {
@@ -344,7 +343,7 @@ function instrumentMonitor(state: CaptureState) {
 
 	Reflect.set(monitor, 'registerResource', function(request: unknown, callback: unknown) {
 		if (!(request instanceof resourceMessages.RegisterResourceRequest) || typeof callback !== 'function') {
-			throw(new Error('Unsupported registerResource call: the SDK changed the monitor interface'));
+			throw(new TypeError('Unsupported registerResource call: the SDK changed the monitor interface'));
 		}
 
 		callMethod(monitor, register, [ request, function(error: unknown, response: unknown) {
@@ -368,7 +367,7 @@ function instrumentMonitor(state: CaptureState) {
 	 */
 	Reflect.set(monitor, 'invoke', function(request: unknown, callback: unknown) {
 		if (!(request instanceof resourceMessages.ResourceInvokeRequest)) {
-			throw(new Error('Unsupported invoke call: the SDK changed the monitor interface'));
+			throw(new TypeError('Unsupported invoke call: the SDK changed the monitor interface'));
 		}
 
 		/* Reading a resource reference asks the monitor for the resource's state by URN */
@@ -385,7 +384,7 @@ function instrumentMonitor(state: CaptureState) {
 
 	Reflect.set(monitor, 'registerResourceOutputs', function(request: unknown, callback: unknown) {
 		if (!(request instanceof resourceMessages.RegisterResourceOutputsRequest)) {
-			throw(new Error('Unsupported registerResourceOutputs call: the SDK changed the monitor interface'));
+			throw(new TypeError('Unsupported registerResourceOutputs call: the SDK changed the monitor interface'));
 		}
 
 		const mockUrn = state.mockUrns.get(request.getUrn());
@@ -401,26 +400,26 @@ function instrumentMonitor(state: CaptureState) {
 async function settle(state: CaptureState, timeoutMs: number) {
 	const waitForRPCs: unknown = Reflect.get(pulumi.runtime, 'waitForRPCs');
 	if (typeof waitForRPCs !== 'function') {
-		throw(new Error('pulumi.runtime.waitForRPCs is gone; the harness must find another way to know the program is done'));
+		throw(new TypeError('pulumi.runtime.waitForRPCs is gone; the harness must find another way to know the program is done'));
 	}
 
-	const quiet = async function() {
-		let lastCount = -1;
-		let stableRounds = 0;
-		while (stableRounds < 3) {
-			const drained: unknown = Reflect.apply(waitForRPCs, undefined, []);
-			await drained;
-			await new Promise<void>(function(resolve) {
-				setTimeout(resolve, 0);
-			});
-
-			if (state.resources.length === lastCount) {
-				stableRounds++;
-			} else {
-				stableRounds = 0;
-				lastCount = state.resources.length;
-			}
+	/* Each round depends on the registrations the previous one let through, so the rounds cannot run side by side */
+	const quiet = async function(lastCount: number, stableRounds: number): Promise<void> {
+		if (stableRounds >= 3) {
+			return;
 		}
+
+		const drained: unknown = Reflect.apply(waitForRPCs, undefined, []);
+		await drained;
+		await new Promise<void>(function(resolve) {
+			setTimeout(resolve, 0);
+		});
+
+		if (state.resources.length === lastCount) {
+			return(quiet(lastCount, stableRounds + 1));
+		}
+
+		return(quiet(state.resources.length, 0));
 	};
 
 	let timer: NodeJS.Timeout | undefined;
@@ -431,23 +430,27 @@ async function settle(state: CaptureState, timeoutMs: number) {
 	});
 
 	try {
-		await Promise.race([ quiet(), timeout ]);
+		await Promise.race([ quiet(-1, 0), timeout ]);
 	} finally {
 		clearTimeout(timer);
 	}
 }
 
-/** URNs are ASCII, so a plain comparison gives the same order on every machine */
-function compareUrns(a: TreeResource, b: TreeResource) {
-	if (a.urn < b.urn) {
+/** Plain comparison of code units: the same order on every machine, unlike a locale's */
+function compareStrings(a: string, b: string) {
+	if (a < b) {
 		return(-1);
 	}
 
-	if (a.urn > b.urn) {
+	if (a > b) {
 		return(1);
 	}
 
 	return(0);
+}
+
+function compareUrns(a: TreeResource, b: TreeResource) {
+	return(compareStrings(a.urn, b.urn));
 }
 
 let capturing = false;
@@ -483,10 +486,12 @@ export async function captureTree(build: () => unknown, options: CaptureOptions 
 			throw(failure);
 		}
 
+		state.resources.sort(compareUrns);
+
 		return({
 			project: state.project,
 			stack: state.stack,
-			resources: state.resources.sort(compareUrns)
+			resources: state.resources
 		});
 	} finally {
 		capturing = false;
@@ -555,13 +560,8 @@ export async function matchLegacyUrns(tree: TreeSnapshot, legacyUrns: string[]):
 	}
 
 	/* The complete alias set of each resource, filled parent first */
-	const completeAliases = new Map<string, string[]>();
-	const aliasesOf = async function(resource: TreeResource): Promise<string[]> {
-		const known = completeAliases.get(resource.urn);
-		if (known !== undefined) {
-			return(known);
-		}
-
+	const completeAliases = new Map<string, Promise<string[]>>();
+	const computeAliases = async function(resource: TreeResource): Promise<string[]> {
 		let complete = resource.aliases;
 		if (resource.parent !== undefined) {
 			const parent = byUrn.get(resource.parent);
@@ -574,9 +574,18 @@ export async function matchLegacyUrns(tree: TreeSnapshot, legacyUrns: string[]):
 			complete = await Promise.all(outputs.map(resolveOutput));
 		}
 
-		completeAliases.set(resource.urn, complete);
-
 		return(complete);
+	};
+	const aliasesOf = function(resource: TreeResource): Promise<string[]> {
+		const known = completeAliases.get(resource.urn);
+		if (known !== undefined) {
+			return(known);
+		}
+
+		const computed = computeAliases(resource);
+		completeAliases.set(resource.urn, computed);
+
+		return(computed);
 	};
 
 	const keepers = new Map<string, Set<string>>();
@@ -584,11 +593,11 @@ export async function matchLegacyUrns(tree: TreeSnapshot, legacyUrns: string[]):
 		keepers.set(legacy, new Set());
 	}
 
-	for (const resource of tree.resources) {
+	await Promise.all(tree.resources.map(async function(resource) {
 		for (const urn of [ resource.urn, ...await aliasesOf(resource) ]) {
 			keepers.get(urn)?.add(resource.urn);
 		}
-	}
+	}));
 
 	const result: LegacyMatch = { unmatched: [], ambiguous: [] };
 	for (const [ legacy, resources ] of keepers) {

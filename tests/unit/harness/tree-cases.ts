@@ -1,5 +1,5 @@
-import path from 'path';
-import { fileURLToPath } from 'url';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import * as gcp from '@pulumi/gcp';
 
 import type * as apps from '../../../src/packages/gcp/apps';
@@ -20,7 +20,7 @@ const STATIC_DIRECTORY = path.join(fixtures, 'static');
 const PROJECT = 'project-id';
 const REGION = 'us-central1';
 const IMAGE = `${REGION}-docker.pkg.dev/${PROJECT}/keeta/app:1`;
-const DOMAIN_CONFIG = { domain: 'app.example.com', ssl: { domains: [ 'app.example.com' ] } };
+const DOMAIN_CONFIG = { domain: 'app.example.com', ssl: { domains: [ 'app.example.com' ] }};
 
 /**
  * One program whose resource tree is pinned. `build` creates the components
@@ -77,7 +77,7 @@ export const TREE_CASES: TreeCase[] = [
 		migration: { enabled: true },
 		environment: { LOG_LEVEL: 'info' }
 	}),
-	serviceCase('service-kv', { kv: { type: 'redis', memorySizeGb: 1 } }),
+	serviceCase('service-kv', { kv: { type: 'redis', memorySizeGb: 1 }}),
 	serviceCase('service-environment', {
 		environment: {
 			PLAIN: 'value',
@@ -89,12 +89,12 @@ export const TREE_CASES: TreeCase[] = [
 		mig: { enabled: true, egress: 'vpc+nat', enableSSH: true },
 		environment: { MODE: 'worker' }
 	}),
-	serviceCase('service-crwp', { mig: { enabled: true, workerKind: 'crwp', egress: 'vpc+nat' } }),
+	serviceCase('service-crwp', { mig: { enabled: true, workerKind: 'crwp', egress: 'vpc+nat' }}),
 	serviceCase('service-build-local', {
-		image: { build: { directory: APP_DIRECTORY, imageName: 'service-build-local' } }
+		image: { build: { directory: APP_DIRECTORY, imageName: 'service-build-local' }}
 	}),
 	serviceCase('service-build-remote', {
-		image: { build: { directory: APP_DIRECTORY, imageName: 'service-build-remote', githubSha: 'sha-1', remote: {} } }
+		image: { build: { directory: APP_DIRECTORY, imageName: 'service-build-remote', githubSha: 'sha-1', remote: {}}}
 	}),
 	{
 		name: 'service-caller-resources',
@@ -120,10 +120,10 @@ export const TREE_CASES: TreeCase[] = [
 			return(new CloudRunService('service-providers', {
 				gcp: { project: PROJECT },
 				region: REGION,
-				image: { build: { directory: APP_DIRECTORY, imageName: 'service-providers', githubSha: 'sha-2', remote: {} } },
+				image: { build: { directory: APP_DIRECTORY, imageName: 'service-providers', githubSha: 'sha-2', remote: {}}},
 				database: {},
 				migration: { enabled: true },
-				environment: { SECRET: { value: 'hidden', secret: true } },
+				environment: { SECRET: { value: 'hidden', secret: true }},
 				mig: { enabled: true }
 			}, { providers: [ provider ] }));
 		}
@@ -153,7 +153,7 @@ export const TREE_CASES: TreeCase[] = [
 			return(new ContainerMIG('standalone-mig', {
 				serviceAccount: 'worker@project-id.iam.gserviceaccount.com',
 				subnetwork: workerSubnetwork('standalone-mig'),
-				common: { gcp: { project: PROJECT } },
+				common: { gcp: { project: PROJECT }},
 				containerSpec: workerSpec
 			}));
 		}
@@ -164,7 +164,7 @@ export const TREE_CASES: TreeCase[] = [
 			return(new ContainerCloudRun('standalone-crwp', {
 				serviceAccount: 'worker@project-id.iam.gserviceaccount.com',
 				subnetwork: workerSubnetwork('standalone-crwp'),
-				common: { gcp: { project: PROJECT } },
+				common: { gcp: { project: PROJECT }},
 				containerSpec: workerSpec
 			}));
 		}
@@ -192,7 +192,7 @@ export const TREE_CASES: TreeCase[] = [
 			return(new FullStackApp('full-stack', {
 				loadBalancer: DOMAIN_CONFIG,
 				frontend: { staticFilesPath: STATIC_DIRECTORY },
-				backend: { gcp: { project: PROJECT }, region: REGION, image: { uri: IMAGE } }
+				backend: { gcp: { project: PROJECT }, region: REGION, image: { uri: IMAGE }}
 			}));
 		}
 	},
@@ -202,7 +202,7 @@ export const TREE_CASES: TreeCase[] = [
 			return(new FullStackApp('full-stack-api', {
 				loadBalancer: DOMAIN_CONFIG,
 				frontend: null,
-				backend: { gcp: { project: PROJECT }, region: REGION, image: { uri: IMAGE } }
+				backend: { gcp: { project: PROJECT }, region: REGION, image: { uri: IMAGE }}
 			}));
 		}
 	}

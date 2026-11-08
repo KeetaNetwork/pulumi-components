@@ -1,6 +1,6 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { expectRecord } from '../../helpers/narrow';
 import type { UnknownRecord } from '../../helpers/narrow';
@@ -9,16 +9,16 @@ import { TREE_CASES } from './tree-cases';
 
 const baselineDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../urn-baselines');
 
-function readBaseline(file: string, version: string): { version: string, cases: { [caseName: string]: unknown } } {
+function readBaseline(file: string, version: string): { version: string, cases: { [caseName: string]: unknown }} {
 	if (!fs.existsSync(file)) {
-		return({ version, cases: {} });
+		return({ version, cases: {}});
 	}
 
 	const parsed: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
 	const baseline = expectRecord(parsed, `the baseline ${file}`);
 	const cases: UnknownRecord = expectRecord(baseline.cases, `the cases of ${file}`);
 
-	return({ version, cases: { ...cases } });
+	return({ version, cases: { ...cases }});
 }
 
 /**
@@ -33,7 +33,7 @@ export async function writeBaselineCases(version: string, caseNames: string[]): 
 	const file = path.join(baselineDirectory, `${version}.json`);
 	const baseline = readBaseline(file, version);
 
-	for (const caseName of caseNames) {
+	const treeCases = caseNames.map(function(caseName) {
 		const treeCase = TREE_CASES.find(function(candidate) {
 			return(candidate.name === caseName);
 		});
@@ -45,9 +45,14 @@ export async function writeBaselineCases(version: string, caseNames: string[]): 
 			throw(new Error(`Case ${caseName} is already in ${file}; a recorded baseline is never rewritten`));
 		}
 
-		/* One at a time: the Pulumi runtime state is process-wide */
-		baseline.cases[caseName] = urnsOf(await captureTree(treeCase.build));
-	}
+		return(treeCase);
+	});
+
+	/* One at a time: the Pulumi runtime state is process-wide */
+	await treeCases.reduce(async function(previous, treeCase) {
+		await previous;
+		baseline.cases[treeCase.name] = urnsOf(await captureTree(treeCase.build));
+	}, Promise.resolve());
 
 	fs.mkdirSync(baselineDirectory, { recursive: true });
 	fs.writeFileSync(file, JSON.stringify(baseline, null, '\t') + '\n');

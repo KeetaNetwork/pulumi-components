@@ -1053,7 +1053,7 @@ exports[`component tree > snapshot > service-build-local keeps its resources, pa
       ],
       "buildDirectory": "<tmp>/docker-build-<random>",
       "cleanBuildDirectory": false,
-      "imageURI": "us-central1-docker.pkg.dev/project-id/keeta/service-build-local:hash_43288f71e3d92ec66ae8c8c0702110d83ced1313",
+      "imageURI": "us-central1-docker.pkg.dev/project-id/keeta/service-build-local:hash_5211353d4305ac00fe51bdaf7b474a40cf59644c",
       "tags": [],
     },
     "name": "service-build-local-image-docker-builder",
