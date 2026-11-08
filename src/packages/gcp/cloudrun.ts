@@ -222,12 +222,17 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 			replication: replicationConfig
 		}, { parent: this, deleteBeforeReplace: true });
 
+		/*
+		 * A changed value replaces the version. The service and the job point
+		 * at the new version's number, and the superseded version is disabled,
+		 * not destroyed, once they do.
+		 */
 		const secretVersion = new gcp.secretmanager.SecretVersion(`${secretName}-version`, {
 			secret: secret.id,
-			secretData: pulumi.secret(value)
+			secretData: pulumi.secret(value),
+			deletionPolicy: 'DISABLE'
 		}, {
-			parent: secret,
-			retainOnDelete: true
+			parent: secret
 		});
 
 		const binding = new gcp.secretmanager.SecretIamMember(`${secretName}-iam-binding`, {
@@ -240,17 +245,7 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 			name: name,
 			valueFrom: {
 				secretKeyRef: {
-					key: secretVersion.version.apply(function(_ignored_version) {
-						/*
-						 * We return latest here
-						 * because we want to always
-						 * use the latest version of
-						 * the secret, but want the
-						 * Output to depend on the
-						 * created version
-						 */
-						return('latest');
-					}),
+					key: secretVersion.version,
 					name: pulumi.all([secret.secretId, binding.id]).apply(function([newSecretId]) {
 						return(newSecretId);
 					})
