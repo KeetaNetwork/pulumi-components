@@ -1,6 +1,8 @@
 import * as pulumi from '@pulumi/pulumi';
 import * as gcp from '@pulumi/gcp';
+import { createRequire } from 'node:module';
 import { GoogleAuth, Impersonated } from 'google-auth-library';
+import type * as GoogleAuthLibrary from 'google-auth-library';
 
 /**
  * What identifies the caller of a dynamic resource, and nothing that
@@ -52,6 +54,12 @@ export function clientAuthInputs(provider: ClientAuthProvider): pulumi.Output<Cl
  * A `GoogleAuth` that resolves its credentials from Application Default
  * Credentials when it is used (nothing is called here), impersonating the
  * account of the inputs when there is one.
+ *
+ * It is made of the `google-auth-library` of this package's own consumer, so
+ * it is only for code that uses that library on its own. Do not hand it to a
+ * Google Cloud client: the client's `google-gax` may use another version of
+ * the library, and the two do not agree on their types of headers. Use
+ * `authenticateAs` for a client.
  */
 export function googleAuthFrom(inputs: ClientAuthInputs, scopes: string[] = [ CLOUD_PLATFORM_SCOPE ]): GoogleAuth {
 	const auth = new GoogleAuth({ projectId: inputs.project, scopes });
@@ -74,4 +82,54 @@ export function googleAuthFrom(inputs: ClientAuthInputs, scopes: string[] = [ CL
 	};
 
 	return(auth);
+}
+
+function isAuthLibrary(value: unknown): value is typeof GoogleAuthLibrary {
+	return(typeof value === 'object' && value !== null && 'Impersonated' in value && typeof value.Impersonated === 'function');
+}
+
+/**
+ * The `google-auth-library` that the Google Cloud client package works
+ * with: the one of its own `google-gax`, wherever the consumer's package
+ * manager put them.
+ */
+function authLibraryOf(clientPackage: string): typeof GoogleAuthLibrary {
+	const requireFromClient = createRequire(require.resolve(clientPackage));
+	const gax: unknown = requireFromClient('google-gax');
+	const library: unknown = typeof gax === 'object' && gax !== null && 'googleAuthLibrary' in gax && gax.googleAuthLibrary;
+	if (!isAuthLibrary(library)) {
+		throw(new TypeError(`google-gax of ${clientPackage} does not export google-auth-library`));
+	}
+
+	return(library);
+}
+
+/**
+ * Makes a Google Cloud client (one built on `google-gax`) call as the
+ * account that the inputs name. Without an account to impersonate the client
+ * is left as it is: it finds the credentials of the environment on its own.
+ *
+ * The impersonation is built from the `google-auth-library` of the client's
+ * own `google-gax` and wraps the credentials the client found, so the client
+ * never meets an object of another version of the library.
+ */
+export function authenticateAs(client: { auth: GoogleAuthLibrary.GoogleAuth }, clientPackage: string, inputs: ClientAuthInputs): void {
+	const target = inputs.impersonateServiceAccount;
+	if (target === undefined) {
+		return;
+	}
+
+	const library = authLibraryOf(clientPackage);
+	const auth = client.auth;
+	const getEnvironmentClient = auth.getClient.bind(auth);
+	let impersonated: GoogleAuthLibrary.Impersonated | undefined;
+	auth.getClient = async function() {
+		impersonated ??= new library.Impersonated({
+			sourceClient: await getEnvironmentClient(),
+			targetPrincipal: target,
+			targetScopes: [ CLOUD_PLATFORM_SCOPE ]
+		});
+
+		return(impersonated);
+	};
 }

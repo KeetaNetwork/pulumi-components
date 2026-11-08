@@ -2,7 +2,7 @@ import * as pulumi from '@pulumi/pulumi';
 import { randomUUID } from 'node:crypto';
 
 import type { DeepInput, DeepOutput } from '../../types';
-import { clientAuthInputs, googleAuthFrom } from './client-auth';
+import { authenticateAs, clientAuthInputs } from './client-auth';
 import type { ClientAuthInputs, ClientAuthProvider } from './client-auth';
 import type * as runTypes from '@google-cloud/run';
 
@@ -33,13 +33,12 @@ async function runJob(inputs: CloudRunJobExecutionInputs): Promise<ExecutionOutp
 	// eslint-disable-next-line @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-require-imports
 	const { JobsClient } = require('@google-cloud/run') as typeof runTypes;
 
-	/* Without `auth` the client finds the credentials of the environment itself, as it always did */
-	let clientOptions: ConstructorParameters<typeof JobsClient>[0];
-	if (inputs.auth !== undefined) {
-		clientOptions = { auth: googleAuthFrom(inputs.auth) };
-	}
+	const client = new JobsClient();
 
-	const client = new JobsClient(clientOptions);
+	/* The client finds the credentials of the environment itself; `auth` only says who to impersonate */
+	if (inputs.auth !== undefined) {
+		authenticateAs(client, '@google-cloud/run', inputs.auth);
+	}
 
 	const jobPath = `projects/${inputs.projectId}/locations/${inputs.region}/jobs/${inputs.jobName}`;
 
