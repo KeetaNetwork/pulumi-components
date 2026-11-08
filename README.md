@@ -1,5 +1,18 @@
 # Keeta/pulumi-components
 
+## Upgrading to 2.0
+
+The Pulumi packages are peer dependencies now, so your program and this library share one copy of each (two copies can break a Pulumi program).
+
+1. Add these packages to your own `package.json`, in the version ranges below or newer within the same major version:
+   - `@pulumi/pulumi` `^3.272.0`
+   - `@pulumi/gcp` `^9.30.0`
+   - `@pulumi/command` `^1.1.3`
+   - `@pulumi/random` `^4.18.4`
+   - `@pulumi/tls` `^5.2.3`
+2. Run `npm dedupe` so that `npm ls @pulumi/pulumi` shows one version.
+3. Run `pulumi preview`. Expect no resource changes from this step.
+
 ## GCP
 
 ### Cloud Run Env Manager
