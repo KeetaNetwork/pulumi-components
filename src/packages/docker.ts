@@ -11,6 +11,7 @@ import type { DeepInput } from '../types';
 import CloudBuild from './gcp/cloudbuild';
 import type { ISecrets, IBuild } from './gcp/cloudbuild';
 import * as Tarball from './tarball';
+import { fingerprintBuildContext, loadBuildContext } from './build-context';
 import { GCP_COMPONENT_PREFIX } from './gcp/constants';
 import LocalDockerImageBuilder from './localdocker';
 import type { google } from '@google-cloud/cloudbuild/build/protos/protos';
@@ -196,6 +197,30 @@ interface GCPDockerRemoteImageInput extends GCPDockerImageInput {
 	machineType?: keyof typeof google.devtools.cloudbuild.v1.BuildOptions.MachineType;
 }
 
+/**
+ * The version of an image that is derived from the contents of `fromFile`.
+ * A directory is versioned by its build context (what ".dockerignore" and
+ * the build directory's exclusions leave of it), so the version only changes
+ * when what is sent to Docker changes.
+ */
+function getFileVersion(fromFile: string, buildDirectory: GCPDockerImageInput['buildDirectory']) {
+	if (fs.statSync(fromFile).isFile()) {
+		return(getFileResourceIdentifier(fromFile));
+	}
+
+	let excludePatterns: string[] | undefined;
+	let dockerfilePath: string | undefined;
+	if (typeof buildDirectory !== 'string') {
+		dockerfilePath = buildDirectory.dockerfilePath;
+
+		if (buildDirectory.type === 'DIRECTORY') {
+			excludePatterns = buildDirectory.excludePatterns;
+		}
+	}
+
+	return(fingerprintBuildContext(loadBuildContext(fromFile, { excludePatterns, dockerfilePath })));
+}
+
 abstract class BaseDockerImage extends pulumi.ComponentResource {
 	private static AwaitingOutput: { [rawUrl: string]: pulumi.Output<string> } = {};
 
@@ -221,7 +246,9 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 
 	/**
 	 * Cache tag for generated tarball, which may be used for caching
-	 * tarball creation from directories
+	 * tarball creation from directories.  The tarball itself is found by
+	 * the contents of the directory, so a tag only has to be present for
+	 * the tarball to be kept.
 	 */
 	readonly inputCacheTag?: string;
 
@@ -237,7 +264,7 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 
 	abstract _checkImage(prefix: string, imageURI: string, input: GCPDockerLocalImageInput | GCPDockerRemoteImageInput): pulumi.Output<string>;
 
-	protected getDockerBuildArgs(input: GCPDockerImageInput, buildDirectory: string) {
+	protected getDockerBuildArgs(input: GCPDockerImageInput) {
 		const args: pulumi.Input<string>[] = [];
 
 		if (this.imageCache) {
@@ -257,7 +284,7 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 		}
 
 		if (typeof input.buildDirectory !== 'string' && input.buildDirectory.dockerfilePath) {
-			args.push('-f', path.join(buildDirectory, input.buildDirectory.dockerfilePath));
+			args.push('-f', path.normalize(input.buildDirectory.dockerfilePath));
 		}
 
 		const retval = pulumi.all(args);
@@ -289,12 +316,16 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 	constructor(prefix: string, input: GCPDockerImageInput, opts?: pulumi.CustomResourceOptions) {
 		super(`${GCP_COMPONENT_PREFIX}:DockerImage`, prefix, {}, { ...opts });
 
+		if (typeof input.buildDirectory !== 'string' && input.buildDirectory.type === 'DIRECTORY') {
+			this.inputCacheTag = input.buildDirectory.inputCacheTag;
+		}
+
 		const registryUrlOutput = pulumi.output(input.registryUrl);
 
 		let versionIdentifier: string;
 		switch (input.versioning.type) {
 			case 'FILE':
-				versionIdentifier = `hash_${getFileResourceIdentifier(input.versioning.fromFile)}`;
+				versionIdentifier = `hash_${getFileVersion(input.versioning.fromFile, input.buildDirectory)}`;
 				break;
 			case 'PLAIN':
 				versionIdentifier = input.versioning.value;
@@ -373,7 +404,7 @@ export class LocalDockerImage extends BaseDockerImage {
 		if (input.type === 'GIT') {
 			tarball = new Tarball.GitTarballArchive(input.directory, input.commitID);
 		} else if (input.type === 'DIRECTORY') {
-			tarball = new Tarball.DirTarballArchive(input.directory, cacheID, input.excludePatterns);
+			tarball = new Tarball.DirTarballArchive(input.directory, cacheID, input.excludePatterns, input.dockerfilePath);
 		} else {
 			throw(new Error(`Invalid docker buildDirectory input ${JSON.stringify(input)}`));
 		}
@@ -408,9 +439,7 @@ export class LocalDockerImage extends BaseDockerImage {
 
 		const buildDirectory = pulumi.output(this.getBuildDirectory(input.buildDirectory, cacheID));
 
-		const buildArgs = buildDirectory.apply((directory) => {
-			return(this.getDockerBuildArgs(input, directory));
-		});
+		const buildArgs = this.getDockerBuildArgs(input);
 
 		const image = new LocalDockerImageBuilder(`${prefix}-docker-builder`, {
 			imageURI: imageURI,
@@ -449,7 +478,7 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 		if (typeof input === 'string') {
 			tarball = new Tarball.DirTarballArchive(input, cacheID);
 		} else if (input.type === 'DIRECTORY') {
-			tarball = new Tarball.DirTarballArchive(input.directory, cacheID, input.excludePatterns);
+			tarball = new Tarball.DirTarballArchive(input.directory, cacheID, input.excludePatterns, input.dockerfilePath);
 		} else if (input.type === 'GIT') {
 			tarball = new Tarball.GitTarballArchive(input.directory, input.commitID);
 		} else {
@@ -528,7 +557,7 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 			 * a temporary secret in Secret Manager.  Derived from the
 			 * prefix and cache ID so it stays the same for every deployer.
 			 */
-			const secretId = `temporary-delete-me-build-secret-${hash([ prefix, cacheID ].join('|'), 8)}`;
+			const secretId = `temporary-delete-me-build-secret-${hash([ prefix, hash(imageURI, 32) ].join('|'), 8)}`;
 
 			/**
 			 * Structure to pass to the build, which will be used to create
@@ -570,7 +599,7 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 		const imageCacheOutput = this.imageCache ? pulumi.output(this.imageCache) : pulumi.output(undefined);
 
 		const allResolvedForSteps = pulumi.all([
-			this.getDockerBuildArgs(input, '.'),
+			this.getDockerBuildArgs(input),
 			this.image,
 			taggedImagesOutput,
 			imageCacheOutput

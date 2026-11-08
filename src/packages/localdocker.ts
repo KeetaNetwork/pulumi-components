@@ -51,8 +51,30 @@ function pickRepoDigest(repoDigests: string[], imageURI: string) {
 	return(found);
 }
 
+function sameList(left: string[] | undefined, right: string[] | undefined) {
+	const leftItems = left ?? [];
+	const rightItems = right ?? [];
+
+	return(leftItems.length === rightItems.length && leftItems.every(function(item, index) {
+		return(item === rightItems[index]);
+	}));
+}
+
+/**
+ * Whether the image to build differs.  The build directory is a fresh
+ * temporary directory on every run and the secrets are only read by the
+ * build, so neither says the image is different.
+ */
+function localBuildHasChanges(olds: Partial<LocalBuildInputs>, news: Partial<LocalBuildInputs>) {
+	return(olds.imageURI !== news.imageURI ||
+		(olds.imageCache ?? undefined) !== (news.imageCache ?? undefined) ||
+		!sameList(olds.buildArgs, news.buildArgs) ||
+		!sameList(olds.tags, news.tags));
+}
+
 export const _Testing = {
-	pickRepoDigest
+	pickRepoDigest,
+	localBuildHasChanges
 };
 
 async function createBuild(inputs: LocalBuildInputs) {
@@ -111,7 +133,7 @@ async function createBuild(inputs: LocalBuildInputs) {
 		/*
 		 * Run "docker build" to build the image
 		 */
-		await promisifyExec('docker', ['build', ...buildArgs, inputs.buildDirectory], env);
+		await promisifyExec('docker', ['build', ...buildArgs, '.'], env, inputs.buildDirectory);
 
 		/*
 		 * Authenticate Docker to the registry before pushing
@@ -156,6 +178,9 @@ async function createBuild(inputs: LocalBuildInputs) {
 const localImageProvider: pulumi.dynamic.ResourceProvider = {
 	async check(_ignore_oldInput: LocalBuildInputs, newInput: LocalBuildInputs) {
 		return({ inputs: { ...newInput }});
+	},
+	async diff(_ignore_id: string, olds: LocalBuildInputs, news: LocalBuildInputs) {
+		return({ changes: localBuildHasChanges(olds, news) });
 	},
 	async create(inputs: LocalBuildInputs) {
 		const id = randomUUID();
