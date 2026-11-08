@@ -893,6 +893,10 @@ export class CloudRunService extends pulumi.ComponentResource {
 	constructor(name: string, args: CloudRunServiceArgs, opts?: pulumi.ComponentResourceOptions) {
 		super('Keeta:GCP:CloudRunService', name, args, opts);
 
+		if (args.migration?.enabled && !args.database) {
+			throw(new Error('migration.enabled requires database'));
+		}
+
 		let vpc: gcp.compute.Network | undefined;
 		let subnet: gcp.compute.Subnetwork | undefined;
 		let vpcConnector: gcp.vpcaccess.Connector | undefined;

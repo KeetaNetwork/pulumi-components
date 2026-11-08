@@ -307,27 +307,16 @@ export class InternalLoadBalancer extends pulumi.ComponentResource {
 			const cert = config.sslCertificate;
 			// Discriminate based on presence of certificateId (compute.ManagedSslCertificate only)
 			if ('certificateId' in cert) {
-				// This is a compute.ManagedSslCertificate - look it up by region
-				let regionCert;
-				if ('region' in cert && cert.region !== undefined) {
-					regionCert = gcp.compute.getRegionSslCertificateOutput({
-						name: pulumi.output(cert.id).apply(function(id) {
-							const parts = id.split('/');
-							return(parts[parts.length - 1] ?? id);
-						}),
-						region: region
-					});
-				} else {
-					regionCert = gcp.compute.getCertificateOutput({
-						name: pulumi.output(cert.id).apply(function(id) {
-							const parts = id.split('/');
-							return(parts[parts.length - 1] ?? id);
-						})
-					});
-				}
+				// This is a compute.ManagedSslCertificate - look it up by name
+				const globalCert = gcp.compute.getCertificateOutput({
+					name: pulumi.output(cert.id).apply(function(id) {
+						const parts = id.split('/');
+						return(parts[parts.length - 1] ?? id);
+					})
+				});
 
-				certificateID = regionCert.apply(function(regionCertResolved) {
-					return(regionCertResolved.id);
+				certificateID = globalCert.apply(function(globalCertResolved) {
+					return(globalCertResolved.id);
 				});
 
 				useCertificateManager = false;

@@ -137,15 +137,16 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 	/**
 	 * Returns all variables with secrets resolved to their plain values.
 	 * For use with GCE/MIG containers that don't support Secret Manager references.
+	 * Throws when a variable references an existing secret, because it cannot be resolved.
 	 */
 	get resolvedVariableOutput(): pulumi.Output<{ name: string; value: string }[]> {
 		const entries: pulumi.Output<{ name: string; value: string }>[] = [];
 		for (const variableName in this.variables) {
 			const valueOrWrapper = this.variables[variableName];
 
-			// Skip external secrets -- we can't resolve those at deploy time
+			// An existing secret can only be read through Secret Manager, which these containers cannot do
 			if (isEnvironmentGCPSecretData(valueOrWrapper)) {
-				continue;
+				throw(new Error(`Variable ${variableName} references the existing secret ${valueOrWrapper.name}, which cannot be resolved to a plain value for a container without Secret Manager support`));
 			}
 
 			if (typeof valueOrWrapper === 'object' && 'value' in valueOrWrapper) {
