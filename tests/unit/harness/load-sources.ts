@@ -14,7 +14,8 @@ import ts from 'typescript';
  */
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
-const sourceRequire = createRequire(path.join(repositoryRoot, 'package.json'));
+/* The caller names the type of the module it loads */
+const sourceRequire: <Exports>(id: string) => Exports = createRequire(path.join(repositoryRoot, 'package.json'));
 
 function readCompilerOptions() {
 	const config = ts.readConfigFile(path.join(repositoryRoot, 'tsconfig.json'), function(file) {
@@ -78,7 +79,7 @@ export function requireSource<Exports>(relativePath: string): Exports {
 	const hooks = registerHooks({ resolve: resolveSource, load: loadSource });
 
 	try {
-		return(sourceRequire(path.join(repositoryRoot, relativePath)));
+		return(sourceRequire<Exports>(path.join(repositoryRoot, relativePath)));
 	} finally {
 		hooks.deregister();
 	}
