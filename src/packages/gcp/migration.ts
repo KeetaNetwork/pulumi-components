@@ -7,6 +7,7 @@ import { CloudRunJobExecution } from './cloudrun-job';
 import { EnvManager } from './cloudrun';
 import type { EnvironmentVariables } from './cloudrun';
 import { buildDatabaseEnvVars } from './database-env';
+import { MIGRATION_DEFAULTS } from './defaults';
 import { generateName } from '../../utils';
 
 /**
@@ -224,13 +225,13 @@ export class MigrationJob extends pulumi.ComponentResource {
 						envs: envManager.cloudRunJobVariableOutput,
 						resources: {
 							limits: {
-								cpu: String(args.cpuLimit ?? 1),
-								memory: `${args.memoryLimit ?? 512}Mi`
+								cpu: String(args.cpuLimit ?? MIGRATION_DEFAULTS.cpuLimit),
+								memory: `${args.memoryLimit ?? MIGRATION_DEFAULTS.memoryLimit}Mi`
 							}
 						}
 					}],
-					maxRetries: 1,
-					timeout: `${args.taskTimeout ?? 600}s`
+					maxRetries: MIGRATION_DEFAULTS.maxRetries,
+					timeout: `${args.taskTimeout ?? MIGRATION_DEFAULTS.taskTimeout}s`
 				}
 			}
 		}, { parent: this });

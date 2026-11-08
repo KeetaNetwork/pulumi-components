@@ -3,6 +3,7 @@ import * as gcp from '@pulumi/gcp';
 import * as components from '../../';
 import type { GCPCommonOptions } from './common';
 import { generateName } from '../../utils';
+import { CONTAINER_DEFAULTS } from './defaults';
 
 /**
  * Common options for GCP
@@ -96,6 +97,12 @@ interface ContainerMIGOptions extends ContainerGenericOptions<false> {
 	 * Machine Type to use
 	 */
 	machineType?: pulumi.Input<string>;
+
+	/**
+	 * Size of the boot disk of each VM, in GB
+	 * @default CONTAINER_DEFAULTS.mig.diskSizeGb
+	 */
+	diskSizeGb?: pulumi.Input<number>;
 
 	/**
 	 * Network Interface parameters
@@ -340,7 +347,7 @@ export class ContainerMIG extends pulumi.ComponentResource {
 	serviceAccount: ContainerMIGOptions['serviceAccount'];
 	readonly type = 'MIG' as const;
 
-	constructor(name: string, options: ContainerMIGOptions, args?: pulumi.CustomResourceOptions) {
+	constructor(name: string, options: ContainerMIGOptions, args?: pulumi.ComponentResourceOptions) {
 		super('Keeta:GCP:ContainerMIG', name, options, args);
 
 		const {
@@ -429,27 +436,17 @@ export class ContainerMIG extends pulumi.ComponentResource {
 		 * Create the Managed Instance Group Template, from which each instance will be created
 		 */
 		const instanceTemplate = new gcp.compute.InstanceTemplate(`${name}-mig-template`, {
-			machineType: options.machineType ?? 'e2-medium',
+			machineType: options.machineType ?? CONTAINER_DEFAULTS.mig.machineType,
 			region: region,
 			tags: options.tags,
 			disks: [{
 				sourceImage: cosImage,
-
-				/* XXX:TODO: Should the user be allowed to specify this in some way ? */
-				diskSizeGb: 50
+				diskSizeGb: options.diskSizeGb ?? CONTAINER_DEFAULTS.mig.diskSizeGb
 			}],
 			serviceAccount: {
 				email: serviceAccountEmail,
-				scopes: [
-					/* XXX:TODO: Should the user be allowed to specify this in some way ? */
-					'https://www.googleapis.com/auth/cloud-platform',
-					'https://www.googleapis.com/auth/compute',
-					'https://www.googleapis.com/auth/devstorage.read_only',
-					'https://www.googleapis.com/auth/logging.write',
-					'https://www.googleapis.com/auth/monitoring.write',
-					'https://www.googleapis.com/auth/servicecontrol',
-					'https://www.googleapis.com/auth/service.management.readonly'
-				]
+				/* XXX:TODO: Should the user be allowed to specify CONTAINER_DEFAULTS.mig.scopes in some way ? */
+				scopes: [...CONTAINER_DEFAULTS.mig.scopes]
 			},
 			networkInterfaces: pulumi.all([options.networkInterfaces, networkID, subnetworkID]).apply(function([networkInterfaces, networkIDResolved, subnetworkIDResolved]) {
 				if (networkInterfaces === undefined) {
@@ -529,7 +526,17 @@ export class ContainerMIG extends pulumi.ComponentResource {
 		} satisfies Omit<ConstructorParameters<typeof gcp.compute.RegionInstanceGroupManager>[1], 'region'> | Omit<ConstructorParameters<typeof gcp.compute.InstanceGroupManager>[1], 'zone'>;
 
 		let igm: gcp.compute.RegionInstanceGroupManager | gcp.compute.InstanceGroupManager;
-		if ('zone' in options) {
+		/*
+		 * A `zone` key that is present makes the group zonal, even when it is
+		 * undefined (the provider then uses its default zone): that is what
+		 * 1.0.95 did, and changing it would replace the group of an existing stack.
+		 */
+		const zonal = options.zone !== undefined || Object.hasOwn(options, 'zone');
+		if (zonal && options.zone === undefined) {
+			pulumi.log.warn(`ContainerMIG ${name}: zone is undefined, so the group stays zonal in the default zone of the provider. Omit zone for a regional group (zone: undefined will mean regional in 3.0)`);
+		}
+
+		if (zonal) {
 			igm = new gcp.compute.InstanceGroupManager(`${name}-mig`, {
 				...igmBaseArgs,
 				zone: options.zone,
@@ -577,7 +584,7 @@ export class ContainerCloudRun extends pulumi.ComponentResource {
 
 	readonly type = 'CloudRun' as const;
 
-	constructor(name: string, options: ContainerCloudRunOptions, args?: pulumi.CustomResourceOptions) {
+	constructor(name: string, options: ContainerCloudRunOptions, args?: pulumi.ComponentResourceOptions) {
 		super('Keeta:GCP:ContainerCloudRun', name, options, args);
 
 		const {
@@ -684,10 +691,10 @@ export class ContainerCloudRun extends pulumi.ComponentResource {
 			}
 		}
 		if (cpuCount === undefined) {
-			cpuCount = '2';
+			cpuCount = CONTAINER_DEFAULTS.crwp.size.cpu;
 		}
 		if (ramSize === undefined) {
-			ramSize = '4096';
+			ramSize = CONTAINER_DEFAULTS.crwp.size.ram;
 		}
 
 		/**

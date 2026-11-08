@@ -61,3 +61,34 @@ export function optionalRecord(value: unknown): UnknownRecord | undefined {
 
 	return(undefined);
 }
+
+/** Follows a path of keys and indexes, giving `undefined` where the value has no such step */
+export function valueAt(value: unknown, steps: (string | number)[]): unknown {
+	let current = value;
+	for (const step of steps) {
+		if (typeof step === 'number') {
+			if (!Array.isArray(current)) {
+				return(undefined);
+			}
+			current = current[step];
+		} else {
+			const record = optionalRecord(current);
+			if (record === undefined) {
+				return(undefined);
+			}
+			current = record[step];
+		}
+	}
+
+	return(current);
+}
+
+/** Like `valueAt`, but names the path in the error when the value is not there */
+export function expectAt(value: unknown, steps: (string | number)[], description: string): unknown {
+	const found = valueAt(value, steps);
+	if (found === undefined) {
+		throw(new Error(`Expected ${description} to have ${steps.join('.')}`));
+	}
+
+	return(found);
+}
