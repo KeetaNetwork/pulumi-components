@@ -891,11 +891,12 @@ export class CloudRunService extends pulumi.ComponentResource {
 	readonly migration?: MigrationJob;
 
 	constructor(name: string, args: CloudRunServiceArgs, opts?: pulumi.ComponentResourceOptions) {
-		super('Keeta:GCP:CloudRunService', name, args, opts);
-
+		// Checked before the component registers, so a rejected configuration leaves nothing behind
 		if (args.migration?.enabled && !args.database) {
 			throw(new Error('migration.enabled requires database'));
 		}
+
+		super('Keeta:GCP:CloudRunService', name, args, opts);
 
 		let vpc: gcp.compute.Network | undefined;
 		let subnet: gcp.compute.Subnetwork | undefined;
@@ -1278,8 +1279,6 @@ export class CloudRunService extends pulumi.ComponentResource {
 				variables: migVariables
 			}, { parent: this });
 
-			const migEnvVars = migEnvManager.resolvedVariableOutput;
-
 			// Create external IP if requested
 			let extIP: gcp.compute.Address | undefined;
 			const crwpEgress: 'vpc' | 'vpc+direct' | 'vpc+nat' = args.mig.egress ?? 'vpc';
@@ -1316,7 +1315,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 							image: imageUri,
 							name: `${name}-worker`,
 							restartPolicy: 'Always',
-							env: migEnvVars
+							env: migEnvManager.resolvedVariableOutput
 						}]
 					}
 				}, { parent: this });

@@ -17,16 +17,20 @@ interface LocalBuildInputs {
 }
 
 /**
- * The repository of an image URI: the URI without its tag. A colon only
- * starts a tag when no "/" follows it, otherwise it separates a registry port.
+ * The repository of an image URI in the form `docker image inspect` lists it:
+ * the URI without its tag (a colon only starts a tag when no "/" follows it,
+ * otherwise it separates a registry port), and for Docker Hub without
+ * "docker.io/" and "library/".
  */
 function imageRepository(imageURI: string) {
 	const colon = imageURI.lastIndexOf(':');
-	if (colon === -1 || imageURI.indexOf('/', colon) !== -1) {
-		return(imageURI);
+	let repository = imageURI;
+	if (colon !== -1 && imageURI.indexOf('/', colon) === -1) {
+		repository = imageURI.slice(0, colon);
 	}
 
-	return(imageURI.slice(0, colon));
+	/* "docker image inspect" lists Docker Hub images in their short form: "user/image", and "image" for "library/image" */
+	return(repository.replace(/^docker\.io\//, '').replace(/^library\//, ''));
 }
 
 /**
@@ -34,7 +38,7 @@ function imageRepository(imageURI: string) {
  * of `docker image inspect`, which lists one entry per repository the image
  * is known in. It is the entry of the repository in the image's own URI.
  */
-export function pickRepoDigest(repoDigests: string[], imageURI: string) {
+function pickRepoDigest(repoDigests: string[], imageURI: string) {
 	const repository = imageRepository(imageURI);
 	const found = repoDigests.find(function(entry) {
 		return(entry.split('@')[0] === repository);
@@ -46,6 +50,10 @@ export function pickRepoDigest(repoDigests: string[], imageURI: string) {
 
 	return(found);
 }
+
+export const _Testing = {
+	pickRepoDigest
+};
 
 async function createBuild(inputs: LocalBuildInputs) {
 	const toClean = [];

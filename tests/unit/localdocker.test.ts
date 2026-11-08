@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type * as localdocker from '../../src/packages/localdocker';
 import { requireSource } from './harness/load-sources';
 
-const { pickRepoDigest } = requireSource<typeof localdocker>('src/packages/localdocker.ts');
+const { pickRepoDigest } = requireSource<typeof localdocker>('src/packages/localdocker.ts')._Testing;
 
 const SHA_A = 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const SHA_B = 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
@@ -27,6 +27,18 @@ describe('pickRepoDigest', function() {
 			[ `host:5000/other@${SHA_B}`, `host:5000/repo@${SHA_A}` ],
 			'host:5000/repo:tag',
 			`host:5000/repo@${SHA_A}`
+		],
+		[
+			'the short form docker lists for a docker.io user repository',
+			[ `other/cache@${SHA_B}`, `user/img@${SHA_A}` ],
+			'docker.io/user/img:tag',
+			`user/img@${SHA_A}`
+		],
+		[
+			'the short form docker lists for a docker.io library repository',
+			[ `other/cache@${SHA_B}`, `img@${SHA_A}` ],
+			'docker.io/library/img:tag',
+			`img@${SHA_A}`
 		],
 		[
 			'the first of two entries of the same repository',

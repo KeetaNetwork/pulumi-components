@@ -90,3 +90,50 @@ describe('remote build secret file', function() {
 		expect(createSecretFileCommand(await buildRemote('remote-without-secrets', undefined))).toBeUndefined();
 	});
 });
+
+/** The environment entries of the first container of the Cloud Run worker pool */
+function workerPoolEnvironment(tree: TreeSnapshot): unknown[] {
+	const pool = tree.resources.find(function(resource) {
+		return(resource.type === 'gcp:cloudrunv2/workerPool:WorkerPool');
+	});
+	const template = expectRecord(expectRecord(pool?.inputs, 'the worker pool inputs').template, 'the worker pool template');
+	const container = expectRecord(expectArray(template.containers, 'the worker pool containers')[0], 'the worker container');
+
+	return(expectArray(container.envs, 'the worker container environment'));
+}
+
+/*
+ * A Cloud Run worker pool reads Secret Manager references, a container VM
+ * does not. An existing secret therefore works for one kind of worker and
+ * not for the other.
+ */
+describe('CloudRunService worker with an existing secret', function() {
+	const environment = { EXISTING: { name: 'existing-secret', version: '3' } };
+
+	it('builds a Cloud Run worker pool whose environment references the secret', async function() {
+		const tree = await buildService('worker-crwp-existing-secret', {
+			mig: { enabled: true, workerKind: 'crwp' },
+			environment
+		});
+
+		expect(workerPoolEnvironment(tree)).toContainEqual({
+			name: 'EXISTING',
+			valueSource: { secretKeyRef: { secret: 'existing-secret', version: '3' }}
+		});
+	});
+
+	it('throws, naming the variable, for a managed instance group', async function() {
+		await expect(buildService('worker-mig-existing-secret', {
+			mig: { enabled: true, workerKind: 'mig' },
+			environment
+		})).rejects.toThrow('EXISTING');
+	});
+
+	it('builds a managed instance group when the secret is not in the environment', async function() {
+		const tree = await buildService('worker-mig-plain', { mig: { enabled: true, workerKind: 'mig' }, environment: { MODE: 'worker' }});
+
+		expect(tree.resources.some(function(resource) {
+			return(resource.type === 'Keeta:GCP:ContainerMIG');
+		})).toBe(true);
+	});
+});
