@@ -98,8 +98,8 @@ describe('fingerprintBuildContext', function() {
 		return(fingerprintBuildContext(loadBuildContext(directory)));
 	}
 
-	it('is a sha1 hex digest', function() {
-		expect(fingerprintOf(temp.make(files))).toMatch(/^[0-9a-f]{40}$/);
+	it('is a sha256 hex digest', function() {
+		expect(fingerprintOf(temp.make(files))).toMatch(/^[0-9a-f]{64}$/);
 	});
 
 	it('is the same for two copies of a directory, whatever order they were written in', function() {

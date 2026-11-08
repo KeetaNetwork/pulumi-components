@@ -141,13 +141,13 @@ export function loadBuildContext(directory: string, options: BuildContextOptions
 }
 
 /**
- * A SHA-1 hex digest of the paths and contents (or link targets) of the
+ * A SHA-256 hex digest of the paths and contents (or link targets) of the
  * files of the build context. Two directories with the same context have
  * the same fingerprint, wherever they are and whatever order their files
  * were created in.
  */
 export function fingerprintBuildContext(context: BuildContext): string {
-	const fingerprint = crypto.createHash('sha1');
+	const fingerprint = crypto.createHash('sha256');
 
 	for (const file of context.files) {
 		const fullPath = path.join(context.root, file);
