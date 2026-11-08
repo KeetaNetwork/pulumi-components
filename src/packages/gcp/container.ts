@@ -4,6 +4,7 @@ import * as components from '../../';
 import type { GCPCommonOptions } from './common';
 import { generateName } from '../../utils';
 import { CONTAINER_DEFAULTS } from './defaults';
+import type { ServiceIdentityRef } from './identity';
 
 /**
  * Common options for GCP
@@ -33,6 +34,14 @@ interface ContainerGenericOptions<SupportSecretRefEnvs extends boolean> {
 	 * GCP Options
 	 */
 	common: ContainerCommonOptions;
+
+	/**
+	 * The identity of the app that this is part of. For each project role
+	 * (logging and metrics) that the identity grants to the service account,
+	 * this does not: its own grant stays as a retained tombstone, so the
+	 * binding that exists is never revoked. Any other role is granted here.
+	 */
+	identity?: ServiceIdentityRef;
 
 	/**
 	 * Description to provide to the VMs and to the Managed Instance Group (MIG)
@@ -288,44 +297,65 @@ function handleGenericOptions(name: string, options: ContainerGenericOptions<tru
 	}
 
 	/**
-	 * Grant project access to write logs
+	 * Grant project access to write logs/metrics, unless the identity of the
+	 * app grants that role (a role that it does not grant is granted here, as
+	 * in 1.0.95)
 	 */
+	const logRole = 'roles/logging.logWriter';
+	const metricRole = 'roles/monitoring.metricWriter';
+	const identity = options.identity;
+	let identityGrants: (role: string) => boolean = function() {
+		return(false);
+	};
+	if (identity) {
+		policyChangeToDependOn.push(...identity.grants);
+		identityGrants = function(role) {
+			return(identity.grantedRoles.includes(role));
+		};
+	}
+
 	if (options.common.gcp.changeProjectIAMPolicy) {
 		/**
 		 * If a callback was specified, use it to grant permissions to logs/metrics
 		 */
-		const policyResourceLogging = options.common.gcp.changeProjectIAMPolicy('roles/logging.logWriter', [pulumi.interpolate`serviceAccount:${serviceAccountEmail}`]);
-		const policyResourceMetric = options.common.gcp.changeProjectIAMPolicy('roles/monitoring.metricWriter', [pulumi.interpolate`serviceAccount:${serviceAccountEmail}`]);
+		for (const role of [ logRole, metricRole ]) {
+			if (identityGrants(role)) {
+				continue;
+			}
 
-		if (policyResourceLogging) {
-			policyChangeToDependOn.push(policyResourceLogging);
-		}
-
-		if (policyResourceMetric) {
-			policyChangeToDependOn.push(policyResourceMetric);
+			const policyResource = options.common.gcp.changeProjectIAMPolicy(role, [pulumi.interpolate`serviceAccount:${serviceAccountEmail}`]);
+			if (policyResource) {
+				policyChangeToDependOn.push(policyResource);
+			}
 		}
 	} else {
-		/**
-		 * Grant project access to write logs/metrics
+		/*
+		 * The grants of a component of an app were made here in 1.0.95. When
+		 * the identity grants the same role they stay, retained, at their
+		 * URN (a state without them would revoke the role, and the identity
+		 * owns it now). A role that the identity does not grant is still
+		 * granted here, and revoked with the component.
 		 */
-		const policyResourceLogging = new gcp.projects.IAMMember(`${name}-iam-logging`, {
-			project: options.common.gcp.project,
-			member: pulumi.interpolate`serviceAccount:${serviceAccountEmail}`,
-			role: 'roles/logging.logWriter'
-		}, {
-			parent: parent
-		});
+		const grants = [
+			{ suffix: 'iam-logging', role: logRole },
+			{ suffix: 'iam-metric', role: metricRole }
+		];
 
-		const policyResourceMetric = new gcp.projects.IAMMember(`${name}-iam-metric`, {
-			project: options.common.gcp.project,
-			member: pulumi.interpolate`serviceAccount:${serviceAccountEmail}`,
-			role: 'roles/monitoring.metricWriter'
-		}, {
-			parent: parent
-		});
+		for (const { suffix, role } of grants) {
+			let retainOnDelete: boolean | undefined;
+			if (identityGrants(role)) {
+				retainOnDelete = true;
+			}
 
-		policyChangeToDependOn.push(policyResourceLogging);
-		policyChangeToDependOn.push(policyResourceMetric);
+			policyChangeToDependOn.push(new gcp.projects.IAMMember(`${name}-${suffix}`, {
+				project: options.common.gcp.project,
+				member: pulumi.interpolate`serviceAccount:${serviceAccountEmail}`,
+				role
+			}, {
+				parent: parent,
+				retainOnDelete
+			}));
+		}
 	}
 
 	return({
