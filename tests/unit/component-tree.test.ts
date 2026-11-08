@@ -1,6 +1,6 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { expectDefined, expectRecord } from '../helpers/narrow';
@@ -28,7 +28,7 @@ const baselinePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
  * empty until a phase drops a URN on purpose. An entry that is still
  * matched fails the test, so entries cannot go stale.
  */
-const PLANNED_EXCEPTIONS: { [caseName: string]: { [urn: string]: string } } = {};
+const PLANNED_EXCEPTIONS: { [caseName: string]: { [urn: string]: string }} = {};
 
 const caseNames = TREE_CASES.map(function(treeCase) {
 	return(treeCase.name);
