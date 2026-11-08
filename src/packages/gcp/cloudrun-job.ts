@@ -104,11 +104,11 @@ export interface CloudRunJobExecutionArgs {
  * Re-executes when the trigger value changes.
  */
 export class CloudRunJobExecution extends pulumi.dynamic.Resource implements PulumiExecutionOutput {
-	public readonly executionName!: pulumi.Output<string>;
-	public readonly status!: pulumi.Output<ExecutionConditionState>;
-	public readonly createTime!: pulumi.Output<string | null>;
-	public readonly completionTime!: pulumi.Output<string | null>;
-	public readonly logUri!: pulumi.Output<string | null>;
+	declare public readonly executionName: pulumi.Output<string>;
+	declare public readonly status: pulumi.Output<ExecutionConditionState>;
+	declare public readonly createTime: pulumi.Output<string | null>;
+	declare public readonly completionTime: pulumi.Output<string | null>;
+	declare public readonly logUri: pulumi.Output<string | null>;
 
 	constructor(name: string, args: CloudRunJobExecutionArgs, opts?: pulumi.CustomResourceOptions) {
 		const passArgs: DeepInput<CloudRunJobExecutionInputs> = {

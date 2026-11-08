@@ -1,0 +1,16 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"rootDir": ".",
+		// vitest's type declarations import "vite/module-runner", which the
+		// "node" resolution of tsconfig.json cannot resolve. Nothing is emitted
+		// from this config, so it only changes how types are found.
+		"module": "esnext",
+		"moduleResolution": "bundler"
+	},
+	"include": [
+		"src/**/*.ts",
+		"tests/**/*.ts"
+	]
+}

@@ -4,6 +4,14 @@ on:
   push:
     branches:
       - main
+  # No branch filter: stacked PRs whose base is not "main" run too.
+  pull_request:
+
+# A newer push to a pull request supersedes that PR's older run. Every commit
+# on main has its own group, so a run that gates a publish is never cancelled.
+concurrency:
+  group: integration-tests-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -41,10 +49,56 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run Integration Tests
-        run: make test
+        run: make test-integration
         env:
           GOOGLE_PROJECT: ${{ vars.GOOGLE_PROJECT }}
-          TEST_DOMAIN: ${{ vars.TEST_DOMAIN }}
+          # Unique per run, inside the same DNS zone, so concurrent runs do not share a record or certificate
+          TEST_DOMAIN: r${{ github.run_id }}.${{ vars.TEST_DOMAIN }}
           TEST_DNS_ZONE_ID: ${{ vars.TEST_DNS_ZONE_ID }}
           PULUMI_EXPERIMENTAL: "true"
           PULUMI_SKIP_CHECKPOINTS: "true"
+
+  # Publishes only after the integration tests passed on the same commit,
+  # and never from a pull request.
+  publish:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Read Node Version
+        id: node_version
+        run: echo "NODE_VERSION=$(jq -crM .engines.node < package.json)" >> $GITHUB_OUTPUT
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ steps.node_version.outputs.NODE_VERSION }}
+          registry-url: 'https://npm.pkg.github.com'
+
+      - name: Install Packages
+        run: make node_modules
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lint
+        run: make do-lint
+
+      - name: Build
+        run: make dist
+
+      - name: Check version changes
+        uses: EndBug/version-check@eea9dab124be9214bd32356f32f7d8945173db13 # v1
+        id: check
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          diff-search: true
+
+      - name: Publish Package
+        if: steps.check.outputs.changed == 'true'
+        run: cd dist && npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

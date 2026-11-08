@@ -15,13 +15,16 @@ help:
 	@echo "Usage: make [target]"
 	@echo ""
 	@echo "Targets:"
-	@echo "  all           - Builds the project"
-	@echo "  dist          - Builds the distribution directory"
-	@echo "  do-lint       - Runs eslint on the project source"
-	@echo "  test          - Runs the test suite"
-	@echo "  clean         - Removes build artifacts"
-	@echo "  distclean     - Removes all build artifacts and dependencies"
-	@echo "  do-npm-pack   - Creates a distributable package for this project"
+	@echo "  all              - Builds the project"
+	@echo "  dist             - Builds the distribution directory"
+	@echo "  do-lint          - Runs eslint on the project source and tests"
+	@echo "  typecheck        - Type-checks the source and the tests without emitting"
+	@echo "  test             - Runs the unit and integration tests"
+	@echo "  test-unit        - Runs the unit tests (no cloud access)"
+	@echo "  test-integration - Runs the integration tests (deploys to GCP)"
+	@echo "  clean            - Removes build artifacts"
+	@echo "  distclean        - Removes all build artifacts and dependencies"
+	@echo "  do-npm-pack      - Creates a distributable package for this project"
 
 # This target creates the "node_modules" directory.
 node_modules/.done: package.json package-lock.json Makefile
@@ -47,13 +50,24 @@ dist/.done: $(shell find src -type f) node_modules Makefile tsconfig.json packag
 dist: dist/.done
 	@touch dist
 
+# Runs the unit tests: no network, no docker, no GCP.
+test-unit: node_modules
+	npm run vitest -- run tests/unit
+
+# Runs the integration tests: they deploy real stacks to GCP.
+test-integration: node_modules
+	npm run vitest -- run tests/integration
+
 # This is a synthetic target that runs this test suite.
-test: node_modules
-	npm run vitest -- run
+test: test-unit test-integration
+
+# Type-checks "src" and "tests" together (nothing is emitted)
+typecheck: node_modules
+	npm run tsc -- --noEmit -p tsconfig.test.json
 
 # Run linting
 do-lint: node_modules
-	npm run eslint -- -c .eslint.config.mjs src
+	npm run eslint -- -c .eslint.config.mjs src tests
 
 # This is a synthetic target that creates a distributable
 # package for this project.
@@ -77,4 +91,4 @@ clean:
 distclean: clean
 	rm -rf node_modules
 
-.PHONY: all help test clean distclean do-lint do-npm-pack
+.PHONY: all help test test-unit test-integration typecheck clean distclean do-lint do-npm-pack
