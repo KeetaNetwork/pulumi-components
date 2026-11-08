@@ -3,6 +3,7 @@ import * as gcp from '@pulumi/gcp';
 import * as random from '@pulumi/random';
 import type { GCPRegion, PerGCPRegion } from './constants';
 import { POSTGRES_DEFAULTS } from './defaults';
+import { movedFrom } from './aliases';
 
 type VPCNetworkLike = Pick<gcp.compute.Network, 'id' | 'name'>;
 
@@ -296,7 +297,10 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 				network: this.#vpcNetwork.id,
 				service: 'servicenetworking.googleapis.com',
 				reservedPeeringRanges: [ privateIpAddress.name ]
-			}, { parent: privateIpAddress });
+			}, {
+				parent: this,
+				aliases: movedFrom(`${this.#prefix}-postgres-vpc-connection`, 'gcp:servicenetworking/connection:Connection', { kind: 'resource', urn: privateIpAddress.urn })
+			});
 
 			masterDependsOn.push(vpcConnection);
 		}
@@ -317,8 +321,11 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 			/**
 			 * Create the replica instance, with the master instance as the parent
 			 */
-			this.createPostgres(`${this.#prefix}-${region}-replica`, region, masterDatabase, {
-				parent: masterDatabase
+			const replicaName = `${this.#prefix}-${region}-replica`;
+			this.createPostgres(replicaName, region, masterDatabase, {
+				parent: this,
+				aliases: movedFrom(replicaName, 'gcp:sql/databaseInstance:DatabaseInstance', { kind: 'resource', urn: masterDatabase.urn }),
+				dependsOn: [ masterDatabase ]
 			});
 		}
 
@@ -336,7 +343,8 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 			instance: masterDatabase.name,
 			deletionPolicy: deletionPolicy
 		}, {
-			parent: masterDatabase,
+			parent: this,
+			aliases: movedFrom(`${this.#prefix}-db`, 'gcp:sql/database:Database', { kind: 'resource', urn: masterDatabase.urn }),
 			protect: args.deletionProtection,
 			deletedWith: masterDatabase
 		});
@@ -356,7 +364,10 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 			password: password,
 			deletionPolicy: deletionPolicy
 		}, {
-			parent: masterDatabase,
+			parent: this,
+			aliases: movedFrom(`${this.#prefix}-db-user`, 'gcp:sql/user:User', { kind: 'resource', urn: masterDatabase.urn }),
+			/* It used to inherit this from the instance it was a child of */
+			protect: args.deletionProtection,
 			deletedWith: masterDatabase
 		});
 		this.username = user.name;

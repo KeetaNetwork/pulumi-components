@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto';
 
 import { promisifyExec } from '../utils';
 import type { DeepInput } from '../types';
+import type { ClientAuthInputs } from './gcp/client-auth';
 
 interface LocalBuildInputs {
 	buildDirectory: string;
@@ -14,6 +15,9 @@ interface LocalBuildInputs {
 	imageURI: string;
 	cleanBuildDirectory?: boolean;
 	tags?: string[];
+
+	/** Who pushes the image (never part of a diff) */
+	auth?: ClientAuthInputs;
 }
 
 /**
@@ -136,24 +140,33 @@ async function createBuild(inputs: LocalBuildInputs) {
 		await promisifyExec('docker', ['build', ...buildArgs, '.'], env, inputs.buildDirectory);
 
 		/*
+		 * The push goes through the credential helper of gcloud, which
+		 * impersonates the account of the provider when there is one
+		 */
+		let pushEnv: NodeJS.ProcessEnv | undefined;
+		if (inputs.auth?.impersonateServiceAccount !== undefined) {
+			pushEnv = { ...process.env, CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT: inputs.auth.impersonateServiceAccount };
+		}
+
+		/*
 		 * Authenticate Docker to the registry before pushing
 		 */
 		const registryHost = inputs.imageURI.split('/')[0];
 		if (registryHost) {
-			await promisifyExec('gcloud', ['auth', 'configure-docker', registryHost, '--quiet']);
+			await promisifyExec('gcloud', ['auth', 'configure-docker', registryHost, '--quiet'], pushEnv);
 		}
 
 		/*
 		 * Push the image
 		 */
-		await promisifyExec('docker', [ 'image', 'push', inputs.imageURI ]);
+		await promisifyExec('docker', [ 'image', 'push', inputs.imageURI ], pushEnv);
 
 		/**
 		 * Add the additional tags and push them
 		 */
 		for (const taggedImage of inputs.tags ?? []) {
 			await promisifyExec('docker', [ 'tag', inputs.imageURI, taggedImage ]);
-			await promisifyExec('docker', [ 'image', 'push', taggedImage ]);
+			await promisifyExec('docker', [ 'image', 'push', taggedImage ], pushEnv);
 		}
 
 		const imageInfoJSON = await promisifyExec('docker', [ 'image', 'inspect', inputs.imageURI ]);

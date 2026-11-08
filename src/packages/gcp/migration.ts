@@ -8,6 +8,8 @@ import { EnvManager } from './cloudrun';
 import type { EnvironmentVariables } from './cloudrun';
 import { buildDatabaseEnvVars } from './database-env';
 import { MIGRATION_DEFAULTS } from './defaults';
+import { movedFrom } from './aliases';
+import { callerOf } from './client-auth';
 import { generateName } from '../../utils';
 
 /**
@@ -247,9 +249,11 @@ export class MigrationJob extends pulumi.ComponentResource {
 			jobName: this.job.name,
 			projectId: args.gcp.project,
 			region: args.region,
-			trigger: pulumi.output(trigger).apply(function(t) { return(t); })
+			trigger: pulumi.output(trigger).apply(function(t) { return(t); }),
+			provider: callerOf(this, args.gcp.project)
 		}, {
-			parent: this.job,
+			parent: this,
+			aliases: movedFrom(`${name}-exec`, 'pulumi-nodejs:dynamic:Resource', { kind: 'resource', urn: this.job.urn }),
 			dependsOn: executionDeps
 		});
 

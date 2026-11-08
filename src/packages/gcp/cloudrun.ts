@@ -3,6 +3,7 @@ import * as gcp from '@pulumi/gcp';
 import { GCP_COMPONENT_PREFIX } from './constants';
 import type { GCPRegion } from './constants';
 import { normalizeName, inputApply } from '../../utils';
+import { movedFrom } from './aliases';
 
 export interface EnvironmentGCPSecretData {
 	version: pulumi.Input<string>;
@@ -232,14 +233,20 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 			secretData: pulumi.secret(value),
 			deletionPolicy: 'DISABLE'
 		}, {
-			parent: secret
+			parent: this,
+			aliases: movedFrom(`${secretName}-version`, 'gcp:secretmanager/secretVersion:SecretVersion', { kind: 'resource', urn: secret.urn }),
+			deletedWith: secret
 		});
 
 		const binding = new gcp.secretmanager.SecretIamMember(`${secretName}-iam-binding`, {
 			secretId: secret.secretId,
 			member: this.serviceAccount,
 			role: 'roles/secretmanager.secretAccessor'
-		}, { parent: secret });
+		}, {
+			parent: this,
+			aliases: movedFrom(`${secretName}-iam-binding`, 'gcp:secretmanager/secretIamMember:SecretIamMember', { kind: 'resource', urn: secret.urn }),
+			deletedWith: secret
+		});
 
 		return({
 			name: name,

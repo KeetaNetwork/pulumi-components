@@ -73,29 +73,42 @@ describe('pickRepoDigest', function() {
  * secrets are only read by the build. Neither says the image is different.
  */
 describe('localBuildHasChanges', function() {
-	const build = {
+	interface Build {
+		imageURI: string;
+		buildDirectory: string;
+		buildArgs: string[];
+		imageCache: string;
+		tags: string[];
+		secretContents: string;
+		cleanBuildDirectory: boolean;
+		auth: { project: string; impersonateServiceAccount?: string };
+	}
+
+	const build: Build = {
 		imageURI: 'registry.example/project/repo:tag',
 		buildDirectory: '/tmp/docker-build-aaaaaa',
 		buildArgs: [ '--platform', 'linux/amd64' ],
 		imageCache: 'registry.example/project/repo:cache',
 		tags: [ 'registry.example/project/repo:latest' ],
 		secretContents: 'TOKEN=one',
-		cleanBuildDirectory: false
+		cleanBuildDirectory: false,
+		auth: { project: 'project' }
 	};
 
-	const unchanged: [ string, Partial<typeof build> ][] = [
+	const unchanged: [ string, Partial<Build> ][] = [
 		[ 'nothing differs', {} ],
 		[ 'only the temporary build directory differs', { buildDirectory: '/tmp/docker-build-bbbbbb' } ],
 		[ 'only the secret contents differ', { secretContents: 'TOKEN=two' } ],
 		[ 'only cleanBuildDirectory differs', { cleanBuildDirectory: true } ],
-		[ 'all three of those differ', { buildDirectory: '/tmp/docker-build-bbbbbb', secretContents: 'TOKEN=two', cleanBuildDirectory: true } ]
+		[ 'all three of those differ', { buildDirectory: '/tmp/docker-build-bbbbbb', secretContents: 'TOKEN=two', cleanBuildDirectory: true } ],
+		[ 'only the auth input differs', { auth: { project: 'other', impersonateServiceAccount: 'deployer@project.iam.gserviceaccount.com' }} ]
 	];
 
 	it.each(unchanged)('is not a change when %s', function(_description, overrides) {
 		expect(localBuildHasChanges(build, { ...build, ...overrides })).toBe(false);
 	});
 
-	const changed: [ string, Partial<typeof build> ][] = [
+	const changed: [ string, Partial<Build> ][] = [
 		[ 'imageURI', { imageURI: 'registry.example/project/repo:other' } ],
 		[ 'buildArgs', { buildArgs: [ '--platform', 'linux/arm64' ] } ],
 		[ 'imageCache', { imageCache: 'registry.example/project/repo:other-cache' } ],

@@ -10,7 +10,9 @@ const { jobExecutionHasChanges } = requireSource<typeof cloudrunJob>('src/packag
  * are part of the job's identity: when they change, so does `jobName`.
  */
 describe('jobExecutionHasChanges', function() {
-	const execution = { jobName: 'job-1', projectId: 'project', region: 'us-central1', trigger: 'image@sha256:aaa' };
+	const execution: { jobName: string; projectId: string; region: string; trigger: string; auth: { project: string; impersonateServiceAccount?: string }} = {
+		jobName: 'job-1', projectId: 'project', region: 'us-central1', trigger: 'image@sha256:aaa', auth: { project: 'project' }
+	};
 
 	const changed: [ string, Partial<typeof execution> ][] = [
 		[ 'the trigger', { trigger: 'image@sha256:bbb' } ],
@@ -26,7 +28,8 @@ describe('jobExecutionHasChanges', function() {
 		[ 'nothing differs', {} ],
 		[ 'only the project differs', { projectId: 'other' } ],
 		[ 'only the region differs', { region: 'europe-west1' } ],
-		[ 'the project and the region differ', { projectId: 'other', region: 'europe-west1' } ]
+		[ 'the project and the region differ', { projectId: 'other', region: 'europe-west1' } ],
+		[ 'only the auth input differs', { auth: { project: 'other', impersonateServiceAccount: 'deployer@project.iam.gserviceaccount.com' }} ]
 	];
 
 	it.each(unchanged)('is not a change when %s', function(_description, overrides) {

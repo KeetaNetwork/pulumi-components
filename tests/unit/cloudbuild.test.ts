@@ -22,6 +22,12 @@ describe('cloudBuildHasChanges', function() {
 		expect(cloudBuildHasChanges(olds, news)).toBe(false);
 	});
 
+	it('ignores the auth input', function() {
+		const news = { build, projectId: 'project', auth: { project: 'other', impersonateServiceAccount: 'deployer@project.iam.gserviceaccount.com' }};
+
+		expect(cloudBuildHasChanges({ build, projectId: 'project', auth: { project: 'project' }}, news)).toBe(false);
+	});
+
 	it('detects a change to the build definition', function() {
 		const news = structuredClone(build);
 		news.images = [ 'us-docker.pkg.dev/project/repo/image:hash_def' ];

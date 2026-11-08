@@ -38,6 +38,8 @@ export interface TreeResource {
 	/** The resource's own aliases as URNs (inherited aliases are not in here) */
 	aliases: string[];
 	deletedWith?: string;
+	/** URNs the resource waits for: its `dependsOn` and the resources its inputs come from (not part of a snapshot) */
+	dependsOn?: string[];
 	protect?: boolean;
 	retainOnDelete?: boolean;
 	/** Normalized inputs of a custom resource (components only echo their arguments, so none are kept) */
@@ -325,6 +327,11 @@ async function recordRegistration(request: resourceProto.RegisterResourceRequest
 
 	if (request.getDeletedwith() !== '') {
 		resource.deletedWith = request.getDeletedwith();
+	}
+
+	const dependencies = request.getDependenciesList();
+	if (dependencies.length > 0) {
+		resource.dependsOn = [ ...dependencies ].sort(compareStrings);
 	}
 
 	if (request.hasProtect()) {
@@ -644,6 +651,11 @@ export function describeTree(tree: TreeSnapshot): unknown {
 	const roots: [string, string][] = [ [ prefix, '' ] ];
 
 	return(tree.resources.map(function(resource) {
-		return(normalizeValue(resource, roots));
+		/* The dependencies are checked on their own; they would put a second copy of every URN into each snapshot */
+		const kept = Object.entries(resource).filter(function([ key ]) {
+			return(key !== 'dependsOn');
+		});
+
+		return(normalizeValue(Object.fromEntries(kept), roots));
 	}));
 }

@@ -1,5 +1,4 @@
 import * as pulumi from '@pulumi/pulumi';
-import type * as gcp from '@pulumi/gcp';
 import * as googleAuth from 'google-auth-library';
 import type * as cloudbuildTypeImport from '@google-cloud/cloudbuild';
 import type * as secretManagerTypeImport from '@google-cloud/secret-manager';
@@ -9,6 +8,8 @@ import type * as fsTypeImport from 'fs';
 import type * as utilTypeImport from 'util';
 
 import type { DeepInput, DeepOutput } from '../../types';
+import { clientAuthInputs, googleAuthFrom } from './client-auth';
+import type { ClientAuthInputs, ClientAuthProvider } from './client-auth';
 
 export type IBuild = cloudbuildTypeImport.protos.google.devtools.cloudbuild.v1.IBuild;
 export type IBuildOperationMetadata = cloudbuildTypeImport.protos.google.devtools.cloudbuild.v1.IBuildOperationMetadata;
@@ -35,6 +36,9 @@ interface CloudBuildInputs {
 	temporarySecret?: TemporarySecretInput;
 	sourceUpload?: SourceUploadInput;
 	projectId: string | undefined;
+
+	/** Who runs the build (never part of a diff) */
+	auth?: ClientAuthInputs;
 }
 
 export enum HashType {
@@ -51,13 +55,16 @@ type PulumiBuildOutput = DeepOutput<BuildOutput>;
  * exists -- object names are derived from the image version so an
  * existing object already holds the same source
  */
-async function uploadSource(upload: SourceUploadInput) {
+async function uploadSource(upload: SourceUploadInput, authInputs?: ClientAuthInputs) {
 	// eslint-disable-next-line @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-require-imports
 	const fs = require('fs') as typeof fsTypeImport;
 
-	const auth = new googleAuth.GoogleAuth({
-		scopes: [ 'https://www.googleapis.com/auth/devstorage.read_write' ]
-	});
+	const scopes = [ 'https://www.googleapis.com/auth/devstorage.read_write' ];
+	let auth = new googleAuth.GoogleAuth({ scopes });
+	if (authInputs !== undefined) {
+		auth = googleAuthFrom(authInputs, scopes);
+	}
+
 	const client = await auth.getClient();
 
 	try {
@@ -87,11 +94,11 @@ async function uploadSource(upload: SourceUploadInput) {
 
 /**
  * Determine if a build needs to be re-run.  Only the build definition
- * and project are compared, so the secret value and the local path of
+ * and project are compared, so the secret value, who runs the build and the local path of
  * the source tarball (which vary between users and machines) do not
  * cause a rebuild.
  */
-function cloudBuildHasChanges(olds: Partial<Pick<CloudBuildInputs, 'build' | 'projectId'>>, news: Pick<CloudBuildInputs, 'build' | 'projectId'>): boolean {
+function cloudBuildHasChanges(olds: Partial<Pick<CloudBuildInputs, 'build' | 'projectId' | 'auth'>>, news: Pick<CloudBuildInputs, 'build' | 'projectId' | 'auth'>): boolean {
 	// eslint-disable-next-line @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-require-imports
 	const { isDeepStrictEqual } = require('util') as typeof utilTypeImport;
 
@@ -110,7 +117,12 @@ async function createBuild(inputs: CloudBuildInputs) {
 
 	const projectId = inputs.projectId;
 
-	const gcpClientConfig = { projectId };
+	/* Without `auth` the clients find the credentials of the environment themselves, as they always did */
+	let gcpClientConfig: { projectId: string | undefined; auth?: googleAuth.GoogleAuth } = { projectId };
+	if (inputs.auth !== undefined) {
+		gcpClientConfig = { projectId, auth: googleAuthFrom(inputs.auth) };
+	}
+
 	const secretClient = new secretManager.SecretManagerServiceClient(gcpClientConfig);
 	const client = new cloudbuild.CloudBuildClient(gcpClientConfig);
 
@@ -121,7 +133,7 @@ async function createBuild(inputs: CloudBuildInputs) {
 
 	try {
 		if (inputs.sourceUpload !== undefined) {
-			await uploadSource(inputs.sourceUpload);
+			await uploadSource(inputs.sourceUpload, inputs.auth);
 		}
 
 		if (inputs.temporarySecret !== undefined) {
@@ -294,7 +306,7 @@ const cloudbuildProvider: pulumi.dynamic.ResourceProvider = {
 };
 
 interface CloudBuildInputsArg {
-	gcpProvider: Pick<gcp.Provider, 'project'>;
+	gcpProvider: ClientAuthProvider;
 	build: DeepInput<IBuild>;
 	temporarySecret?: DeepInput<TemporarySecretInput>;
 	sourceUpload?: DeepInput<SourceUploadInput>;
@@ -314,6 +326,7 @@ export class CloudBuild extends pulumi.dynamic.Resource implements PulumiBuildOu
 		const passArgs: DeepInput<CloudBuildInputs> = {
 			build: args.build,
 			projectId: args.gcpProvider.project,
+			auth: clientAuthInputs(args.gcpProvider),
 			temporarySecret: args.temporarySecret,
 			sourceUpload: args.sourceUpload
 		};

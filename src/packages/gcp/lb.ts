@@ -1,6 +1,7 @@
 import * as pulumi from '@pulumi/pulumi';
 import * as gcp from '@pulumi/gcp';
 import * as utils from '../../utils';
+import { movedFrom } from './aliases';
 
 import type { GCPCommonOptions, CertificateManagerCert, ComputeManagedSslCert } from './common';
 import type { ContainerMIG } from './container';
@@ -11,18 +12,34 @@ import type { ContainerMIG } from './container';
 export function createHttpRedirect(
 	name: string,
 	ips: { ip: pulumi.Input<string>; kind: string }[],
-	opts?: pulumi.CustomResourceOptions
+	opts: {
+		parent: pulumi.Resource;
+
+		/**
+		 * The URN of the resource that was their parent in 1.0.95, for
+		 * resources that moved to `parent`: each answers to its old URN
+		 */
+		oldParent?: pulumi.Input<pulumi.URN>;
+	}
 ) {
+	function optionsOf(resourceName: string, type: string): pulumi.CustomResourceOptions {
+		if (opts.oldParent === undefined) {
+			return({ parent: opts.parent });
+		}
+
+		return({ parent: opts.parent, aliases: movedFrom(resourceName, type, { kind: 'resource', urn: opts.oldParent }) });
+	}
+
 	const redirectMap = new gcp.compute.URLMap(`${name}-http-redirect`, {
 		defaultUrlRedirect: {
 			httpsRedirect: true,
 			stripQuery: false
 		}
-	}, opts);
+	}, optionsOf(`${name}-http-redirect`, 'gcp:compute/uRLMap:URLMap'));
 
 	const httpProxy = new gcp.compute.TargetHttpProxy(`${name}-http-proxy`, {
 		urlMap: redirectMap.id
-	}, opts);
+	}, optionsOf(`${name}-http-proxy`, 'gcp:compute/targetHttpProxy:TargetHttpProxy'));
 
 	for (const ipConfig of ips) {
 		const ruleName = `${name}-http-fr-${ipConfig.kind}`.replace(/-$/, '');
@@ -33,7 +50,7 @@ export function createHttpRedirect(
 			loadBalancingScheme: 'EXTERNAL_MANAGED',
 			ipProtocol: 'TCP'
 		}, {
-			...opts,
+			...optionsOf(ruleName, 'gcp:compute/globalForwardingRule:GlobalForwardingRule'),
 			deleteBeforeReplace: true
 		});
 	}
