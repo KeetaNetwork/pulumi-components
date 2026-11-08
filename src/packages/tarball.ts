@@ -17,6 +17,15 @@ import { fingerprintBuildContext, loadBuildContext } from './build-context';
  * tarball of an older one.  If a cacheID is provided the tarball is kept for
  * reuse, otherwise it is for one use and should be cleaned up.
  */
+/** The environment for `tar`: the caller's, with a fixed locale so file names are read the same everywhere */
+function tarEnvironment(): NodeJS.ProcessEnv {
+	return({
+		...process.env,
+		LC_ALL: 'C',
+		LANG: 'C'
+	});
+}
+
 function createTarballFromDir(directory: string, cacheID?: string, excludePatterns: string[] = [], dockerfilePath?: string): { file: string, uniqueID: string, shouldClean: boolean } {
 	const context = loadBuildContext(directory, { excludePatterns, dockerfilePath });
 
@@ -69,13 +78,7 @@ function createTarballFromDir(directory: string, cacheID?: string, excludePatter
 			'-T', fileListPath,
 			'-zcf',
 			tarballTmpPath
-		], {
-			env: {
-				...process.env,
-				LC_ALL: 'C',
-				LANG: 'C'
-			}
-		});
+		], { env: tarEnvironment() });
 		if (createResults.status !== 0) {
 			throw(new Error(`tar failed: ${createResults.stderr.toString()}`));
 		}
@@ -86,7 +89,7 @@ function createTarballFromDir(directory: string, cacheID?: string, excludePatter
 	/**
 	 * Verify that the created tarball is valid
 	 */
-	const checkResults = child_process.spawnSync('tar', [ '-ztf', tarballTmpPath ]);
+	const checkResults = child_process.spawnSync('tar', [ '-ztf', tarballTmpPath ], { env: tarEnvironment() });
 	if (checkResults.status !== 0) {
 		throw(new Error(`tar failed: ${checkResults.stderr.toString()}`));
 	}

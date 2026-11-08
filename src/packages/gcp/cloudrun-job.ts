@@ -81,8 +81,8 @@ const cloudRunJobExecutionProvider: pulumi.dynamic.ResourceProvider = {
 		return({ inputs: { ...newInput }});
 	},
 
-	async diff(_ignore_id: string, olds: CloudRunJobExecutionInputs, news: CloudRunJobExecutionInputs) {
-		return({ changes: jobExecutionHasChanges(olds, news) });
+	diff(_ignore_id: string, olds: CloudRunJobExecutionInputs, news: CloudRunJobExecutionInputs) {
+		return(Promise.resolve({ changes: jobExecutionHasChanges(olds, news) }));
 	},
 
 	async create(inputs: CloudRunJobExecutionInputs) {

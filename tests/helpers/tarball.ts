@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 
 function runTar(args: string[]) {
-	const result = spawnSync('tar', args, { encoding: 'utf8' });
+	const result = spawnSync('tar', args, { encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' }});
 	if (result.status !== 0) {
 		throw(new Error(`tar ${args.join(' ')} failed: ${result.stderr}`));
 	}
