@@ -3,8 +3,16 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { deployStack, destroyStack, fetchWithRetry, previewStack, type StackOutputs } from '../helpers/pulumi';
+import { expectBoolean, expectDefined, expectRecord, expectString, expectStringArray } from '../helpers/narrow';
+import { expectHealthyDatabaseService, expectMigrationsApplied } from '../helpers/service-checks';
 
-const domain = process.env.TEST_DOMAIN || 'fullstack.pulumi-components-test-zone.test.keeta.com';
+/* An unset or empty TEST_DOMAIN selects the default */
+const configuredDomain = process.env.TEST_DOMAIN;
+const baseDomain = (configuredDomain === undefined || configuredDomain === '') ? 'fullstack.pulumi-components-test-zone.test.keeta.com' : configuredDomain;
+
+/* A prefix makes the domain unique to one run, inside the same DNS zone */
+const domainPrefix = process.env.TEST_DOMAIN_PREFIX;
+const domain = (domainPrefix === undefined || domainPrefix === '') ? baseDomain : `${domainPrefix}.${baseDomain}`;
 const dnsZoneId = process.env.TEST_DNS_ZONE_ID;
 
 describe('FullStackApp', function() {
@@ -29,48 +37,21 @@ describe('FullStackApp', function() {
 	it('serves API health check via Cloud Run', async function() {
 		expect(outputs).toBeDefined();
 
-		const serviceUrl = outputs!.serviceUrl as string;
-		const response = await fetch(`${serviceUrl}/api/health`);
-		const body = await response.text();
-		expect(response.ok, `HTTP ${response.status}: ${body}`).toBe(true);
-
-		const data = JSON.parse(body) as {
-			status: string;
-			database: string;
-			env: { [key: string]: string };
-		};
-		expect(data.status).toBe('ok');
-		expect(data.database).toBeDefined();
-		expect(data.env.user).toBe('set');
-		expect(data.env.password).toBe('set');
-		expect(data.env.database).toBe('set');
-		expect(data.env.host).toBe('set');
-		expect(data.env.port).toBe('set');
+		const serviceUrl = expectString(expectDefined(outputs, 'stack outputs').serviceUrl, 'serviceUrl');
+		await expectHealthyDatabaseService(`${serviceUrl}/api/health`);
 	}, 60_000);
 
 	it('verifies migrations ran', async function() {
 		expect(outputs).toBeDefined();
 
-		const serviceUrl = outputs!.serviceUrl as string;
-		const response = await fetch(`${serviceUrl}/api/migrations`);
-		const body = await response.text();
-		expect(response.ok, `Migrations HTTP ${response.status}: ${body}`).toBe(true);
-
-		const data = JSON.parse(body) as {
-			status: string;
-			count: number;
-			rows: Array<{ id: number; name: string; created_at: string }>;
-		};
-		expect(data.status).toBe('ok');
-		expect(data.count).toBeGreaterThan(0);
-		expect(data.rows.length).toBeGreaterThan(0);
-		expect(data.rows[0].name).toMatch(/^migration-/);
+		const serviceUrl = expectString(expectDefined(outputs, 'stack outputs').serviceUrl, 'serviceUrl');
+		await expectMigrationsApplied(`${serviceUrl}/api/migrations`);
 	}, 60_000);
 
 	it('redirects HTTP to HTTPS on load balancer IP', async function() {
 		expect(outputs).toBeDefined();
 
-		const ips = outputs!.ips as string[];
+		const ips = expectStringArray(expectDefined(outputs, 'stack outputs').ips, 'ips');
 		expect(ips.length).toBeGreaterThan(0);
 
 		const ip = ips[0];
@@ -78,7 +59,7 @@ describe('FullStackApp', function() {
 			`http://${ip}/`,
 			{ redirect: 'manual' },
 			// Wait for URL map to be ready
-			function(r) { return r.status >= 300 && r.status < 400; }
+			function(r) { return(r.status >= 300 && r.status < 400); }
 		);
 		expect(response.status).toBeGreaterThanOrEqual(300);
 		expect(response.status).toBeLessThan(400);
@@ -94,16 +75,16 @@ describe('FullStackApp', function() {
 	it('serves frontend content', async function() {
 		expect(outputs).toBeDefined();
 
-		const appOutputs = outputs!.app as {
-			frontendBucket: string;
-			frontend: { backendBucket: { enableCdn: boolean } };
-		};
-		expect(appOutputs.frontendBucket).toBeDefined();
+		const appOutputs = expectRecord(expectDefined(outputs, 'stack outputs').app, 'app output');
+		const frontendBucket = expectString(appOutputs.frontendBucket, 'app frontendBucket');
+		expect(frontendBucket).toBeDefined();
 
 		/* The frontend sets no cdn, so the backend bucket keeps CDN off */
-		expect(appOutputs.frontend.backendBucket.enableCdn).toBe(false);
+		const frontend = expectRecord(appOutputs.frontend, 'app frontend');
+		const backendBucket = expectRecord(frontend.backendBucket, 'app frontend backendBucket');
+		expect(expectBoolean(backendBucket.enableCdn, 'backendBucket enableCdn')).toBe(false);
 
-		const bucketUrl = `https://storage.googleapis.com/${appOutputs.frontendBucket}/index.html`;
+		const bucketUrl = `https://storage.googleapis.com/${frontendBucket}/index.html`;
 		const response = await fetch(bucketUrl);
 		expect(response.ok).toBe(true);
 

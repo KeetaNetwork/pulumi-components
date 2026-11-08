@@ -1,5 +1,5 @@
 import fs from 'fs';
-import { createRequire } from 'module';
+import { createRequire, registerHooks, type LoadHookSync, type ResolveHookSync } from 'module';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import ts from 'typescript';
@@ -14,10 +14,13 @@ import ts from 'typescript';
  */
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
-const sourceRequire = createRequire(path.join(repositoryRoot, 'package.json'));
+/* The caller names the type of the module it loads */
+const sourceRequire: <Exports>(id: string) => Exports = createRequire(path.join(repositoryRoot, 'package.json'));
 
 function readCompilerOptions() {
-	const config = ts.readConfigFile(path.join(repositoryRoot, 'tsconfig.json'), ts.sys.readFile);
+	const config = ts.readConfigFile(path.join(repositoryRoot, 'tsconfig.json'), function(file) {
+		return(ts.sys.readFile(file));
+	});
 	const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, repositoryRoot);
 
 	return({
@@ -28,22 +31,56 @@ function readCompilerOptions() {
 	});
 }
 
-function compileTypeScript(module: NodeModule, filename: string) {
+const compilerOptions = readCompilerOptions();
+const sourceDirectory = path.join(repositoryRoot, 'src') + path.sep;
+
+function isSourceFile(filename: string) {
+	return(filename.startsWith(sourceDirectory) && filename.endsWith('.ts'));
+}
+
+/** Resolves an extensionless import of a source file to the TypeScript file */
+const resolveSource: ResolveHookSync = function(specifier, context, nextResolve) {
+	try {
+		return(nextResolve(specifier, context));
+	} catch (error) {
+		for (const suffix of [ '.ts', '/index.ts' ]) {
+			try {
+				return(nextResolve(specifier + suffix, context));
+			} catch {
+				/* Try the next suffix, then report the original failure */
+			}
+		}
+
+		throw(error);
+	}
+};
+
+/** Hands the compiled JavaScript of a source file to Node's CommonJS loader */
+const loadSource: LoadHookSync = function(url, context, nextLoad) {
+	if (!url.startsWith('file:') || !isSourceFile(fileURLToPath(url))) {
+		return(nextLoad(url, context));
+	}
+
+	const filename = fileURLToPath(url);
 	const compiled = ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
-		compilerOptions: readCompilerOptions(),
+		compilerOptions,
 		fileName: filename
 	});
 
-	if (!('_compile' in module) || typeof module._compile !== 'function') {
-		throw(new Error('Node module loader has no _compile'));
-	}
-
-	Reflect.apply(module._compile, module, [ compiled.outputText, filename ]);
-}
+	return({
+		format: 'commonjs',
+		source: compiled.outputText,
+		shortCircuit: true
+	});
+};
 
 /** Loads a module of this repository (path relative to the repository root) with `require()` */
 export function requireSource<Exports>(relativePath: string): Exports {
-	sourceRequire.extensions['.ts'] ??= compileTypeScript;
+	const hooks = registerHooks({ resolve: resolveSource, load: loadSource });
 
-	return(sourceRequire(path.join(repositoryRoot, relativePath)));
+	try {
+		return(sourceRequire<Exports>(path.join(repositoryRoot, relativePath)));
+	} finally {
+		hooks.deregister();
+	}
 }
