@@ -5,6 +5,7 @@ import type * as localdocker from '../../src/packages/localdocker';
 import type * as cloudbuild from '../../src/packages/gcp/cloudbuild';
 import type * as cloudrunJob from '../../src/packages/gcp/cloudrun-job';
 import { expectRecord } from '../helpers/narrow';
+import { resolveOutput } from '../helpers/outputs';
 import { requireSource } from './harness/load-sources';
 
 const { LocalDockerImageBuilder } = requireSource<typeof localdocker>('src/packages/localdocker.ts');
@@ -31,12 +32,6 @@ const engineOutputs: { [resourceName: string]: { [outputName: string]: unknown }
 		logUri: 'https://logs.example/job'
 	}
 };
-
-function resolveOutput(output: pulumi.Output<unknown>) {
-	return(new Promise<unknown>(function(resolve) {
-		output.apply(resolve);
-	}));
-}
 
 /*
  * Pulumi assigns each declared output of a dynamic resource onto the

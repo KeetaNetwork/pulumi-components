@@ -22,6 +22,7 @@ help:
 	@echo "  test             - Runs the unit and integration tests"
 	@echo "  test-unit        - Runs the unit tests (no cloud access)"
 	@echo "  test-integration - Runs the integration tests (deploys to GCP)"
+	@echo "  urn-baseline     - Adds cases to a released version's URN baseline (VERSION=, CASES=)"
 	@echo "  clean            - Removes build artifacts"
 	@echo "  distclean        - Removes all build artifacts and dependencies"
 	@echo "  do-npm-pack      - Creates a distributable package for this project"
@@ -58,6 +59,17 @@ test-unit: node_modules
 test-integration: node_modules
 	npm run vitest -- run tests/integration
 
+# Adds cases to the URN baseline of a released version, e.g.
+#   make urn-baseline VERSION=1.0.95 CASES=external-load-balancer
+# It must run on a checkout of that release's "src" (for 1.0.95, commit
+# f06cb0c) with each new case already appended to
+# "tests/unit/harness/tree-cases.ts", because the URNs of a case have to
+# come from the released code. It only adds cases and fails on one that is
+# already in the file, so a recorded baseline is never rewritten.
+urn-baseline: node_modules
+	@test -n "$(VERSION)" -a -n "$(CASES)" || { echo "Usage: make urn-baseline VERSION=<release> CASES=<case>[,<case>...]"; exit 1; }
+	URN_BASELINE_VERSION="$(VERSION)" URN_BASELINE_CASES="$(CASES)" npm run vitest -- run tests/unit/harness/write-baseline.test.ts
+
 # This is a synthetic target that runs this test suite.
 test: test-unit test-integration
 
@@ -91,4 +103,4 @@ clean:
 distclean: clean
 	rm -rf node_modules
 
-.PHONY: all help test test-unit test-integration typecheck clean distclean do-lint do-npm-pack
+.PHONY: all help test test-unit test-integration urn-baseline typecheck clean distclean do-lint do-npm-pack
