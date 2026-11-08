@@ -1,11 +1,15 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import * as pulumi from '@pulumi/pulumi';
 
+import type * as localdocker from '../../src/packages/localdocker';
+import type * as cloudbuild from '../../src/packages/gcp/cloudbuild';
+import type * as cloudrunJob from '../../src/packages/gcp/cloudrun-job';
+import { expectRecord } from '../helpers/narrow';
 import { requireSource } from './harness/load-sources';
 
-const { LocalDockerImageBuilder } = requireSource<typeof import('../../src/packages/localdocker')>('src/packages/localdocker.ts');
-const { CloudBuild } = requireSource<typeof import('../../src/packages/gcp/cloudbuild')>('src/packages/gcp/cloudbuild.ts');
-const { CloudRunJobExecution } = requireSource<typeof import('../../src/packages/gcp/cloudrun-job')>('src/packages/gcp/cloudrun-job.ts');
+const { LocalDockerImageBuilder } = requireSource<typeof localdocker>('src/packages/localdocker.ts');
+const { CloudBuild } = requireSource<typeof cloudbuild>('src/packages/gcp/cloudbuild.ts');
+const { CloudRunJobExecution } = requireSource<typeof cloudrunJob>('src/packages/gcp/cloudrun-job.ts');
 
 /*
  * The values the engine would return for the outputs of each dynamic
@@ -43,13 +47,17 @@ describe('dynamic resource outputs', function() {
 	beforeAll(async function() {
 		await pulumi.runtime.setMocks({
 			newResource: function(args) {
+				const inputs: unknown = args.inputs;
+
 				return({
 					id: `${args.name}-id`,
-					state: { ...args.inputs, ...engineOutputs[args.name] }
+					state: { ...expectRecord(inputs, 'resource inputs'), ...engineOutputs[args.name] }
 				});
 			},
 			call: function(args) {
-				return(args.inputs);
+				const inputs: unknown = args.inputs;
+
+				return(expectRecord(inputs, 'call inputs'));
 			}
 		}, 'project', 'stack', false);
 	});

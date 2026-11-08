@@ -1,5 +1,6 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import { deployStack, destroyStack, type StackOutputs } from '../helpers/pulumi';
+import { expectArray, expectRecord, expectString } from '../helpers/narrow';
 
 describe('CloudRunService with Database', function() {
 	const stackName = `test-${Date.now()}`;
@@ -13,41 +14,35 @@ describe('CloudRunService with Database', function() {
 		expect(outputs.serviceUrl).toBeDefined();
 
 		// Make HTTP request to verify database connectivity
-		const serviceUrl = outputs.serviceUrl as string;
+		const serviceUrl = expectString(outputs.serviceUrl, 'serviceUrl');
 		const response = await fetch(serviceUrl);
 		const body = await response.text();
 		expect(response.ok, `HTTP ${response.status}: ${body}`).toBe(true);
 
 		// Verify database connection succeeded
-		const data = JSON.parse(body) as {
-			status: string;
-			database: string;
-			env: Record<string, string>;
-		};
+		const data = expectRecord(JSON.parse(body), 'health response');
 		expect(data.status).toBe('ok');
 		expect(data.database).toBeDefined();
 
 		// Verify env vars were injected ("set" means the env var was injected)
-		expect(data.env.user).toBe('set');
-		expect(data.env.password).toBe('set');
-		expect(data.env.database).toBe('set');
-		expect(data.env.host).toBe('set');
-		expect(data.env.port).toBe('set');
+		const env = expectRecord(data.env, 'health response env');
+		expect(env.user).toBe('set');
+		expect(env.password).toBe('set');
+		expect(env.database).toBe('set');
+		expect(env.host).toBe('set');
+		expect(env.port).toBe('set');
 
 		// Verify migrations ran by querying the test_migrations table
 		const migrationsResponse = await fetch(`${serviceUrl}/migrations`);
 		const migrationsBody = await migrationsResponse.text();
 		expect(migrationsResponse.ok, `Migrations HTTP ${migrationsResponse.status}: ${migrationsBody}`).toBe(true);
 
-		const migrationsData = JSON.parse(migrationsBody) as {
-			status: string;
-			count: number;
-			rows: Array<{ id: number; name: string; created_at: string }>;
-		};
+		const migrationsData = expectRecord(JSON.parse(migrationsBody), 'migrations response');
+		const rows = expectArray(migrationsData.rows, 'migrations rows');
 		expect(migrationsData.status).toBe('ok');
 		expect(migrationsData.count).toBeGreaterThan(0);
-		expect(migrationsData.rows.length).toBeGreaterThan(0);
-		expect(migrationsData.rows[0].name).toMatch(/^migration-/);
+		expect(rows.length).toBeGreaterThan(0);
+		expect(expectRecord(rows[0], 'first migrations row').name).toMatch(/^migration-/);
 	}, 1_800_000); // 30 min timeout for Cloud SQL + image build
 
 	afterAll(async function() {

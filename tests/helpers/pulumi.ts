@@ -114,22 +114,22 @@ export async function fetchWithRetry(
 			const response = await fetch(url, options);
 
 			if (!validate || validate(response)) {
-				return response;
+				return(response);
 			}
 
 			if (attempt === maxAttempts) {
-				return response;
+				return(response);
 			}
 		} catch (err) {
 			if (attempt === maxAttempts) {
-				throw err;
+				throw(err);
 			}
 		}
 
 		await new Promise(function(resolve) { setTimeout(resolve, delayMs); });
 	}
 
-	throw new Error('Unreachable');
+	throw(new Error('Unreachable'));
 }
 
 /**
