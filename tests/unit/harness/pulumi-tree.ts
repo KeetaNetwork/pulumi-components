@@ -194,6 +194,23 @@ function machineRoots(): [string, string][] {
 }
 
 /** Cuts a value that came over the wire down to what is worth keeping in a snapshot */
+/** Plain comparison of code units: the same order on every machine, unlike a locale's */
+function compareStrings(a: string, b: string) {
+	if (a < b) {
+		return(-1);
+	}
+
+	if (a > b) {
+		return(1);
+	}
+
+	return(0);
+}
+
+function compareUrns(a: TreeResource, b: TreeResource) {
+	return(compareStrings(a.urn, b.urn));
+}
+
 function normalizeValue(value: unknown, roots: [string, string][]): unknown {
 	if (typeof value === 'string') {
 		if (value === pulumi.runtime.unknownValue) {
@@ -416,10 +433,10 @@ async function settle(state: CaptureState, timeoutMs: number) {
 		});
 
 		if (state.resources.length === lastCount) {
-			return(quiet(lastCount, stableRounds + 1));
+			return(await quiet(lastCount, stableRounds + 1));
 		}
 
-		return(quiet(state.resources.length, 0));
+		return(await quiet(state.resources.length, 0));
 	};
 
 	let timer: NodeJS.Timeout | undefined;
@@ -434,23 +451,6 @@ async function settle(state: CaptureState, timeoutMs: number) {
 	} finally {
 		clearTimeout(timer);
 	}
-}
-
-/** Plain comparison of code units: the same order on every machine, unlike a locale's */
-function compareStrings(a: string, b: string) {
-	if (a < b) {
-		return(-1);
-	}
-
-	if (a > b) {
-		return(1);
-	}
-
-	return(0);
-}
-
-function compareUrns(a: TreeResource, b: TreeResource) {
-	return(compareStrings(a.urn, b.urn));
 }
 
 let capturing = false;
@@ -561,32 +561,31 @@ export async function matchLegacyUrns(tree: TreeSnapshot, legacyUrns: string[]):
 
 	/* The complete alias set of each resource, filled parent first */
 	const completeAliases = new Map<string, Promise<string[]>>();
-	const computeAliases = async function(resource: TreeResource): Promise<string[]> {
-		let complete = resource.aliases;
-		if (resource.parent !== undefined) {
-			const parent = byUrn.get(resource.parent);
-			if (parent === undefined) {
-				throw(new Error(`${resource.urn} has a parent that is not in the tree: ${resource.parent}`));
-			}
-
-			const adapter = parentAdapter(parent.urn, await aliasesOf(parent));
-			const outputs = pulumi.allAliases(resource.aliases, resource.name, resource.type, adapter, parent.name);
-			complete = await Promise.all(outputs.map(resolveOutput));
-		}
-
-		return(complete);
-	};
-	const aliasesOf = function(resource: TreeResource): Promise<string[]> {
+	function aliasesOf(resource: TreeResource): Promise<string[]> {
 		const known = completeAliases.get(resource.urn);
 		if (known !== undefined) {
 			return(known);
 		}
 
-		const computed = computeAliases(resource);
+		const computed = (async function(): Promise<string[]> {
+			let complete = resource.aliases;
+			if (resource.parent !== undefined) {
+				const parent = byUrn.get(resource.parent);
+				if (parent === undefined) {
+					throw(new Error(`${resource.urn} has a parent that is not in the tree: ${resource.parent}`));
+				}
+
+				const adapter = parentAdapter(parent.urn, await aliasesOf(parent));
+				const outputs = pulumi.allAliases(resource.aliases, resource.name, resource.type, adapter, parent.name);
+				complete = await Promise.all(outputs.map(resolveOutput));
+			}
+
+			return(complete);
+		})();
 		completeAliases.set(resource.urn, computed);
 
 		return(computed);
-	};
+	}
 
 	const keepers = new Map<string, Set<string>>();
 	for (const legacy of legacyUrns) {
