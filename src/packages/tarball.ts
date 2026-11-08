@@ -26,6 +26,21 @@ function tarEnvironment(): NodeJS.ProcessEnv {
 	});
 }
 
+/* Fixed system directories only, so a writable directory early in PATH cannot supply its own "tar" */
+const TAR_DIRECTORIES = [ '/usr/bin', '/bin', '/usr/local/bin', '/opt/homebrew/bin' ];
+
+/** The absolute path of the system `tar` */
+function tarCommand(): string {
+	for (const directory of TAR_DIRECTORIES) {
+		const candidate = path.join(directory, 'tar');
+		if (fs.existsSync(candidate)) {
+			return(candidate);
+		}
+	}
+
+	throw(new Error(`tar was not found in ${TAR_DIRECTORIES.join(', ')}`));
+}
+
 function createTarballFromDir(directory: string, cacheID?: string, excludePatterns: string[] = [], dockerfilePath?: string): { file: string, uniqueID: string, shouldClean: boolean } {
 	const context = loadBuildContext(directory, { excludePatterns, dockerfilePath });
 
@@ -71,7 +86,7 @@ function createTarballFromDir(directory: string, cacheID?: string, excludePatter
 	}).join(''));
 
 	try {
-		const createResults = child_process.spawnSync('tar', [
+		const createResults = child_process.spawnSync(tarCommand(), [
 			'-C', context.root,
 			'--no-xattrs',
 			'--null',
@@ -89,7 +104,7 @@ function createTarballFromDir(directory: string, cacheID?: string, excludePatter
 	/**
 	 * Verify that the created tarball is valid
 	 */
-	const checkResults = child_process.spawnSync('tar', [ '-ztf', tarballTmpPath ], { env: tarEnvironment() });
+	const checkResults = child_process.spawnSync(tarCommand(), [ '-ztf', tarballTmpPath ], { env: tarEnvironment() });
 	if (checkResults.status !== 0) {
 		throw(new Error(`tar failed: ${checkResults.stderr.toString()}`));
 	}
