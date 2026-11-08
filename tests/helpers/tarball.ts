@@ -1,7 +1,23 @@
 import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+
+/* The system tar from a fixed directory, as src/packages/tarball.ts finds it */
+function tarCommand(): string {
+	const found = [ '/usr/bin', '/bin', '/usr/local/bin', '/opt/homebrew/bin' ].map(function(directory) {
+		return(path.join(directory, 'tar'));
+	}).find(function(candidate) {
+		return(fs.existsSync(candidate));
+	});
+	if (found === undefined) {
+		throw(new Error('tar was not found in a system directory'));
+	}
+
+	return(found);
+}
 
 function runTar(args: string[]) {
-	const result = spawnSync('tar', args, { encoding: 'utf8' });
+	const result = spawnSync(tarCommand(), args, { encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' }});
 	if (result.status !== 0) {
 		throw(new Error(`tar ${args.join(' ')} failed: ${result.stderr}`));
 	}

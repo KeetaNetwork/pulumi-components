@@ -179,8 +179,8 @@ const localImageProvider: pulumi.dynamic.ResourceProvider = {
 	async check(_ignore_oldInput: LocalBuildInputs, newInput: LocalBuildInputs) {
 		return({ inputs: { ...newInput }});
 	},
-	async diff(_ignore_id: string, olds: LocalBuildInputs, news: LocalBuildInputs) {
-		return({ changes: localBuildHasChanges(olds, news) });
+	diff(_ignore_id: string, olds: LocalBuildInputs, news: LocalBuildInputs) {
+		return(Promise.resolve({ changes: localBuildHasChanges(olds, news) }));
 	},
 	async create(inputs: LocalBuildInputs) {
 		const id = randomUUID();

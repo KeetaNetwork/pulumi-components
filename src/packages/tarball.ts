@@ -17,6 +17,30 @@ import { fingerprintBuildContext, loadBuildContext } from './build-context';
  * tarball of an older one.  If a cacheID is provided the tarball is kept for
  * reuse, otherwise it is for one use and should be cleaned up.
  */
+/** The environment for `tar`: the caller's, with a fixed locale so file names are read the same everywhere */
+function tarEnvironment(): NodeJS.ProcessEnv {
+	return({
+		...process.env,
+		LC_ALL: 'C',
+		LANG: 'C'
+	});
+}
+
+/* Fixed system directories only, so a writable directory early in PATH cannot supply its own "tar" */
+const TAR_DIRECTORIES = [ '/usr/bin', '/bin', '/usr/local/bin', '/opt/homebrew/bin' ];
+
+/** The absolute path of the system `tar` */
+function tarCommand(): string {
+	for (const directory of TAR_DIRECTORIES) {
+		const candidate = path.join(directory, 'tar');
+		if (fs.existsSync(candidate)) {
+			return(candidate);
+		}
+	}
+
+	throw(new Error(`tar was not found in ${TAR_DIRECTORIES.join(', ')}`));
+}
+
 function createTarballFromDir(directory: string, cacheID?: string, excludePatterns: string[] = [], dockerfilePath?: string): { file: string, uniqueID: string, shouldClean: boolean } {
 	const context = loadBuildContext(directory, { excludePatterns, dockerfilePath });
 
@@ -62,20 +86,14 @@ function createTarballFromDir(directory: string, cacheID?: string, excludePatter
 	}).join(''));
 
 	try {
-		const createResults = child_process.spawnSync('tar', [
+		const createResults = child_process.spawnSync(tarCommand(), [
 			'-C', context.root,
 			'--no-xattrs',
 			'--null',
 			'-T', fileListPath,
 			'-zcf',
 			tarballTmpPath
-		], {
-			env: {
-				...process.env,
-				LC_ALL: 'C',
-				LANG: 'C'
-			}
-		});
+		], { env: tarEnvironment() });
 		if (createResults.status !== 0) {
 			throw(new Error(`tar failed: ${createResults.stderr.toString()}`));
 		}
@@ -86,7 +104,7 @@ function createTarballFromDir(directory: string, cacheID?: string, excludePatter
 	/**
 	 * Verify that the created tarball is valid
 	 */
-	const checkResults = child_process.spawnSync('tar', [ '-ztf', tarballTmpPath ]);
+	const checkResults = child_process.spawnSync(tarCommand(), [ '-ztf', tarballTmpPath ], { env: tarEnvironment() });
 	if (checkResults.status !== 0) {
 		throw(new Error(`tar failed: ${checkResults.stderr.toString()}`));
 	}
