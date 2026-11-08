@@ -25,7 +25,7 @@ interface LocalBuildInputs {
 function imageRepository(imageURI: string) {
 	const colon = imageURI.lastIndexOf(':');
 	let repository = imageURI;
-	if (colon !== -1 && imageURI.indexOf('/', colon) === -1) {
+	if (colon !== -1 && !imageURI.slice(colon).includes('/')) {
 		repository = imageURI.slice(0, colon);
 	}
 

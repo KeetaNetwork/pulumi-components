@@ -23,8 +23,8 @@ function buildService(name: string, overrides: Partial<ServiceArgs>) {
 
 describe('CloudRunService migration', function() {
 	const rejected: [ string, Partial<ServiceArgs> ][] = [
-		[ 'enabled without a database', { migration: { enabled: true } } ],
-		[ 'enabled without a database but with other resources', { migration: { enabled: true }, kv: { type: 'redis', memorySizeGb: 1 } } ]
+		[ 'enabled without a database', { migration: { enabled: true }} ],
+		[ 'enabled without a database but with other resources', { migration: { enabled: true }, kv: { type: 'redis', memorySizeGb: 1 }} ]
 	];
 
 	it.each(rejected)('throws "migration.enabled requires database" when it is %s', async function(description, overrides) {
@@ -32,10 +32,10 @@ describe('CloudRunService migration', function() {
 	});
 
 	const accepted: [ string, Partial<ServiceArgs>, number ][] = [
-		[ 'enabled with a database', { database: {}, migration: { enabled: true } }, 1 ],
-		[ 'disabled without a database', { migration: { enabled: false } }, 0 ],
+		[ 'enabled with a database', { database: {}, migration: { enabled: true }}, 1 ],
+		[ 'disabled without a database', { migration: { enabled: false }}, 0 ],
 		[ 'not configured', {}, 0 ],
-		[ 'disabled with a database', { database: {}, migration: { enabled: false } }, 0 ]
+		[ 'disabled with a database', { database: {}, migration: { enabled: false }}, 0 ]
 	];
 
 	it.each(accepted)('accepts it when it is %s', async function(description, overrides, jobs) {
@@ -74,7 +74,7 @@ describe('remote build secret file', function() {
 
 	function buildRemote(name: string, secrets: { [key: string]: string } | undefined) {
 		return(buildService(name, {
-			image: { build: { directory: APP_DIRECTORY, imageName: name, githubSha: 'sha-1', remote: {}, secrets } }
+			image: { build: { directory: APP_DIRECTORY, imageName: name, githubSha: 'sha-1', remote: {}, secrets }}
 		}));
 	}
 
@@ -108,7 +108,7 @@ function workerPoolEnvironment(tree: TreeSnapshot): unknown[] {
  * not for the other.
  */
 describe('CloudRunService worker with an existing secret', function() {
-	const environment = { EXISTING: { name: 'existing-secret', version: '3' } };
+	const environment = { EXISTING: { name: 'existing-secret', version: '3' }};
 
 	it('builds a Cloud Run worker pool whose environment references the secret', async function() {
 		const tree = await buildService('worker-crwp-existing-secret', {

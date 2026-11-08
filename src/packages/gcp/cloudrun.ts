@@ -146,7 +146,7 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 
 			// An existing secret can only be read through Secret Manager, which these containers cannot do
 			if (isEnvironmentGCPSecretData(valueOrWrapper)) {
-				throw(new Error(`Variable ${variableName} references the existing secret ${valueOrWrapper.name}, which cannot be resolved to a plain value for a container without Secret Manager support`));
+				throw(new Error(`Variable ${variableName} references an existing secret, which cannot be resolved to a plain value for a container without Secret Manager support`));
 			}
 
 			if (typeof valueOrWrapper === 'object' && 'value' in valueOrWrapper) {

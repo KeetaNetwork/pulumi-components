@@ -22,7 +22,7 @@ function buildManager(name: string, variables: Variables) {
 describe('EnvManager.resolvedVariableOutput', function() {
 	const resolvable: [ string, Variables, { name: string, value: string }[] ][] = [
 		[ 'plain values', { MODE: 'worker', PORT: 8080 }, [ { name: 'MODE', value: 'worker' }, { name: 'PORT', value: '8080' } ] ],
-		[ 'a value that is stored as a secret', { TOKEN: { value: 'hidden', secret: true } }, [ { name: 'TOKEN', value: 'hidden' } ] ],
+		[ 'a value that is stored as a secret', { TOKEN: { value: 'hidden', secret: true }}, [ { name: 'TOKEN', value: 'hidden' } ] ],
 		[ 'no variables', {}, [] ]
 	];
 
@@ -36,8 +36,8 @@ describe('EnvManager.resolvedVariableOutput', function() {
 	});
 
 	const unresolvable: [ string, Variables, string ][] = [
-		[ 'the only variable is an existing secret', { DB_PASSWORD: { name: 'db-password', version: '3' } }, 'DB_PASSWORD' ],
-		[ 'an existing secret follows plain values', { MODE: 'worker', API_KEY: { name: 'api-key', version: '1' } }, 'API_KEY' ]
+		[ 'the only variable is an existing secret', { DB_PASSWORD: { name: 'db-password', version: '3' }}, 'DB_PASSWORD' ],
+		[ 'an existing secret follows plain values', { MODE: 'worker', API_KEY: { name: 'api-key', version: '1' }}, 'API_KEY' ]
 	];
 
 	it.each(unresolvable)('throws, naming the variable, when %s', async function(description, variables, variableName) {
