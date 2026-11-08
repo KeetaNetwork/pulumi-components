@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { deployStack, destroyStack, fetchWithRetry, previewStack, type StackOutputs } from '../helpers/pulumi';
-import { expectArray, expectBoolean, expectDefined, expectRecord, expectString, expectStringArray } from '../helpers/narrow';
+import { expectBoolean, expectDefined, expectRecord, expectString, expectStringArray } from '../helpers/narrow';
+import { expectHealthyDatabaseService, expectMigrationsApplied } from '../helpers/service-checks';
 
 /* An unset or empty TEST_DOMAIN selects the default */
 const configuredDomain = process.env.TEST_DOMAIN;
@@ -37,36 +38,14 @@ describe('FullStackApp', function() {
 		expect(outputs).toBeDefined();
 
 		const serviceUrl = expectString(expectDefined(outputs, 'stack outputs').serviceUrl, 'serviceUrl');
-		const response = await fetch(`${serviceUrl}/api/health`);
-		const body = await response.text();
-		expect(response.ok, `HTTP ${response.status}: ${body}`).toBe(true);
-
-		const data = expectRecord(JSON.parse(body), 'health response');
-		expect(data.status).toBe('ok');
-		expect(data.database).toBeDefined();
-
-		const env = expectRecord(data.env, 'health response env');
-		expect(env.user).toBe('set');
-		expect(env.password).toBe('set');
-		expect(env.database).toBe('set');
-		expect(env.host).toBe('set');
-		expect(env.port).toBe('set');
+		await expectHealthyDatabaseService(`${serviceUrl}/api/health`);
 	}, 60_000);
 
 	it('verifies migrations ran', async function() {
 		expect(outputs).toBeDefined();
 
 		const serviceUrl = expectString(expectDefined(outputs, 'stack outputs').serviceUrl, 'serviceUrl');
-		const response = await fetch(`${serviceUrl}/api/migrations`);
-		const body = await response.text();
-		expect(response.ok, `Migrations HTTP ${response.status}: ${body}`).toBe(true);
-
-		const data = expectRecord(JSON.parse(body), 'migrations response');
-		const rows = expectArray(data.rows, 'migrations rows');
-		expect(data.status).toBe('ok');
-		expect(data.count).toBeGreaterThan(0);
-		expect(rows.length).toBeGreaterThan(0);
-		expect(expectRecord(rows[0], 'first migrations row').name).toMatch(/^migration-/);
+		await expectMigrationsApplied(`${serviceUrl}/api/migrations`);
 	}, 60_000);
 
 	it('redirects HTTP to HTTPS on load balancer IP', async function() {
