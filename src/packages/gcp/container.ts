@@ -533,7 +533,7 @@ export class ContainerMIG extends pulumi.ComponentResource {
 		 */
 		const zonal = options.zone !== undefined || Object.hasOwn(options, 'zone');
 		if (zonal && options.zone === undefined) {
-			pulumi.log.warn(`ContainerMIG ${name}: zone is undefined, so the group stays zonal in the default zone of the provider. Omit zone for a regional group (zone: undefined will mean regional in 3.0)`);
+			void pulumi.log.warn(`ContainerMIG ${name}: zone is undefined, so the group stays zonal in the default zone of the provider. Omit zone for a regional group (zone: undefined will mean regional in 3.0)`);
 		}
 
 		if (zonal) {

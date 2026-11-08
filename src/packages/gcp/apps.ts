@@ -817,7 +817,7 @@ export interface CloudRunServiceArgs {
 	/**
 	 * Worker configuration of 1.0.x (optional, for background workers/queue processors)
 	 *
-	 * @deprecated Use `worker`: `mig: { enabled: true, workerKind: 'crwp', ... }`
+	 * Deprecated (the constructor warns): use `worker`. `mig: { enabled: true, workerKind: 'crwp', ... }`
 	 *             becomes `worker: { kind: 'crwp', ... }` (`workerKind`
 	 *             defaults to 'mig'), and `enabled: false` becomes no
 	 *             `worker` at all

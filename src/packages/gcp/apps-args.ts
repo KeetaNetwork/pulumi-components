@@ -102,7 +102,7 @@ export interface CrwpWorkerArgs extends WorkerCommonArgs {
  * The worker of 1.0.x: the fields of a `mig` worker, written with `enabled`
  * and (for a Cloud Run Worker Pool) `workerKind`
  *
- * @deprecated Use `worker`
+ * Deprecated: use `worker`. Kept for 2.x; the constructor warns when it is used.
  */
 export type LegacyMigArgs = Omit<MigWorkerArgs, 'kind' | 'diskSizeGb'> & {
 	/**
@@ -327,7 +327,7 @@ function workerOfLegacy(mig: LegacyMigArgs): WorkerInput | undefined {
 		return(undefined);
 	}
 
-	pulumi.log.warn('CloudRunService: the `mig` argument is deprecated and will be removed in the next major version, use `worker` instead (for example `worker: { kind: \'crwp\' }` for `mig: { enabled: true, workerKind: \'crwp\' }`)');
+	void pulumi.log.warn('CloudRunService: the `mig` argument is deprecated and will be removed in the next major version, use `worker` instead (for example `worker: { kind: \'crwp\' }` for `mig: { enabled: true, workerKind: \'crwp\' }`)');
 
 	let kind: WorkerInput['kind'] = 'mig';
 	if (workerKind === 'crwp') {
