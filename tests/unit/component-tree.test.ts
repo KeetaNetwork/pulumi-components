@@ -251,10 +251,6 @@ function grantKey(resource: TreeResource) {
 	return(JSON.stringify([ inputs.project, inputs.role, inputs.member ]));
 }
 
-function roleOf(resource: TreeResource) {
-	return(expectRecord(resource.inputs, `the inputs of ${resource.name}`).role);
-}
-
 /** The project grants of a tree that a later `pulumi destroy` would revoke */
 function liveGrants(tree: TreeSnapshot) {
 	return(tree.resources.filter(function(resource) {
