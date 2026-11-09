@@ -1,3 +1,4 @@
+import { generateKeyPairSync } from 'node:crypto';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
@@ -79,6 +80,16 @@ const KNOWN_OUTPUTS: { [type: string]: OutputsOf } = {
 			connectionName: `connection.${name}`,
 			serverCaCerts: [ { cert: `ca-certificate.${name}` } ]
 		});
+	},
+	/* A key made now, so that no key is kept in the repository */
+	'tls:index/privateKey:PrivateKey': function() {
+		const pair = generateKeyPairSync('ec', {
+			namedCurve: 'prime256v1',
+			privateKeyEncoding: { type: 'sec1', format: 'pem' },
+			publicKeyEncoding: { type: 'spki', format: 'pem' }
+		});
+
+		return({ privateKeyPem: pair.privateKey, publicKeyPem: pair.publicKey });
 	},
 	'random:index/randomString:RandomString': function(name) {
 		return({ result: `random.${name}` });

@@ -403,6 +403,7 @@ describe('component tree', function() {
 			}
 
 			expect([ ...componentTypes ].sort()).toEqual([
+				'Keeta:Crypto:ECDSAKeyPair',
 				'Keeta:GCP:AppNetwork',
 				'Keeta:GCP:CloudRunEnvManager',
 				'Keeta:GCP:CloudRunService',

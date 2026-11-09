@@ -46,6 +46,30 @@ exports[`component tree > provider propagation > gives the passed provider to th
 }
 `;
 
+exports[`component tree > snapshot > ecdsa-key-pair keeps its resources, parents, aliases and key inputs 1`] = `
+[
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "algorithm": "ECDSA",
+      "ecdsaCurve": "P256",
+    },
+    "name": "ecdsa-key-pair-keypair",
+    "parent": "Keeta:Crypto:ECDSAKeyPair::ecdsa-key-pair",
+    "type": "tls:index/privateKey:PrivateKey",
+    "urn": "Keeta:Crypto:ECDSAKeyPair$tls:index/privateKey:PrivateKey::ecdsa-key-pair-keypair",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "ecdsa-key-pair",
+    "type": "Keeta:Crypto:ECDSAKeyPair",
+    "urn": "Keeta:Crypto:ECDSAKeyPair::ecdsa-key-pair",
+  },
+]
+`;
+
 exports[`component tree > snapshot > external-load-balancer keeps its resources, parents, aliases and key inputs 1`] = `
 [
   {

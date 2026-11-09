@@ -2,7 +2,7 @@ import * as pulumi from '@pulumi/pulumi';
 import * as gcp from '@pulumi/gcp';
 import * as utils from '../../utils';
 import { legacyUrn, movedFrom } from './aliases';
-import { createHttpsFrontEnd, parseSslPolicy } from './https-frontend';
+import { createHTTPSFrontEnd, parseSslPolicy } from './https-frontend';
 import type { CertChoice } from './https-frontend';
 
 import type { GCPCommonOptions, CertificateManagerCert, ComputeManagedSslCert } from './common';
@@ -613,7 +613,7 @@ export class ExternalLoadBalancer extends pulumi.ComponentResource {
 		});
 		const legacyUrlMap = legacyUrn(`${name}-ext-map`, URL_MAP_TYPE, { kind: 'resource', urn: backend.urn });
 
-		const frontEnd = createHttpsFrontEnd(name, { cert, sslPolicy: parseSslPolicy(args.sslPolicy) }, {
+		const frontEnd = createHTTPSFrontEnd(name, { cert, sslPolicy: parseSslPolicy(args.sslPolicy) }, {
 			variant: {
 				kind: 'external',
 				description: args.baseDescription,

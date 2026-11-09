@@ -21,7 +21,7 @@ export type { MigWorkerArgs, CrwpWorkerArgs, LegacyMigArgs } from './apps-args';
 import { CLOUD_RUN_SERVICE_DEFAULTS, ROUTING_DEFAULTS } from './defaults';
 import { callerOf } from './client-auth';
 import { buildDatabaseEnvVars, buildRedisEnvVars } from './database-env';
-import { buildRouteRules, createHttpsFrontEnd, parseFrontEndConfig, resolveIpAddresses } from './https-frontend';
+import { buildRouteRules, createHTTPSFrontEnd, parseFrontEndConfig, resolveIPAddresses } from './https-frontend';
 import type { RouteRuleConfig } from './https-frontend';
 import { legacyUrn, movedFrom } from './aliases';
 import * as components from '../docker';
@@ -128,10 +128,10 @@ function createLoadBalancer(
 		dns = { zoneId: parsed.dnsZoneId, domain: parsed.domain };
 	}
 
-	const frontEnd = createHttpsFrontEnd(name, parsed, {
+	const frontEnd = createHTTPSFrontEnd(name, parsed, {
 		variant: { kind: 'app' },
 		urlMap,
-		ips: resolveIpAddresses(name, parsed.ipAddress, opts),
+		ips: resolveIPAddresses(name, parsed.ipAddress, opts),
 		dns
 	}, opts);
 

@@ -459,6 +459,10 @@
 			"urn:pulumi:stack::project::keeta:lb:InternalLoadBalancer$gcp:compute/backendService:BackendService::internal-load-balancer-be",
 			"urn:pulumi:stack::project::keeta:lb:InternalLoadBalancer$gcp:compute/securityPolicy:SecurityPolicy::internal-load-balancer-ext-be-sp",
 			"urn:pulumi:stack::project::keeta:lb:InternalLoadBalancer::internal-load-balancer"
+		],
+		"ecdsa-key-pair": [
+			"urn:pulumi:stack::project::Keeta:Crypto:ECDSAKeyPair$tls:index/privateKey:PrivateKey::ecdsa-key-pair-keypair",
+			"urn:pulumi:stack::project::Keeta:Crypto:ECDSAKeyPair::ecdsa-key-pair"
 		]
 	}
 }
