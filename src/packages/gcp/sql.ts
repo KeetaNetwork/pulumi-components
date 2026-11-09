@@ -285,7 +285,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 			const privateIpAddress = new gcp.compute.GlobalAddress(`${this.#prefix}-postgres-private-ip`, {
 				purpose: 'VPC_PEERING',
 				addressType: 'INTERNAL',
-				prefixLength: POSTGRES_DEFAULTS.privateAccessPrefixLength,
+				prefixLength: POSTGRES_DEFAULTS.psaPrefixLength,
 				network: this.#vpcNetwork.id
 			}, { parent: this });
 
