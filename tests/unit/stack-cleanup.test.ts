@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { selectStacksToClean } from '../helpers/pulumi';
+import { lockIsRemovable, selectStacksToClean } from '../helpers/pulumi';
 
 const NOW = Date.parse('2026-11-09T12:00:00Z');
 const MINUTE = 60_000;
@@ -49,5 +49,33 @@ describe('selectStacksToClean', function() {
 
 	it('never selects a stack that is not a test stack, or whose age is unknown', function() {
 		expect(select([stack('dev', 10_000), stack('ci-local-sw')], undefined)).toEqual([]);
+	});
+
+	it('marks only the current run\'s stacks as owned by the run', function() {
+		const own = `ci-42-sw-${NOW - MINUTE}`;
+		const stale = `ci-41-sw-${NOW - 300 * MINUTE}`;
+		const selected = selectStacksToClean([stack(own, 1), stack(stale, 290)], { runId: '42', maxAgeMs: MAX_AGE_MS, now: NOW });
+
+		expect(selected.map(function(entry) { return([entry.name, entry.ownedByRun]); })).toEqual([[own, true], [stale, false]]);
+	});
+});
+
+describe('lockIsRemovable', function() {
+	const options = { maxAgeMs: MAX_AGE_MS, now: NOW };
+	const own = { name: 'ci-42-sw-1', reason: 'belongs to run 42', ownedByRun: true };
+	const stale = { name: 'ci-41-sw-1', reason: 'stale', ownedByRun: false };
+
+	it('removes any lock of the current run\'s stacks', function() {
+		expect(lockIsRemovable(own, NOW - MINUTE, options)).toBe(true);
+		expect(lockIsRemovable(own, NaN, options)).toBe(true);
+	});
+
+	it('removes another run\'s lock only once it is older than the maximum age', function() {
+		expect(lockIsRemovable(stale, NOW - 300 * MINUTE, options)).toBe(true);
+		expect(lockIsRemovable(stale, NOW - 10 * MINUTE, options)).toBe(false);
+	});
+
+	it('never removes another run\'s lock of unknown age', function() {
+		expect(lockIsRemovable(stale, NaN, options)).toBe(false);
 	});
 });
