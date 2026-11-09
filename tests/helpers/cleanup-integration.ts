@@ -68,8 +68,27 @@ interface StackLock {
 	lockedAt: number;
 }
 
+/**
+ * Absolute path of the gcloud CLI, so the cleanup runs the binary the job
+ * installed and never one found later through PATH
+ */
+const GCLOUD = (function() {
+	for (const dir of (process.env.PATH ?? '').split(path.delimiter)) {
+		const candidate = path.join(dir, 'gcloud');
+		if (path.isAbsolute(dir) && fs.existsSync(candidate)) {
+			return(candidate);
+		}
+	}
+
+	return(undefined);
+})();
+
 function gcloudStorage(args: string[]): string {
-	return(execFileSync('gcloud', ['storage', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
+	if (GCLOUD === undefined) {
+		throw(new Error('The gcloud CLI is not on PATH'));
+	}
+
+	return(execFileSync(GCLOUD, ['storage', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
 }
 
 /**
@@ -132,12 +151,16 @@ function releaseStaleLocks(lockDir: string, stack: StackToClean, options: Cleanu
  */
 async function lockDirectoryOf(workspace: automation.LocalWorkspace): Promise<(stackName: string) => string> {
 	const backendUrl = (await workspace.whoAmI()).url;
-	if (backendUrl === undefined || !backendUrl.startsWith('gs://')) {
+	if (!backendUrl?.startsWith('gs://')) {
 		throw(new Error(`The cleanup handles locks of a gs:// state backend only, the backend is '${backendUrl}'`));
 	}
 
 	const project = (await workspace.projectSettings()).name;
-	const base = `${backendUrl.replace(/\/+$/, '')}/.pulumi/locks/organization/${project}`;
+	let bucketUrl = backendUrl;
+	while (bucketUrl.endsWith('/')) {
+		bucketUrl = bucketUrl.slice(0, -1);
+	}
+	const base = `${bucketUrl}/.pulumi/locks/organization/${project}`;
 
 	return(function(stackName) {
 		return(`${base}/${stackName}/`);
