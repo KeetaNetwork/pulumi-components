@@ -38,12 +38,15 @@ export interface AppNetworkArgs {
 	servicePeeringDeletionPolicy?: 'ABANDON';
 
 	/**
-	 * Set by `CloudRunService` for the network that it builds for itself: the
-	 * app whose network resources these were in 1.0.95. They answer to the URN
-	 * they had then (they were children of the app, or of the VPC of the
-	 * caller), and `name` is the name of the app.
+	 * The URN of the app whose network resources these were in 1.0.95
+	 * (`CloudRunService` passes its own for the network that it builds for
+	 * itself). They answer to the URN they had then (they were children of
+	 * the app, or of the VPC of the caller), and `name` is the name of the
+	 * app. To adopt a shared network without replacing anything, build the
+	 * `AppNetwork` with the name of the app whose own network it takes over
+	 * and pass that app's old URN here.
 	 */
-	movedFrom?: pulumi.Resource;
+	movedFrom?: pulumi.Input<pulumi.URN>;
 }
 
 export interface IapSshFirewallArgs {
@@ -71,6 +74,9 @@ export class AppNetwork extends pulumi.ComponentResource {
 	readonly subnet: gcp.compute.Subnetwork;
 	readonly connector: gcp.vpcaccess.Connector;
 
+	/** The region of the subnet and the connector: an app in another region cannot use them */
+	readonly region: GCPRegion;
+
 	readonly #name: string;
 	readonly #args: AppNetworkArgs;
 	readonly #oldNetwork?: OldParent;
@@ -86,6 +92,7 @@ export class AppNetwork extends pulumi.ComponentResource {
 
 		this.#name = name;
 		this.#args = args;
+		this.region = args.region;
 
 		const app = args.movedFrom;
 		let ownNetworkAliases: pulumi.Output<pulumi.URN>[] | undefined;
@@ -96,8 +103,8 @@ export class AppNetwork extends pulumi.ComponentResource {
 			}
 		} else {
 			if (app !== undefined) {
-				ownNetworkAliases = movedFrom(`${name}-vpc`, NETWORK_TYPE, { kind: 'resource', urn: app.urn });
-				this.#oldNetwork = { kind: 'resource', urn: legacyUrn(`${name}-vpc`, NETWORK_TYPE, { kind: 'resource', urn: app.urn }) };
+				ownNetworkAliases = movedFrom(`${name}-vpc`, NETWORK_TYPE, { kind: 'resource', urn: app });
+				this.#oldNetwork = { kind: 'resource', urn: legacyUrn(`${name}-vpc`, NETWORK_TYPE, { kind: 'resource', urn: app }) };
 			}
 
 			this.network = new gcp.compute.Network(`${name}-vpc`, {

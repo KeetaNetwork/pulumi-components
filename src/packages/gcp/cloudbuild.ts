@@ -220,9 +220,7 @@ async function createBuild(inputs: CloudBuildInputs) {
 
 		const [ waitedResults ] = await operation.promise();
 
-		if (waitedResults.results === undefined || waitedResults.results === null) {
-			waitedResults.results = {};
-		}
+		waitedResults.results ??= {};
 
 		retval = {
 			status: waitedResults.status ?? 'UNKNOWN',
