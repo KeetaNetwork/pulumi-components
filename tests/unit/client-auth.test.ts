@@ -1,15 +1,20 @@
+import { CloudBuildClient } from '@google-cloud/cloudbuild';
 import * as gcp from '@pulumi/gcp';
 import * as pulumi from '@pulumi/pulumi';
 import { GoogleAuth } from 'google-auth-library';
-import { describe, expect, it } from 'vitest';
+import { googleAuthLibrary } from 'google-gax';
+import { generateKeyPairSync } from 'node:crypto';
+import path from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type * as clientAuth from '../../src/packages/gcp/client-auth';
 import { expectRecord } from '../helpers/narrow';
 import { resolveOutput } from '../helpers/outputs';
 import { requireSource } from './harness/load-sources';
 import { captureTree } from './harness/pulumi-tree';
+import { useTempDirectories } from '../helpers/temp-directories';
 
-const { clientAuthInputs, googleAuthFrom } = requireSource<typeof clientAuth>('src/packages/gcp/client-auth.ts');
+const { authenticateAs, clientAuthInputs, googleAuthFrom } = requireSource<typeof clientAuth>('src/packages/gcp/client-auth.ts');
 
 async function inputsOfProvider(args: gcp.ProviderArgs) {
 	let inputs: unknown;
@@ -53,5 +58,52 @@ describe('googleAuthFrom', function() {
 		[ 'a project only', { project: 'project-id' } ]
 	])('builds a GoogleAuth from %s without calling anything', function(_description, inputs) {
 		expect(googleAuthFrom(inputs)).toBeInstanceOf(GoogleAuth);
+	});
+});
+
+/*
+ * The real google-gax and the real client: the credentials are a service
+ * account key made here, and getClient() reads them without a request.
+ */
+describe('authenticateAs with a Google Cloud client', function() {
+	const directories = useTempDirectories();
+	const account = 'deployer@project-id.iam.gserviceaccount.com';
+
+	afterEach(function() {
+		vi.unstubAllEnvs();
+	});
+
+	function clientWithKey() {
+		const { privateKey } = generateKeyPairSync('rsa', {
+			modulusLength: 2048,
+			privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+			publicKeyEncoding: { type: 'spki', format: 'pem' }
+		});
+		const directory = directories.make({
+			'key.json': JSON.stringify({ type: 'service_account', project_id: 'project-id', client_email: 'source@project-id.iam.gserviceaccount.com', private_key: privateKey })
+		});
+		vi.stubEnv('GOOGLE_APPLICATION_CREDENTIALS', path.join(directory, 'key.json'));
+
+		return(new CloudBuildClient({ projectId: 'project-id' }));
+	}
+
+	it('makes the client call as the account, with the Impersonated of its own google-gax', async function() {
+		const client = clientWithKey();
+		authenticateAs(client, '@google-cloud/cloudbuild', { project: 'project-id', impersonateServiceAccount: account });
+
+		const authClient = await client.auth.getClient();
+
+		expect(authClient).toBeInstanceOf(googleAuthLibrary.Impersonated);
+		expect(Reflect.get(authClient, 'targetPrincipal')).toBe(account);
+	});
+
+	it('leaves a client that has no account to impersonate with the credentials it found', async function() {
+		const client = clientWithKey();
+		authenticateAs(client, '@google-cloud/cloudbuild', { project: 'project-id' });
+
+		const authClient = await client.auth.getClient();
+
+		expect(authClient).not.toBeInstanceOf(googleAuthLibrary.Impersonated);
+		expect(Reflect.get(authClient, 'email')).toBe('source@project-id.iam.gserviceaccount.com');
 	});
 });

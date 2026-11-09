@@ -2,16 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import type * as apps from '../../src/packages/gcp/apps';
 import { expectString, optionalRecord } from '../helpers/narrow';
-import { requireSource } from './harness/load-sources';
-import { captureTree, matchLegacyUrns, useIsolatedHome } from './harness/pulumi-tree';
+import { matchLegacyUrns, useIsolatedHome } from './harness/pulumi-tree';
 import type { TreeResource, TreeSnapshot } from './harness/pulumi-tree';
+import { captureService } from './harness/service-builder';
 
-const { CloudRunService } = requireSource<typeof apps>('src/packages/gcp/apps.ts');
 
-type ServiceArgs = ConstructorParameters<typeof CloudRunService>[1];
+type ServiceArgs = ConstructorParameters<typeof apps.CloudRunService>[1];
 type WorkerKind = 'mig' | 'crwp';
 
-const IMAGE = 'us-central1-docker.pkg.dev/project-id/keeta/app:1';
 const SECRET = 'gcp:secretmanager/secret:Secret';
 const SECRET_VERSION = 'gcp:secretmanager/secretVersion:SecretVersion';
 const SECRET_BINDING = 'gcp:secretmanager/secretIamMember:SecretIamMember';
@@ -23,7 +21,7 @@ const POOL_TYPE = 'gcp:cloudrunv2/workerPool:WorkerPool';
 const SECRET_VARIABLES = [ 'mc-psql-db-password', 'mc-psql-db-url', 'mc-redis-password', 'secret' ];
 
 /** An app with everything that has an environment: a database, Redis, a migration and a worker, each with its own overrides */
-function appOf(kind: WorkerKind, extra: Partial<ServiceArgs> = {}): Partial<ServiceArgs> {
+function argsFor(kind: WorkerKind, extra: Partial<ServiceArgs> = {}): Partial<ServiceArgs> {
 	return({
 		database: {},
 		kv: { type: 'redis', memorySizeGb: 1 },
@@ -32,12 +30,6 @@ function appOf(kind: WorkerKind, extra: Partial<ServiceArgs> = {}): Partial<Serv
 		worker: { kind, environmentOverrides: { W: 'w' }},
 		...extra
 	});
-}
-
-function build(name: string, overrides: Partial<ServiceArgs>) {
-	return(captureTree(function() {
-		return(new CloudRunService(name, { gcp: { project: 'project-id' }, region: 'us-central1', image: { uri: IMAGE }, ...overrides }));
-	}));
 }
 
 function namesOfType(tree: TreeSnapshot, type: string) {
@@ -119,7 +111,7 @@ describe('the environment of an app', function() {
 
 	it.each(kinds)('has one EnvManager and one secret, version and binding for each secret variable, with a %s worker', async function(kind) {
 		const app = `env-one-${kind}`;
-		const tree = await build(app, appOf(kind));
+		const tree = await captureService(app, argsFor(kind));
 		const secrets = SECRET_VARIABLES.map(function(variable) {
 			return(`${app}-env-${variable}`);
 		});
@@ -136,7 +128,7 @@ describe('the environment of an app', function() {
 
 	it.each(kinds)('gives the service the secrets of the app, and no override of the migration or of the worker, with a %s worker', async function(kind) {
 		const app = `env-service-${kind}`;
-		const environment = environmentOf(await build(app, appOf(kind)), SERVICE_TYPE);
+		const environment = environmentOf(await captureService(app, argsFor(kind)), SERVICE_TYPE);
 
 		expect(environment).toMatchObject({
 			MC_PSQL_DB_PASSWORD: secretOf(app, 'mc-psql-db-password'),
@@ -150,7 +142,7 @@ describe('the environment of an app', function() {
 
 	it.each(kinds)('gives the migration job the secrets of the app and its own overrides only, with a %s worker', async function(kind) {
 		const app = `env-job-${kind}`;
-		const tree = await build(app, appOf(kind));
+		const tree = await captureService(app, argsFor(kind));
 		const environment = environmentOf(tree, JOB_TYPE);
 
 		expect(environment).toMatchObject({
@@ -167,7 +159,7 @@ describe('the environment of an app', function() {
 	/* The worker of 1.0.95 had no Redis variables (B6) */
 	it('gives the Cloud Run worker pool the secrets of the app, the Redis variables and its own overrides only', async function() {
 		const app = 'env-pool';
-		const environment = environmentOf(await build(app, appOf('crwp')), POOL_TYPE);
+		const environment = environmentOf(await captureService(app, argsFor('crwp')), POOL_TYPE);
 
 		expect(environment).toMatchObject({
 			MC_PSQL_DB_PASSWORD: secretOf(app, 'mc-psql-db-password'),
@@ -189,7 +181,7 @@ describe('the environment of an app', function() {
 	const existing: Partial<ServiceArgs> = { environment: { EXISTING: { name: 'existing-secret', version: '3' }}};
 
 	it('lets the migration job and the Cloud Run worker pool read a secret that the caller owns', async function() {
-		const tree = await build('env-existing-pool', appOf('crwp', existing));
+		const tree = await captureService('env-existing-pool', argsFor('crwp', existing));
 
 		expect(environmentOf(tree, JOB_TYPE).EXISTING).toBe('secret:existing-secret');
 		expect(environmentOf(tree, POOL_TYPE).EXISTING).toBe('secret:existing-secret');
@@ -197,7 +189,7 @@ describe('the environment of an app', function() {
 	});
 
 	it('fails a virtual machine worker that is given a secret the caller owns, naming the variable', async function() {
-		await expect(build('env-existing-vm', appOf('mig', existing))).rejects.toThrow('EXISTING');
+		await expect(captureService('env-existing-vm', argsFor('mig', existing))).rejects.toThrow('EXISTING');
 	});
 
 	/*
@@ -208,7 +200,7 @@ describe('the environment of an app', function() {
 	 */
 	it('keeps the duplicate bindings of a secret the caller owns retained, never deleted', async function() {
 		const app = 'env-bindings';
-		const tree = await build(app, appOf('crwp', existing));
+		const tree = await captureService(app, argsFor('crwp', existing));
 		const binding = function(parents: string, name: string) {
 			return(`urn:pulumi:${tree.stack}::${tree.project}::Keeta:GCP:CloudRunService$${parents}${SECRET_BINDING}::${app}-${name}-non-managed-existing-iam-binding`);
 		};
@@ -227,5 +219,76 @@ describe('the environment of an app', function() {
 		expect(live.map(function(resource) {
 			return(resource.name);
 		})).toEqual([ `${app}-env-non-managed-existing-iam-binding` ]);
+	});
+
+	/*
+	 * GCP holds one binding for a (secret, role, member). The bindings that
+	 * leave the stack are kept, so the one that does not is what grants the
+	 * access: each retained binding needs a live twin of the same tuple, or a
+	 * retained copy would stand alone and deleting it would be a revoke.
+	 */
+	function bindingTuple(resource: TreeResource) {
+		const inputs = optionalRecord(resource.inputs);
+
+		return(JSON.stringify([ inputs?.secretId, inputs?.role, inputs?.member ]));
+	}
+
+	const twinApps: [ string, Partial<ServiceArgs> ][] = [
+		[ 'a worker pool', argsFor('crwp', existing) ],
+		[ 'a migration only', { database: {}, migration: { enabled: true }, environment: existing.environment }]
+	];
+
+	it.each(twinApps)('gives each retained binding of a secret the caller owns a live twin, in %s', async function(description, overrides) {
+		const tree = await captureService(`env-twin-${description.replace(/[^a-z]+/g, '-')}`, overrides);
+		const bindings = tree.resources.filter(function(resource) {
+			return(resource.type === SECRET_BINDING && resource.name.includes('-non-managed-'));
+		});
+		const live = new Set(bindings.filter(function(resource) {
+			return(resource.retainOnDelete !== true);
+		}).map(bindingTuple));
+		const alone = bindings.filter(function(resource) {
+			return(resource.retainOnDelete === true && !live.has(bindingTuple(resource)));
+		});
+
+		expect(alone.map(function(resource) {
+			return(resource.name);
+		})).toEqual([]);
+	});
+
+	it('keeps retained bindings for the worker pool app, so that the twin check is not empty', async function() {
+		const tree = await captureService('env-twin-present', argsFor('crwp', existing));
+
+		expect(tree.resources.filter(function(resource) {
+			return(resource.type === SECRET_BINDING && resource.name.includes('-non-managed-') && resource.retainOnDelete === true);
+		}).length).toBeGreaterThan(0);
+	});
+});
+
+/*
+ * A virtual machine reads its variables from the metadata of the instance
+ * template, and a literal that the caller marked secret has to be a secret
+ * there, or it would sit in the state in plain text.
+ */
+describe('the environment of a virtual machine worker', function() {
+	useIsolatedHome();
+
+	const DECLARATION = 'gce-container-declaration';
+	const TEMPLATE = 'gcp:compute/instanceTemplate:InstanceTemplate';
+
+	async function declarationOf(name: string, environment: Partial<ServiceArgs>['environment']) {
+		const tree = await captureService(name, { environment, worker: { kind: 'mig' }});
+		const template = tree.resources.find(function(resource) {
+			return(resource.type === TEMPLATE);
+		});
+
+		return(optionalRecord(optionalRecord(template?.inputs)?.metadata)?.[DECLARATION]);
+	}
+
+	it('keeps the declaration of the container a secret when a variable is a secret literal', async function() {
+		expect(await declarationOf('vm-secret-literal', { PLAIN: 'v', TOKEN: { value: 'hidden', secret: true }})).toBe('<secret>');
+	});
+
+	it('shows the declaration of the container when no variable is secret', async function() {
+		expect(await declarationOf('vm-plain', { PLAIN: 'visible-value' })).toEqual(expect.stringContaining('visible-value'));
 	});
 });
