@@ -1,6 +1,7 @@
+import * as automation from '@pulumi/pulumi/automation/index.js';
 import { describe, expect, it } from 'vitest';
 
-import { lockIsRemovable, selectStacksToClean } from '../helpers/pulumi';
+import { isCleanedByAnotherRun, lockIsRemovable, selectStacksToClean } from '../helpers/pulumi';
 
 const NOW = Date.parse('2026-11-09T12:00:00Z');
 const MINUTE = 60_000;
@@ -77,5 +78,28 @@ describe('lockIsRemovable', function() {
 
 	it('never removes another run\'s lock of unknown age', function() {
 		expect(lockIsRemovable(stale, NaN, options)).toBe(false);
+	});
+});
+
+describe('isCleanedByAnotherRun', function() {
+	const locked = new automation.ConcurrentUpdateError('error: the stack is currently locked by 1 lock(s)');
+	const missing = new automation.StackNotFoundError('error: no stack named \'ci-41-fs-1\' found');
+
+	it('accepts a lock held, or a stack removed, by another run', function() {
+		expect(isCleanedByAnotherRun(locked)).toBe(true);
+		expect(isCleanedByAnotherRun(missing)).toBe(true);
+		expect(isCleanedByAnotherRun(new Error('error: getting snapshot: failed to load checkpoint: blob (code=NotFound)'))).toBe(true);
+	});
+
+	it('reads the causes of a wrapped error', function() {
+		expect(isCleanedByAnotherRun(new Error('Destroy failed twice', { cause: locked }))).toBe(true);
+	});
+
+	it('rejects a destroy that failed on a cloud resource', function() {
+		const inUse = new Error('Error waiting for Deleting Network: The network resource is already being used');
+
+		expect(isCleanedByAnotherRun(inUse)).toBe(false);
+		expect(isCleanedByAnotherRun(new Error('Destroy failed twice', { cause: inUse }))).toBe(false);
+		expect(isCleanedByAnotherRun('locked')).toBe(false);
 	});
 });
