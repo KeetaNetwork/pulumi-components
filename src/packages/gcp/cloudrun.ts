@@ -127,7 +127,13 @@ function resolveVariables(variables: EnvironmentVariables, overrides: EnvOverrid
 		}
 
 		if (typeof valueOrWrapper === 'object' && 'value' in valueOrWrapper) {
-			entries.push(pulumi.output(valueOrWrapper.value).apply(function(val) {
+			// A literal that the caller marked secret stays a secret output, so the metadata that holds it is masked in the state
+			let value = pulumi.output(valueOrWrapper.value);
+			if (valueOrWrapper.secret) {
+				value = pulumi.secret(value);
+			}
+
+			entries.push(value.apply(function(val) {
 				return({ name: variableName, value: String(val) });
 			}));
 
