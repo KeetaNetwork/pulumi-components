@@ -168,13 +168,13 @@ describe('parseCloudRunServiceArgs rules', function() {
 const COUNTS: { argument: string; given: (count: number) => unknown }[] = [
 	{ argument: 'service.maxInstances', given: function(count) {
 		return({ service: { maxInstances: count }});
-	}},
+	} },
 	{ argument: 'database.poolSize', given: function(count) {
 		return({ database: { poolSize: count }});
-	}},
+	} },
 	{ argument: 'worker.poolSize', given: function(count) {
 		return({ database: { poolSize: 5 }, worker: { kind: 'crwp', poolSize: count }});
-	}}
+	} }
 ];
 
 describe('parseCloudRunServiceArgs counts', function() {
