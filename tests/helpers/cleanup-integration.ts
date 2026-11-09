@@ -8,6 +8,7 @@
  * only print what it would destroy).
  */
 import * as automation from '@pulumi/pulumi/automation/index.js';
+import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { parseArgs } from 'node:util';
@@ -15,7 +16,9 @@ import {
 	currentRunId,
 	destroyStack,
 	installProjectDependencies,
-	selectStacksToClean
+	lockIsRemovable,
+	selectStacksToClean,
+	type StackToClean
 } from './pulumi.ts';
 
 /*
@@ -59,15 +62,86 @@ function exampleProjects(): string[] {
 	}));
 }
 
+interface StackLock {
+	url: string;
+	/** When the lock was written (ms since the epoch), NaN if unknown */
+	lockedAt: number;
+}
+
+function gcloudStorage(args: string[]): string {
+	return(execFileSync('gcloud', ['storage', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
+}
+
 /**
- * A stack whose update was killed keeps its lock, and a locked stack cannot
- * be destroyed. The cleanup runs after the test process ended, so the lock is
- * stale.
+ * The lock objects of a stack in the gs:// state backend. Pulumi's "cancel"
+ * does not release them there, so the cleanup deletes them itself.
+ * @param lockDir - gs:// URL of the stack's lock directory, ending in "/"
  */
-async function releaseStaleLock(workDir: string, stackName: string): Promise<void> {
-	const stack = await automation.LocalWorkspace.selectStack({ stackName, workDir });
-	console.log(`Stack ${stackName} has an update in progress; cancelling it to release its lock`);
-	await stack.cancel();
+function listLocks(lockDir: string): StackLock[] {
+	let listing: string;
+	try {
+		listing = gcloudStorage(['ls', '-l', lockDir]);
+	} catch (err) {
+		const stderr = err instanceof Error && 'stderr' in err ? String(err.stderr) : '';
+		if (stderr.includes('matched no objects')) {
+			return([]);
+		}
+
+		throw(err);
+	}
+
+	const locks: StackLock[] = [];
+	for (const line of listing.split('\n')) {
+		/* "<size>  <creation time>  <url>"; the "TOTAL:" line has no URL */
+		const match = /^\s*\d+\s+(\S+)\s+(gs:\/\/\S+)\s*$/.exec(line);
+		if (match !== null) {
+			locks.push({ url: match[2], lockedAt: Date.parse(match[1]) });
+		} else if (line.includes('gs://')) {
+			throw(new Error(`Unexpected line in the lock listing of ${lockDir}: '${line}'`));
+		}
+	}
+
+	return(locks);
+}
+
+/**
+ * Delete the stack's locks, so the destroy can take the stack. Deletes
+ * nothing, and returns false, when one of them belongs to a live run.
+ */
+function releaseStaleLocks(lockDir: string, stack: StackToClean, options: CleanupOptions): boolean {
+	const locks = listLocks(lockDir);
+	const lockOptions = { maxAgeMs: options.maxAgeMinutes * 60_000, now: Date.now() };
+
+	const liveLock = locks.find(function(lock) { return(!lockIsRemovable(stack, lock.lockedAt, lockOptions)); });
+	if (liveLock !== undefined) {
+		console.log(`Stack ${stack.name} is locked by a live run (${liveLock.url}); leaving it alone`);
+
+		return(false);
+	}
+
+	for (const lock of locks) {
+		console.log(`Stack ${stack.name}: deleting stale lock ${lock.url}`);
+		gcloudStorage(['rm', lock.url]);
+	}
+
+	return(true);
+}
+
+/**
+ * gs:// URL of the lock directory of each stack of a project
+ */
+async function lockDirectoryOf(workspace: automation.LocalWorkspace): Promise<(stackName: string) => string> {
+	const backendUrl = (await workspace.whoAmI()).url;
+	if (backendUrl === undefined || !backendUrl.startsWith('gs://')) {
+		throw(new Error(`The cleanup handles locks of a gs:// state backend only, the backend is '${backendUrl}'`));
+	}
+
+	const project = (await workspace.projectSettings()).name;
+	const base = `${backendUrl.replace(/\/+$/, '')}/.pulumi/locks/organization/${project}`;
+
+	return(function(stackName) {
+		return(`${base}/${stackName}/`);
+	});
 }
 
 /**
@@ -93,21 +167,21 @@ async function cleanProject(workDir: string, options: CleanupOptions, runId: str
 		return([]);
 	}
 
+	const lockDirectory = await lockDirectoryOf(workspace);
 	installProjectDependencies(workDir);
 
 	const failures: string[] = [];
-	for (const { name, reason } of toClean) {
-		console.log(`${project}: destroying ${name} (${reason})`);
+	for (const stack of toClean) {
+		console.log(`${project}: destroying ${stack.name} (${stack.reason})`);
 		try {
-			const summary = stacks.find(function(candidate) { return(candidate.name === name); });
-			if (summary?.updateInProgress === true) {
-				await releaseStaleLock(workDir, name);
+			if (!releaseStaleLocks(lockDirectory(stack.name), stack, options)) {
+				continue;
 			}
 
-			await destroyStack(workDir, name);
+			await destroyStack(workDir, stack.name);
 		} catch (err) {
-			console.error(`${project}: failed to destroy ${name}:`, err);
-			failures.push(`${project}/${name}`);
+			console.error(`${project}: failed to destroy ${stack.name}:`, err);
+			failures.push(`${project}/${stack.name}`);
 		}
 	}
 
