@@ -994,6 +994,13 @@ export class CloudRunService extends pulumi.ComponentResource {
 					parent: this,
 					dependsOn: [ vpc, vpcConnector ]
 				});
+
+				appNetwork.allowKvEgress(name, {
+					port: kv.port,
+					host: kv.host,
+					priority: CLOUD_RUN_SERVICE_DEFAULTS.kv.firewallPriority,
+					extra: parsed.gcp.firewallConfig
+				});
 			}
 		}
 

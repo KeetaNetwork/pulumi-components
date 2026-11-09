@@ -465,7 +465,7 @@ export function parseCloudRunServiceArgs(args: CloudRunServiceArgs): ParsedCloud
 		}
 
 		if (args.vpc?.network !== undefined) {
-			void pulumi.log.warn('CloudRunService: vpc.network builds a network of its own around the VPC. Services that share a VPC need one private service access connection between them: build one AppNetwork (new AppNetwork(name, { network, ... })) and pass it to each of them as `network`');
+			void pulumi.log.warn('CloudRunService: vpc.network builds a network of its own around the VPC. Services that share a VPC need one private service access connection between them: build one AppNetwork (new AppNetwork(name, { region, network })) and pass it to each of them as `network`. Moving a service that has its own network to a shared AppNetwork is not a state move: its subnet, connector and private service access connection are recreated');
 		}
 
 		if (args.database) {

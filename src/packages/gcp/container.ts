@@ -652,6 +652,16 @@ export class ContainerCloudRun extends pulumi.ComponentResource {
 				parent: this
 			});
 
+			new gcp.compute.Route(`${name}-nat-default-route`, {
+				network: networkID,
+				destRange: "0.0.0.0/0",
+				nextHopGateway: "default-internet-gateway",
+				priority: 1000
+			}, {
+				parent: this,
+				dependsOn: [nat]
+			});
+
 			this.cloudNAT = {
 				router: router,
 				nat: nat
