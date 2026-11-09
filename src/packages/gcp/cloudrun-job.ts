@@ -63,26 +63,9 @@ async function runJob(inputs: CloudRunJobExecutionInputs): Promise<ExecutionOutp
 	});
 }
 
-/**
- * Whether the job has to run again.  Only the trigger and the job say so:
- * the project and the region are part of the job's identity, and when they
- * change so does `jobName`.
- */
-function jobExecutionHasChanges(olds: Partial<CloudRunJobExecutionInputs>, news: Partial<CloudRunJobExecutionInputs>) {
-	return(olds.trigger !== news.trigger || olds.jobName !== news.jobName);
-}
-
-export const _Testing = {
-	jobExecutionHasChanges
-};
-
 const cloudRunJobExecutionProvider: pulumi.dynamic.ResourceProvider = {
 	async check(_ignore_oldInput: CloudRunJobExecutionInputs, newInput: CloudRunJobExecutionInputs) {
 		return({ inputs: { ...newInput }});
-	},
-
-	diff(_ignore_id: string, olds: CloudRunJobExecutionInputs, news: CloudRunJobExecutionInputs) {
-		return(Promise.resolve({ changes: jobExecutionHasChanges(olds, news) }));
 	},
 
 	async create(inputs: CloudRunJobExecutionInputs) {
