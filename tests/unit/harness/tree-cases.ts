@@ -4,6 +4,7 @@ import * as gcp from '@pulumi/gcp';
 
 import type * as apps from '../../../src/packages/gcp/apps';
 import type * as container from '../../../src/packages/gcp/container';
+import type * as lb from '../../../src/packages/gcp/lb';
 import type * as migration from '../../../src/packages/gcp/migration';
 import type * as sql from '../../../src/packages/gcp/sql';
 import { requireSource } from './load-sources';
@@ -11,6 +12,7 @@ import { requireSource } from './load-sources';
 const { CloudRunService, FullStackApp, StaticWebApp } = requireSource<typeof apps>('src/packages/gcp/apps.ts');
 const { ContainerCloudRun, ContainerMIG } = requireSource<typeof container>('src/packages/gcp/container.ts');
 const { MigrationJob } = requireSource<typeof migration>('src/packages/gcp/migration.ts');
+const { ExternalLoadBalancer, InternalLoadBalancer } = requireSource<typeof lb>('src/packages/gcp/lb.ts');
 const { PostgresCloudSQL } = requireSource<typeof sql>('src/packages/gcp/sql.ts');
 
 const fixtures = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../fixtures');
@@ -54,6 +56,20 @@ export function workerSubnetwork(name: string) {
 export const workerSpec: ConstructorParameters<typeof ContainerMIG>[1]['containerSpec'] = {
 	containers: [ { image: IMAGE, name: 'worker', restartPolicy: 'Always' } ]
 };
+
+/** What the standalone load balancers need besides their own arguments: a worker group to balance, and a health check for it */
+function balancedWorker(name: string) {
+	const subnetwork = workerSubnetwork(`${name}-worker`);
+	const worker = new ContainerMIG(`${name}-worker`, {
+		serviceAccount: 'worker@project-id.iam.gserviceaccount.com',
+		subnetwork,
+		common: { gcp: { project: PROJECT }},
+		containerSpec: workerSpec
+	});
+	const healthCheck = new gcp.compute.HealthCheck(`${name}-health`, { httpHealthCheck: { port: 8080 }});
+
+	return({ subnetwork, worker, healthCheck });
+}
 
 export const TREE_CASES: TreeCase[] = [
 	{
@@ -203,6 +219,51 @@ export const TREE_CASES: TreeCase[] = [
 				loadBalancer: DOMAIN_CONFIG,
 				frontend: null,
 				backend: { gcp: { project: PROJECT }, region: REGION, image: { uri: IMAGE }}
+			}));
+		}
+	},
+	{
+		name: 'external-load-balancer',
+		build: function() {
+			return(new ExternalLoadBalancer('external-load-balancer', {
+				common: { gcp: { project: PROJECT }},
+				baseDescription: 'test app',
+				healthCheck: new gcp.compute.HealthCheck('external-load-balancer-health', { httpHealthCheck: { port: 8080 }}),
+				target: { type: 'NEG', host: 'backend.example.com' },
+				domainName: 'app.example.com'
+			}));
+		}
+	},
+	{
+		name: 'external-load-balancer-mig',
+		build: function() {
+			const { worker, healthCheck } = balancedWorker('external-load-balancer-mig');
+			const certificate = new gcp.certificatemanager.Certificate('external-load-balancer-mig-cert', { managed: { domains: [ 'app.example.com' ] }});
+
+			return(new ExternalLoadBalancer('external-load-balancer-mig', {
+				common: { gcp: { project: PROJECT }},
+				baseDescription: 'test app',
+				healthCheck,
+				target: worker,
+				sslCertificate: certificate,
+				allowedSources: [ '10.0.0.0/8' ]
+			}));
+		}
+	},
+	{
+		name: 'internal-load-balancer',
+		build: function() {
+			const { subnetwork, worker, healthCheck } = balancedWorker('internal-load-balancer');
+
+			return(new InternalLoadBalancer('internal-load-balancer', {
+				common: { gcp: { project: PROJECT }},
+				baseDescription: 'test app',
+				healthCheck,
+				target: worker,
+				subnetwork,
+				proxySubnetworkCIDR: '10.1.0.0/24',
+				domainName: 'app.example.com',
+				allowedSources: [ '10.0.0.0/8' ]
 			}));
 		}
 	}

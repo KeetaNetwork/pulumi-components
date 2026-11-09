@@ -130,3 +130,29 @@ export const MIGRATION_DEFAULTS = deepFreeze({
 	taskTimeout: 600,
 	maxRetries: 1
 });
+
+/**
+ * Which paths the URL map of a front end sends to the static bucket. The two
+ * front ends differ on purpose: `FullStackApp` also serves the favicon from
+ * the bucket, and `StaticWebApp` serves no exact file. Unifying the lists
+ * would update the URL map of every deployed app.
+ */
+export const ROUTING_DEFAULTS = deepFreeze({
+	staticWebApp: {
+		staticPaths: [ '/assets/', '/icons/', '/fonts/', '/images/' ],
+		staticFiles: []
+	},
+	fullStack: {
+		staticPaths: [ '/assets/', '/icons/', '/fonts/', '/images/' ],
+		staticFiles: [ '/favicon.svg' ]
+	}
+});
+
+/** Defaults of the HTTPS front end (`https-frontend.ts`) */
+export const FRONT_END_DEFAULTS = deepFreeze({
+	/** The SSL policy that a front end creates for its proxy when the caller gives none */
+	sslPolicy: {
+		profile: 'MODERN',
+		minTlsVersion: 'TLS_1_2'
+	}
+});
