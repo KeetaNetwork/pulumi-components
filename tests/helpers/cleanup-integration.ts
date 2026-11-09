@@ -137,7 +137,11 @@ async function lockDirectoryOf(workspace: automation.LocalWorkspace): Promise<(s
 	}
 
 	const project = (await workspace.projectSettings()).name;
-	const base = `${backendUrl.replace(/\/+$/, '')}/.pulumi/locks/organization/${project}`;
+	let bucketUrl = backendUrl;
+	while (bucketUrl.endsWith('/')) {
+		bucketUrl = bucketUrl.slice(0, -1);
+	}
+	const base = `${bucketUrl}/.pulumi/locks/organization/${project}`;
 
 	return(function(stackName) {
 		return(`${base}/${stackName}/`);
