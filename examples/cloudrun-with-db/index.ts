@@ -69,3 +69,11 @@ export const backend = new gcpComponents.apps.CloudRunService(name, {
 
 // Explicit output for test access
 export const serviceUrl = backend.service.statuses.apply(function(s) { return(s[0]?.url); });
+
+// The image that the service runs, pinned by the digest of the local build
+export const deployedImage = backend.service.template.apply(function(template) {
+	return(template?.spec.containers[0]?.image);
+});
+
+// The status of the migration run, as the dynamic resource of the run reported it
+export const migrationStatus = backend.migration?.status;
