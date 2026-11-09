@@ -49,6 +49,16 @@ export interface AppNetworkArgs {
 	movedFrom?: pulumi.Input<pulumi.URN>;
 }
 
+export interface KvFirewallArgs {
+	/** The port and address of the key-value store that the connector reaches */
+	port: pulumi.Input<number>;
+	host: pulumi.Input<string>;
+	priority: number;
+
+	/** Anything else the caller wants on the firewall (`GCPCommonOptions.firewallConfig`) */
+	extra?: Partial<gcp.compute.FirewallArgs>;
+}
+
 export interface IapSshFirewallArgs {
 	/** The source range of IAP */
 	sourceRange: string;
@@ -174,6 +184,42 @@ export class AppNetwork extends pulumi.ComponentResource {
 		}, { parent: this, aliases: connectionAliases });
 
 		return(this.#privateServiceAccess);
+	}
+
+	/**
+	 * The egress rule that lets the VPC connector reach the key-value store of
+	 * the app, named `${appName}-kv-firewall`. Its priority is
+	 * `CLOUD_RUN_SERVICE_DEFAULTS.kv.firewallPriority` unless the caller says
+	 * otherwise, so it wins over an egress deny of the caller that is weaker.
+	 */
+	allowKvEgress(appName: string, args: KvFirewallArgs): gcp.compute.Firewall {
+		const firewallName = `${appName}-kv-firewall`;
+		let aliases: pulumi.Output<pulumi.URN>[] | undefined;
+		if (this.#oldNetwork !== undefined && appName === this.#name) {
+			aliases = movedFrom(firewallName, FIREWALL_TYPE, this.#oldNetwork);
+		}
+
+		return(new gcp.compute.Firewall(firewallName, {
+			description: `Allow VPC connector for to access KV (Redis)`,
+			network: this.network.id,
+			direction: 'EGRESS',
+			allows: [{
+				protocol: 'tcp',
+				ports: [ pulumi.interpolate`${args.port}` ]
+			}],
+			sourceRanges: [
+				this.connector.ipCidrRange.apply(function(cidr) {
+					if (!cidr) {
+						throw(new Error('VPC connector does not have a CIDR range'));
+					}
+
+					return(cidr);
+				})
+			],
+			destinationRanges: [ pulumi.interpolate`${args.host}/32` ],
+			priority: args.priority,
+			...args.extra
+		}, { parent: this, aliases }));
 	}
 
 	/**

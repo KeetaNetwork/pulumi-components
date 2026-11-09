@@ -14,11 +14,10 @@ import type { TreeResource, TreeSnapshot } from './harness/pulumi-tree';
 import { workerSpec, workerSubnetwork } from './harness/tree-cases';
 import { IMAGE, captureService } from './harness/service-builder';
 
-const { CloudRunService } = requireSource<typeof apps>('src/packages/gcp/apps.ts');
 const { ContainerCloudRun, ContainerMIG } = requireSource<typeof container>('src/packages/gcp/container.ts');
 const { MigrationJob } = requireSource<typeof migration>('src/packages/gcp/migration.ts');
 
-type ServiceArgs = ConstructorParameters<typeof CloudRunService>[1];
+type ServiceArgs = ConstructorParameters<typeof apps.CloudRunService>[1];
 type PolicyHook = GCPCommonOptions['changeProjectIAMPolicy'];
 type IdentityRef = identityModule.ServiceIdentityRef;
 

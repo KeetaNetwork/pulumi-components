@@ -14,11 +14,10 @@ import type { TreeSnapshot } from './harness/pulumi-tree';
 import { workerSpec, workerSubnetwork } from './harness/tree-cases';
 import { buildService } from './harness/service-builder';
 
-const { CloudRunService } = requireSource<typeof apps>('src/packages/gcp/apps.ts');
 const { ContainerMIG } = requireSource<typeof container>('src/packages/gcp/container.ts');
 const { PostgresCloudSQL } = requireSource<typeof sql>('src/packages/gcp/sql.ts');
 
-type ServiceArgs = ConstructorParameters<typeof CloudRunService>[1];
+type ServiceArgs = ConstructorParameters<typeof apps.CloudRunService>[1];
 type MigOptions = ConstructorParameters<typeof ContainerMIG>[1];
 type PostgresOptions = ConstructorParameters<typeof PostgresCloudSQL>[1];
 

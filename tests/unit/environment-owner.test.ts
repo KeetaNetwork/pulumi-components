@@ -2,14 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import type * as apps from '../../src/packages/gcp/apps';
 import { expectString, optionalRecord } from '../helpers/narrow';
-import { requireSource } from './harness/load-sources';
 import { matchLegacyUrns, useIsolatedHome } from './harness/pulumi-tree';
 import type { TreeResource, TreeSnapshot } from './harness/pulumi-tree';
 import { captureService } from './harness/service-builder';
 
-const { CloudRunService } = requireSource<typeof apps>('src/packages/gcp/apps.ts');
 
-type ServiceArgs = ConstructorParameters<typeof CloudRunService>[1];
+type ServiceArgs = ConstructorParameters<typeof apps.CloudRunService>[1];
 type WorkerKind = 'mig' | 'crwp';
 
 const SECRET = 'gcp:secretmanager/secret:Secret';
