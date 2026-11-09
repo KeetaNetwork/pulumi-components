@@ -16,6 +16,7 @@ import {
 	currentRunId,
 	destroyStack,
 	installProjectDependencies,
+	isCleanedByAnotherRun,
 	lockIsRemovable,
 	selectStacksToClean,
 	type StackToClean
@@ -140,7 +141,14 @@ function releaseStaleLocks(lockDir: string, stack: StackToClean, options: Cleanu
 
 	for (const lock of locks) {
 		console.log(`Stack ${stack.name}: deleting stale lock ${lock.url}`);
-		gcloudStorage(['rm', lock.url]);
+		try {
+			gcloudStorage(['rm', lock.url]);
+		} catch (err) {
+			/* Another run deleted the same stale lock first */
+			if (!(err instanceof Error && err.message.includes('matched no objects'))) {
+				throw(err);
+			}
+		}
 	}
 
 	return(true);
@@ -203,6 +211,11 @@ async function cleanProject(workDir: string, options: CleanupOptions, runId: str
 
 			await destroyStack(workDir, stack.name);
 		} catch (err) {
+			if (!stack.ownedByRun && isCleanedByAnotherRun(err)) {
+				console.log(`${project}: another run is cleaning ${stack.name}; leaving it to that run`);
+				continue;
+			}
+
 			console.error(`${project}: failed to destroy ${stack.name}:`, err);
 			failures.push(`${project}/${stack.name}`);
 		}

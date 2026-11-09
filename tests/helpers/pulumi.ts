@@ -122,6 +122,28 @@ export function lockIsRemovable(
 	return(Number.isFinite(lockedAt) && options.now - lockedAt > options.maxAgeMs);
 }
 
+/**
+ * Whether a failed cleanup of a stale stack means another run has the
+ * stack: that run holds its lock, or already removed the stack. Concurrent
+ * runs clean the same stale stacks, and the run that has the stack
+ * destroys it. Reads the error and each of its causes.
+ * @param err - The error the cleanup of the stack threw
+ */
+export function isCleanedByAnotherRun(err: unknown): boolean {
+	for (let cause: unknown = err; cause instanceof Error; cause = cause.cause) {
+		if (cause instanceof automation.ConcurrentUpdateError || cause instanceof automation.StackNotFoundError) {
+			return(true);
+		}
+
+		/* Another run removed the stack's checkpoint while this run read it */
+		if (/failed to load checkpoint[\s\S]*NotFound/.test(cause.message)) {
+			return(true);
+		}
+	}
+
+	return(false);
+}
+
 function onOutput(msg: string): void {
 	process.stdout.write(msg);
 }
@@ -258,6 +280,42 @@ async function destroyOnce(stack: automation.Stack): Promise<void> {
 }
 
 /**
+ * An entry of "pending_operations" in an exported Pulumi state
+ */
+interface PendingOperation {
+	type?: string;
+	resource?: {
+		type?: string;
+		urn?: string;
+		inputs?: { name?: unknown };
+	};
+}
+
+/**
+ * The resources an interrupted "up" started to create: GCP can hold them
+ * while the state does not, so a destroy cannot delete them. Names them for
+ * the error message, or returns '' when there are none or the state cannot
+ * be read.
+ */
+async function untrackedResourcesOf(stack: automation.Stack): Promise<string> {
+	try {
+		const state = await stack.exportStack();
+		const pending: PendingOperation[] = state.deployment?.pending_operations ?? [];
+		const names = pending.filter(function(operation) {
+			return(operation.type === 'creating');
+		}).map(function(operation) {
+			const name = operation.resource?.inputs?.name;
+
+			return(`${operation.resource?.type} ${typeof name === 'string' ? name : operation.resource?.urn}`);
+		});
+
+		return(names.length === 0 ? '' : `. Pending creates that the state does not track: ${names.join(', ')}`);
+	} catch {
+		return('');
+	}
+}
+
+/**
  * Destroy a Pulumi stack and remove it. A stack that does not exist is
  * already clean. Any other failure is retried once after a refresh, and then
  * thrown, so a teardown that leaves cloud resources behind fails the run.
@@ -293,7 +351,7 @@ export async function destroyStack(projectDir: string, stackName: string): Promi
 			await stack.refresh({ onOutput });
 			await destroyOnce(stack);
 		} catch (retryErr) {
-			throw(new Error(`Destroy of stack ${stackName} in ${projectDir} failed twice; its resources are still deployed`, { cause: retryErr }));
+			throw(new Error(`Destroy of stack ${stackName} in ${projectDir} failed twice; its resources are still deployed${await untrackedResourcesOf(stack)}`, { cause: retryErr }));
 		}
 	}
 
