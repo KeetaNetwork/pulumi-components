@@ -1,7 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import * as pulumi from '@pulumi/pulumi';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import type * as apps from '../../src/packages/gcp/apps';
 import type * as appsArgs from '../../src/packages/gcp/apps-args';
@@ -10,6 +9,7 @@ import { expectAt, optionalRecord, valueAt } from '../helpers/narrow';
 import { WORKER_FORMS } from '../helpers/worker-forms';
 import { requireSource } from './harness/load-sources';
 import { captureTree, useIsolatedHome } from './harness/pulumi-tree';
+import { captureWarnings } from './harness/warnings';
 
 const { CloudRunService } = requireSource<typeof apps>('src/packages/gcp/apps.ts');
 const { parseCloudRunServiceArgs, CloudRunServiceArgsError } = requireSource<typeof appsArgs>('src/packages/gcp/apps-args.ts');
@@ -43,10 +43,6 @@ function callerArgs(overrides: unknown) {
 function parse(overrides: unknown) {
 	return(parseCloudRunServiceArgs(callerArgs(overrides)));
 }
-
-afterEach(function() {
-	vi.restoreAllMocks();
-});
 
 interface Rule {
 	rule: string;
@@ -239,10 +235,8 @@ const WORKER_ROWS = WORKER_FORMS.map(function(form): [ string, typeof form ] {
 	return([ form.description, form ]);
 });
 
-function migDeprecations(warn: { mock: { calls: unknown[][] }}): string[] {
-	return(warn.mock.calls.map(function(call) {
-		return(String(call[0]));
-	}).filter(function(message) {
+function migDeprecations(warnings: string[]): string[] {
+	return(warnings.filter(function(message) {
 		return(message.includes('`mig` argument is deprecated'));
 	}));
 }
@@ -257,22 +251,22 @@ describe('parseCloudRunServiceArgs legacy mig', function() {
 	});
 
 	it.each(WORKER_ROWS)('warns once about %s', function(_description, form) {
-		const warn = vi.spyOn(pulumi.log, 'warn');
+		const { warnings } = captureWarnings(function() {
+			return(parse({ mig: form.legacy }));
+		});
 
-		parse({ mig: form.legacy });
-
-		const deprecations = migDeprecations(warn);
+		const deprecations = migDeprecations(warnings);
 
 		expect(deprecations).toHaveLength(1);
 		expect(deprecations[0]).toMatch(/\bworker\b/);
 	});
 
 	it.each(WORKER_ROWS)('does not warn about %s given as a worker', function(_description, form) {
-		const warn = vi.spyOn(pulumi.log, 'warn');
+		const { warnings } = captureWarnings(function() {
+			return(parse({ worker: form.worker }));
+		});
 
-		parse({ worker: form.worker });
-
-		expect(migDeprecations(warn)).toEqual([]);
+		expect(migDeprecations(warnings)).toEqual([]);
 	});
 
 	it('parses a disabled mig as no worker at all', function() {
@@ -292,12 +286,12 @@ const EGRESS_WARNINGS: { title: string; worker: unknown; warnings: number }[] = 
 
 describe('parseCloudRunServiceArgs worker egress', function() {
 	it.each(EGRESS_WARNINGS)('$title', function(testCase) {
-		const warn = vi.spyOn(pulumi.log, 'warn');
+		const { warnings } = captureWarnings(function() {
+			return(parse({ worker: testCase.worker }));
+		});
 
-		parse({ worker: testCase.worker });
-
-		const direct = warn.mock.calls.filter(function(call) {
-			return(DIRECT_WARNING.test(String(call[0])));
+		const direct = warnings.filter(function(message) {
+			return(DIRECT_WARNING.test(message));
 		});
 
 		expect(direct).toHaveLength(testCase.warnings);

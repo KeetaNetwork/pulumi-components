@@ -4,21 +4,25 @@ on:
   push:
     branches:
       - main
-  # No branch filter: stacked PRs whose base is not "main" run too.
+  # Only pull requests into main deploy: all stacked pull requests share one
+  # GCP project and its quotas. Run a stacked branch by hand when needed.
   pull_request:
+    branches:
+      - main
+  workflow_dispatch:
 
 # One run at a time per pull request; every commit on main has its own group.
 # A running job is never cancelled: a cancelled job skips the tests' teardown
 # and leaves its GCP resources behind. A newer push queues behind the
 # running job instead.
 concurrency:
-  group: integration-tests-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: integration-tests-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: false
 
 jobs:
   test:
     # Fork pull requests get no secrets, so the GCP login cannot succeed.
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 120
     permissions:
@@ -55,7 +59,7 @@ jobs:
 
       - name: Run Integration Tests
         # Leaves the cleanup step time to run inside the job's timeout
-        timeout-minutes: 85
+        timeout-minutes: 80
         run: make test-integration
         env:
           GOOGLE_PROJECT: ${{ vars.GOOGLE_PROJECT }}
@@ -67,11 +71,14 @@ jobs:
 
       # Destroys this run's stacks whatever the tests did (failed, cancelled,
       # timed out), and any stale test stack an earlier run left behind. It
-      # fails the job if a stack cannot be destroyed.
+      # fails the job if a stack cannot be destroyed. An aborted test step
+      # leaves its processes running until the job ends, holding their stack
+      # locks, so they are stopped first. The stale locks are deleted with
+      # the gcloud CLI from the "setup-gcloud" step.
       - name: Clean Up Integration Test Stacks
         if: ${{ always() && steps.pulumi_login.outcome == 'success' }}
-        timeout-minutes: 30
-        run: make cleanup-integration
+        timeout-minutes: 35
+        run: make ci-stop-test-processes cleanup-integration
         env:
           GOOGLE_PROJECT: ${{ vars.GOOGLE_PROJECT }}
           PULUMI_EXPERIMENTAL: "true"
