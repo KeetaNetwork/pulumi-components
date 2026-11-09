@@ -69,13 +69,18 @@ export function parseCloudSqlTier(tier: string): TierShape {
 	return({ kind: 'unknown', tier });
 }
 
+/** Whether the library knows the default `max_connections` of this kind of tier (`shared` and `custom` tiers) */
+export function knowsMaxConnections(shape: TierShape): shape is Extract<TierShape, { kind: 'shared' | 'custom' }> {
+	return(shape.kind === 'shared' || shape.kind === 'custom');
+}
+
 /**
  * The `max_connections` that Cloud SQL applies to a tier when no flag sets it
  *
  * @throws Error naming the tier when the tier is not one that this library knows
  */
 export function tierDefaultMaxConnections(shape: TierShape): number {
-	if (shape.kind === 'unknown' || shape.kind === 'perf-optimized') {
+	if (!knowsMaxConnections(shape)) {
 		throw(new Error(`The default max_connections of the Cloud SQL tier '${shape.tier}' is not known: set max_connections (flags.max_connections or maxConnections) to give the connection budget a value`));
 	}
 

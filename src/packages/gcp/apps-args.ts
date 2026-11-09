@@ -5,7 +5,7 @@ import type { EnvironmentVariables } from './cloudrun';
 import type { GCPCommonOptions } from './common';
 import type { GCPRegion } from './constants';
 import type { AppNetwork } from './network';
-import { assertWithinBudget, connectionBudget, parseCloudSqlTier, tierDefaultMaxConnections } from './connection-budget';
+import { assertWithinBudget, connectionBudget, knowsMaxConnections, parseCloudSqlTier, tierDefaultMaxConnections } from './connection-budget';
 import type { ConnectionConsumer } from './connection-budget';
 import { DATABASE_POOL_SIZE_VARIABLE } from './database-env';
 import { resolveProfile } from './profiles';
@@ -556,7 +556,7 @@ function profileMaxConnections(database: NonNullable<CloudRunServiceArgs['databa
 	}
 
 	const shape = parseCloudSqlTier(database.tier);
-	if (shape.kind === 'unknown' || shape.kind === 'perf-optimized') {
+	if (!knowsMaxConnections(shape)) {
 		throw(new CloudRunServiceArgsError(`database.tier '${database.tier}' is not a tier that the profile knows the max_connections of: give database.flags.max_connections`));
 	}
 

@@ -5,7 +5,7 @@ import type { GCPRegion, PerGCPRegion } from './constants';
 import { POSTGRES_DEFAULTS } from './defaults';
 import { movedFrom } from './aliases';
 import { connectionBudget, parseCloudSqlTier, tierDefaultMaxConnections } from './connection-budget';
-import type { ConnectionBudget } from './connection-budget';
+import type { ConnectionBudget, TierShape } from './connection-budget';
 
 type VPCNetworkLike = Pick<gcp.compute.Network, 'id' | 'name'>;
 
@@ -238,6 +238,16 @@ type PostgresURLParams = {
 	connection_limit?: number
 };
 
+type Edition = 'ENTERPRISE' | 'ENTERPRISE_PLUS';
+
+/** The edition that each kind of tier belongs to: a new kind of tier is a compile error until it says its edition (`undefined` leaves the API default) */
+const EDITION_OF_TIER = {
+	shared: 'ENTERPRISE',
+	custom: 'ENTERPRISE',
+	'perf-optimized': 'ENTERPRISE_PLUS',
+	unknown: undefined
+} satisfies Record<TierShape['kind'], Edition | undefined>;
+
 export class PostgresCloudSQL extends pulumi.ComponentResource {
 	#prefix: string;
 	#options: PostgresCloudSQLArgs;
@@ -441,16 +451,8 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 	 * tiers, so the shared-core and custom tiers say theirs. A tier that the
 	 * library does not know gets none: the API default applies.
 	 */
-	#edition(): 'ENTERPRISE' | 'ENTERPRISE_PLUS' | undefined {
-		switch (parseCloudSqlTier(this.#options.tier).kind) {
-			case 'shared':
-			case 'custom':
-				return('ENTERPRISE');
-			case 'perf-optimized':
-				return('ENTERPRISE_PLUS');
-			default:
-				return(undefined);
-		}
+	#edition(): Edition | undefined {
+		return(EDITION_OF_TIER[parseCloudSqlTier(this.#options.tier).kind]);
 	}
 
 	/**
@@ -535,9 +537,9 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 		const deletionProtection = this.#options.deletionProtection;
 
 		/* No version from the caller: an instance that exists keeps the one it has */
-		let ignoreChanges: string[] | undefined;
+		const ignoreChanges = [ ...(options?.ignoreChanges ?? []) ];
 		if (this.#options.databaseVersion === undefined) {
-			ignoreChanges = [ 'databaseVersion' ];
+			ignoreChanges.push('databaseVersion');
 		}
 
 		const instance = new gcp.sql.DatabaseInstance(name, {
@@ -564,7 +566,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 					recordClientAddress: false
 				}
 			}
-		}, { protect: deletionProtection, ignoreChanges, ...options });
+		}, { protect: deletionProtection, ...options, ignoreChanges });
 
 		this.hosts[region] = {
 			host: instance.firstIpAddress,

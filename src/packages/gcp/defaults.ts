@@ -9,7 +9,7 @@
  * `ContainerMIG` that nobody sized is an `e2-medium`), and the objects are
  * never merged.
  *
- * The values are those of 1.0.95.
+ * The values are those of 1.0.95, except the PostgreSQL version of a new database.
  */
 
 /** Freezes the object and everything inside it */
