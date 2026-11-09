@@ -40,6 +40,8 @@ interface ContainerGenericOptions<SupportSecretRefEnvs extends boolean> {
 	 * (logging and metrics) that the identity grants to the service account,
 	 * this does not: its own grant stays as a retained tombstone, so the
 	 * binding that exists is never revoked. Any other role is granted here.
+	 *
+	 * @internal Set by `CloudRunService`, which owns the identity; a component you build yourself grants for itself.
 	 */
 	identity?: ServiceIdentityRef;
 
