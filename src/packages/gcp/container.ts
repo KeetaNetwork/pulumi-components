@@ -445,7 +445,7 @@ export class ContainerMIG extends pulumi.ComponentResource {
 			}],
 			serviceAccount: {
 				email: serviceAccountEmail,
-				/* XXX:TODO: Should the user be allowed to specify CONTAINER_DEFAULTS.mig.scopes in some way ? */
+				/* Every VM gets CONTAINER_DEFAULTS.mig.scopes; letting a caller choose them is a possible option, not part of this release */
 				scopes: [...CONTAINER_DEFAULTS.mig.scopes]
 			},
 			networkInterfaces: pulumi.all([options.networkInterfaces, networkID, subnetworkID]).apply(function([networkInterfaces, networkIDResolved, subnetworkIDResolved]) {
