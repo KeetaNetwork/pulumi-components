@@ -1,8 +1,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as gcp from '@pulumi/gcp';
-import * as pulumi from '@pulumi/pulumi';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import type * as apps from '../../src/packages/gcp/apps';
 import type * as container from '../../src/packages/gcp/container';
@@ -12,6 +11,7 @@ import { requireSource } from './harness/load-sources';
 import { captureTree, useIsolatedHome } from './harness/pulumi-tree';
 import type { TreeSnapshot } from './harness/pulumi-tree';
 import { workerSpec, workerSubnetwork } from './harness/tree-cases';
+import { captureWarningsAsync } from './harness/warnings';
 
 const { CloudRunService } = requireSource<typeof apps>('src/packages/gcp/apps.ts');
 const { ContainerMIG } = requireSource<typeof container>('src/packages/gcp/container.ts');
@@ -39,14 +39,14 @@ function inputsOf(tree: TreeSnapshot, type: string, nameEnding: string) {
 }
 
 /** A build of a service with the arguments of the caller, `changed` being what the row's setting turns into */
-function service(base: Partial<ServiceArgs>, changed: Partial<ServiceArgs>) {
-	return(function(name: string, overridden: boolean) {
-		let extra = base;
-		if (overridden) {
-			extra = changed;
+function service(base: Partial<ServiceArgs>, changed: Partial<ServiceArgs>): Builds {
+	return({
+		fallback: function(name) {
+			return(new CloudRunService(name, { ...SERVICE, ...base }));
+		},
+		override: function(name) {
+			return(new CloudRunService(name, { ...SERVICE, ...changed }));
 		}
-
-		return(new CloudRunService(name, { ...SERVICE, ...extra }));
 	});
 }
 
@@ -60,10 +60,21 @@ function buildMig(name: string, extra: Partial<MigOptions>) {
 	}));
 }
 
+function buildPostgres(name: string, extra: Partial<PostgresOptions>) {
+	const network = new gcp.compute.Network(`${name}-network`, { autoCreateSubnetworks: false });
+
+	return(new PostgresCloudSQL(name, { region: 'us-central1', tier: 'db-f1-micro', vpcNetwork: network, createPeering: true, ...extra }));
+}
+
+interface Builds {
+	fallback: (name: string) => unknown;
+	override: (name: string) => unknown;
+}
+
 interface Setting {
 	description: string;
-	/** Creates the component, with the setting turned on when `overridden` */
-	build: (name: string, overridden: boolean) => unknown;
+	/** Creates the component, without the setting and with it */
+	build: Builds;
 	type: string;
 	/** The end of the name of the resource, for a type that has several */
 	nameEnding: string;
@@ -129,12 +140,13 @@ const SETTINGS: Setting[] = [
 	},
 	{
 		description: 'image.build.remote.timeoutSeconds',
-		build: function(name, overridden) {
-			if (overridden) {
+		build: {
+			fallback: function(name) {
+				return(remoteBuild(name, {}));
+			},
+			override: function(name) {
 				return(remoteBuild(name, { timeoutSeconds: 3600 }));
 			}
-
-			return(remoteBuild(name, {}));
 		},
 		type: 'pulumi-nodejs:dynamic:Resource',
 		nameEnding: '-image-build',
@@ -153,12 +165,13 @@ const SETTINGS: Setting[] = [
 	},
 	{
 		description: 'diskSizeGb of a ContainerMIG',
-		build: function(name, overridden) {
-			if (overridden) {
+		build: {
+			fallback: function(name) {
+				return(buildMig(name, {}));
+			},
+			override: function(name) {
 				return(buildMig(name, { diskSizeGb: 80 }));
 			}
-
-			return(buildMig(name, {}));
 		},
 		type: 'gcp:compute/instanceTemplate:InstanceTemplate',
 		nameEnding: '',
@@ -168,14 +181,13 @@ const SETTINGS: Setting[] = [
 	},
 	{
 		description: 'databaseVersion of a PostgresCloudSQL',
-		build: function(name, overridden) {
-			const network = new gcp.compute.Network(`${name}-network`, { autoCreateSubnetworks: false });
-			const options: PostgresOptions = { region: 'us-central1', tier: 'db-f1-micro', vpcNetwork: network, createPeering: true };
-			if (overridden) {
-				return(new PostgresCloudSQL(name, { ...options, databaseVersion: 'POSTGRES_15' }));
+		build: {
+			fallback: function(name) {
+				return(buildPostgres(name, {}));
+			},
+			override: function(name) {
+				return(buildPostgres(name, { databaseVersion: 'POSTGRES_15' }));
 			}
-
-			return(new PostgresCloudSQL(name, options));
 		},
 		type: DATABASE_INSTANCE,
 		nameEnding: '',
@@ -197,21 +209,21 @@ describe('settings that P6 makes configurable', function() {
 		return([ setting.description, setting ]);
 	});
 
-	async function read(setting: Setting, overridden: boolean) {
-		const name = `settings-${setting.description.replace(/[^a-z]+/gi, '-').toLowerCase()}-${String(overridden)}`;
+	async function read(setting: Setting, mode: keyof Builds) {
+		const name = `settings-${setting.description.replace(/[^a-z]+/gi, '-').toLowerCase()}-${mode}`;
 		const tree = await captureTree(function() {
-			return(setting.build(name, overridden));
+			return(setting.build[mode](name));
 		});
 
 		return(expectAt(inputsOf(tree, setting.type, setting.nameEnding), setting.path, `the ${setting.description} input`));
 	}
 
 	it.each(rows)('%s keeps its default when the caller says nothing', async function(_description, setting) {
-		expect(await read(setting, false)).toEqual(setting.fallback);
+		expect(await read(setting, 'fallback')).toEqual(setting.fallback);
 	});
 
 	it.each(rows)('%s reaches the resource when the caller sets it', async function(_description, setting) {
-		expect(await read(setting, true)).toEqual(setting.override);
+		expect(await read(setting, 'override')).toEqual(setting.override);
 	});
 });
 
@@ -232,28 +244,26 @@ describe('ContainerMIG zone', function() {
 		[ 'zonal, with one warning, when zone is undefined', { zone: undefined }, ZONAL, 1 ]
 	];
 
-	afterEach(function() {
-		vi.restoreAllMocks();
-	});
-
 	it.each(rows)('is %s', async function(description, options, type, warnings) {
-		const warn = vi.spyOn(pulumi.log, 'warn');
-		const tree = await captureTree(function() {
-			return(buildMig(`zone-${description.replace(/[^a-z]+/g, '-')}`, options));
+		const { result: tree, warnings: messages } = await captureWarningsAsync(function() {
+			return(captureTree(function() {
+				return(buildMig(`zone-${description.replace(/[^a-z]+/g, '-')}`, options));
+			}));
 		});
 
 		expect(tree.resources.map(function(resource) {
 			return(resource.type);
 		})).toContain(type);
-		expect(warn).toHaveBeenCalledTimes(warnings);
+		expect(messages).toHaveLength(warnings);
 	});
 
 	it('names the zone in the warning', async function() {
-		const warn = vi.spyOn(pulumi.log, 'warn');
-		await captureTree(function() {
-			return(buildMig('zone-warning', { zone: undefined }));
+		const { warnings } = await captureWarningsAsync(function() {
+			return(captureTree(function() {
+				return(buildMig('zone-warning', { zone: undefined }));
+			}));
 		});
 
-		expect(warn).toHaveBeenCalledWith(expect.stringMatching(/zone/));
+		expect(warnings).toEqual([ expect.stringMatching(/zone/) ]);
 	});
 });
