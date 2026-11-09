@@ -431,7 +431,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 
 		const instance = new gcp.sql.DatabaseInstance(name, {
 			region: region,
-			databaseVersion: 'POSTGRES_14',
+			databaseVersion: 'POSTGRES_18',
 			deletionProtection: deletionProtection,
 			masterInstanceName: masterInstance?.name,
 			settings: {
