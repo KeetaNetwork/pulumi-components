@@ -260,7 +260,7 @@ describe('the type of worker.egress', function() {
 	it('is the three ways for the container VM worker and for the worker pool, and no other string', function() {
 		expectTypeOf<appsArgs.MigWorkerArgs['egress']>().toEqualTypeOf<Egress | undefined>();
 		expectTypeOf<appsArgs.CrwpWorkerArgs['egress']>().toEqualTypeOf<Egress | undefined>();
-		expectTypeOf<'bogus'>().not.toMatchTypeOf<appsArgs.MigWorkerArgs['egress']>();
-		expectTypeOf<'bogus'>().not.toMatchTypeOf<appsArgs.CrwpWorkerArgs['egress']>();
+		expectTypeOf<'bogus'>().not.toExtend<appsArgs.MigWorkerArgs['egress']>();
+		expectTypeOf<'bogus'>().not.toExtend<appsArgs.CrwpWorkerArgs['egress']>();
 	});
 });

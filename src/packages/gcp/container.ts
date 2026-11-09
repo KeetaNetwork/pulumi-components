@@ -479,6 +479,7 @@ export class ContainerMIG extends pulumi.ComponentResource {
 		router: gcp.compute.Router;
 		nat: gcp.compute.RouterNat;
 	};
+
 	subnetwork: ContainerMIGOptions['subnetwork'];
 	serviceAccount: ContainerMIGOptions['serviceAccount'];
 	readonly type = 'MIG' as const;
