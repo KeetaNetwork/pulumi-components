@@ -136,7 +136,7 @@ const localImageProvider: pulumi.dynamic.ResourceProvider = {
 };
 
 export class LocalDockerImageBuilder extends pulumi.dynamic.Resource {
-	public readonly digest!: pulumi.Output<string>;
+	declare public readonly digest: pulumi.Output<string>;
 
 	constructor(name: string, args: Exclude<DeepInput<LocalBuildInputs>, Promise<LocalBuildInputs>>, opts?: pulumi.CustomResourceOptions) {
 		super(localImageProvider, name, {
