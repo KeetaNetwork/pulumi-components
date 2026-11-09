@@ -1384,9 +1384,9 @@ export class CloudRunService extends pulumi.ComponentResource {
 		remote: ParsedRemote
 	) {
 		/*
-		 * The project comes from the arguments, as it did when the build had a
-		 * provider of its own; the resources of the build now use the provider
-		 * of the component, and the build only needs to know who the caller is
+		 * The project comes from the arguments. The resources of the build use
+		 * the provider of the component, and the build only needs to know who
+		 * the caller is
 		 */
 		const provider = callerOf(this, parsed.gcp.project);
 

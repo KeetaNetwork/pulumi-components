@@ -33,10 +33,10 @@ async function runJob(inputs: CloudRunJobExecutionInputs): Promise<ExecutionOutp
 	// eslint-disable-next-line @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-require-imports
 	const { JobsClient } = require('@google-cloud/run') as typeof runTypes;
 
-	/* Without `auth` the client finds the credentials of the environment itself, as it always did */
+	/* Without `auth` the client finds the credentials of the environment itself */
 	let clientOptions: ConstructorParameters<typeof JobsClient>[0];
 	if (inputs.auth !== undefined) {
-		clientOptions = { auth: googleAuthFrom(inputs.auth) };
+		clientOptions = { auth: await googleAuthFrom(inputs.auth) };
 	}
 
 	const client = new JobsClient(clientOptions);
@@ -148,11 +148,8 @@ export class CloudRunJobExecution extends pulumi.dynamic.Resource implements Pul
 			projectId: args.projectId,
 			region: args.region,
 			trigger: args.trigger,
-			auth: undefined
+			auth: clientAuthInputs(args.provider)
 		};
-		if (args.provider !== undefined) {
-			passArgs.auth = clientAuthInputs(args.provider);
-		}
 
 		super(cloudRunJobExecutionProvider, name, {
 			...passArgs,

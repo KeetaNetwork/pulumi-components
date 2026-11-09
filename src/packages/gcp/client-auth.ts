@@ -24,24 +24,34 @@ const CLOUD_PLATFORM_SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
 
 /**
  * The caller of a component: the project that its arguments name, and the
+ * account that the GCP resources of the component run as. That is the
  * account that the provider the component runs with (its `providers`)
- * impersonates, if any. Call it on the component, once it is registered.
+ * impersonates, or without such a provider, the `gcp:impersonateServiceAccount`
+ * of the stack configuration, which the default provider uses. Call it on the
+ * component, once it is registered.
  */
 export function callerOf(component: pulumi.Resource, project: pulumi.Input<string>): ClientAuthProvider {
 	const provider = component.getProvider('gcp::');
-	let impersonateServiceAccount: pulumi.Output<string | undefined> | undefined;
-	if (provider instanceof gcp.Provider) {
-		impersonateServiceAccount = provider.impersonateServiceAccount;
+	if (gcp.Provider.isInstance(provider)) {
+		return({ project: pulumi.output(project), impersonateServiceAccount: provider.impersonateServiceAccount });
 	}
 
-	return({ project: pulumi.output(project), impersonateServiceAccount });
+	const configured = new pulumi.Config('gcp').get('impersonateServiceAccount');
+
+	return({ project: pulumi.output(project), impersonateServiceAccount: pulumi.output(configured) });
 }
 
 /**
- * The project and the account to impersonate of the provider. Its
- * `accessToken` and `credentials` are never read.
+ * The project and the account to impersonate of the provider, or nothing
+ * without a provider. Its `accessToken` and `credentials` are never read.
  */
-export function clientAuthInputs(provider: ClientAuthProvider): pulumi.Output<ClientAuthInputs> {
+export function clientAuthInputs(provider: ClientAuthProvider): pulumi.Output<ClientAuthInputs>;
+export function clientAuthInputs(provider: ClientAuthProvider | undefined): pulumi.Output<ClientAuthInputs> | undefined;
+export function clientAuthInputs(provider: ClientAuthProvider | undefined): pulumi.Output<ClientAuthInputs> | undefined {
+	if (provider === undefined) {
+		return(undefined);
+	}
+
 	return(pulumi.output({
 		project: provider.project,
 		impersonateServiceAccount: provider.impersonateServiceAccount
@@ -49,29 +59,23 @@ export function clientAuthInputs(provider: ClientAuthProvider): pulumi.Output<Cl
 }
 
 /**
- * A `GoogleAuth` that resolves its credentials from Application Default
- * Credentials when it is used (nothing is called here), impersonating the
- * account of the inputs when there is one.
+ * A `GoogleAuth` for the inputs. Without an account to impersonate it finds
+ * Application Default Credentials when it is used. With one, it holds an
+ * `Impersonated` client that uses Application Default Credentials as its
+ * source, and no token is requested here.
  */
-export function googleAuthFrom(inputs: ClientAuthInputs, scopes: string[] = [ CLOUD_PLATFORM_SCOPE ]): GoogleAuth {
-	const auth = new GoogleAuth({ projectId: inputs.project, scopes });
-
+export async function googleAuthFrom(inputs: ClientAuthInputs, scopes: string[] = [ CLOUD_PLATFORM_SCOPE ]): Promise<GoogleAuth> {
 	const target = inputs.impersonateServiceAccount;
 	if (target === undefined) {
-		return(auth);
+		return(new GoogleAuth({ projectId: inputs.project, scopes }));
 	}
 
 	const source = new GoogleAuth({ projectId: inputs.project, scopes: [ CLOUD_PLATFORM_SCOPE ] });
-	let impersonated: Impersonated | undefined;
-	auth.getClient = async function() {
-		impersonated ??= new Impersonated({
-			sourceClient: await source.getClient(),
-			targetPrincipal: target,
-			targetScopes: scopes
-		});
+	const impersonated = new Impersonated({
+		sourceClient: await source.getClient(),
+		targetPrincipal: target,
+		targetScopes: scopes
+	});
 
-		return(impersonated);
-	};
-
-	return(auth);
+	return(new GoogleAuth({ projectId: inputs.project, scopes, authClient: impersonated }));
 }

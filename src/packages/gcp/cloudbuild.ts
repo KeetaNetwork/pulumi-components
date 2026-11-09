@@ -62,7 +62,7 @@ async function uploadSource(upload: SourceUploadInput, authInputs?: ClientAuthIn
 	const scopes = [ 'https://www.googleapis.com/auth/devstorage.read_write' ];
 	let auth = new googleAuth.GoogleAuth({ scopes });
 	if (authInputs !== undefined) {
-		auth = googleAuthFrom(authInputs, scopes);
+		auth = await googleAuthFrom(authInputs, scopes);
 	}
 
 	const client = await auth.getClient();
@@ -117,10 +117,10 @@ async function createBuild(inputs: CloudBuildInputs) {
 
 	const projectId = inputs.projectId;
 
-	/* Without `auth` the clients find the credentials of the environment themselves, as they always did */
+	/* Without `auth` the clients find the credentials of the environment themselves */
 	let gcpClientConfig: { projectId: string | undefined; auth?: googleAuth.GoogleAuth } = { projectId };
 	if (inputs.auth !== undefined) {
-		gcpClientConfig = { projectId, auth: googleAuthFrom(inputs.auth) };
+		gcpClientConfig = { projectId, auth: await googleAuthFrom(inputs.auth) };
 	}
 
 	const secretClient = new secretManager.SecretManagerServiceClient(gcpClientConfig);

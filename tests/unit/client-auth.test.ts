@@ -1,7 +1,11 @@
 import * as gcp from '@pulumi/gcp';
 import * as pulumi from '@pulumi/pulumi';
-import { GoogleAuth } from 'google-auth-library';
-import { describe, expect, it } from 'vitest';
+import { GoogleAuth, Impersonated } from 'google-auth-library';
+import { generateKeyPairSync } from 'node:crypto';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import type * as clientAuth from '../../src/packages/gcp/client-auth';
 import { expectRecord } from '../helpers/narrow';
@@ -9,7 +13,7 @@ import { resolveOutput } from '../helpers/outputs';
 import { requireSource } from './harness/load-sources';
 import { captureTree } from './harness/pulumi-tree';
 
-const { clientAuthInputs, googleAuthFrom } = requireSource<typeof clientAuth>('src/packages/gcp/client-auth.ts');
+const { callerOf, clientAuthInputs, googleAuthFrom } = requireSource<typeof clientAuth>('src/packages/gcp/client-auth.ts');
 
 async function inputsOfProvider(args: gcp.ProviderArgs) {
 	let inputs: unknown;
@@ -47,11 +51,92 @@ describe('clientAuthInputs', function() {
 	});
 });
 
+async function callerOfComponent(optionsOf: () => pulumi.ComponentResourceOptions) {
+	let caller: unknown;
+	await captureTree(async function() {
+		const component = new pulumi.ComponentResource('test:index:Caller', 'caller', {}, optionsOf());
+		caller = await resolveOutput(pulumi.output(clientAuthInputs(callerOf(component, 'project-id'))));
+	});
+
+	return(expectRecord(caller, 'the caller'));
+}
+
+/*
+ * The builds, uploads, migrations and pushes of a component run as the
+ * account that its GCP resources run as.
+ */
+describe('callerOf', function() {
+	const configured = 'configured@project-id.iam.gserviceaccount.com';
+
+	beforeAll(function() {
+		pulumi.runtime.setAllConfig({ 'gcp:impersonateServiceAccount': configured });
+	});
+
+	afterAll(function() {
+		pulumi.runtime.setAllConfig({});
+	});
+
+	it('takes the account of the stack configuration when the component has no GCP provider', async function() {
+		expect(await callerOfComponent(function() { return({}); })).toEqual({ project: 'project-id', impersonateServiceAccount: configured });
+	});
+
+	it('takes the account of the GCP provider of the component over the stack configuration', async function() {
+		const caller = await callerOfComponent(function() {
+			return({ providers: [ new gcp.Provider('explicit', { project: 'project-id', impersonateServiceAccount: 'explicit@project-id.iam.gserviceaccount.com' }) ] });
+		});
+
+		expect(caller.impersonateServiceAccount).toBe('explicit@project-id.iam.gserviceaccount.com');
+	});
+});
+
+/*
+ * Application Default Credentials of a made-up service account: loading them
+ * needs no network, and no test asks for a token.
+ */
+function useFakeApplicationDefaultCredentials() {
+	let directory: string | undefined;
+
+	beforeAll(function() {
+		directory = fs.mkdtempSync(path.join(os.tmpdir(), 'client-auth-'));
+		const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+		const keyFile = path.join(directory, 'adc.json');
+		fs.writeFileSync(keyFile, JSON.stringify({
+			type: 'service_account',
+			project_id: 'project-id',
+			client_email: 'adc@project-id.iam.gserviceaccount.com',
+			private_key: privateKey.export({ type: 'pkcs8', format: 'pem' })
+		}));
+		vi.stubEnv('GOOGLE_APPLICATION_CREDENTIALS', keyFile);
+	});
+
+	afterAll(function() {
+		vi.unstubAllEnvs();
+		if (directory !== undefined) {
+			fs.rmSync(directory, { recursive: true, force: true });
+		}
+	});
+}
+
 describe('googleAuthFrom', function() {
-	it.each([
-		[ 'a project and an account to impersonate', { project: 'project-id', impersonateServiceAccount: 'deployer@project-id.iam.gserviceaccount.com' } ],
-		[ 'a project only', { project: 'project-id' } ]
-	])('builds a GoogleAuth from %s without calling anything', function(_description, inputs) {
-		expect(googleAuthFrom(inputs)).toBeInstanceOf(GoogleAuth);
+	useFakeApplicationDefaultCredentials();
+
+	const target = 'deployer@project-id.iam.gserviceaccount.com';
+	const scopes = [ 'https://www.googleapis.com/auth/devstorage.read_write' ];
+
+	it('impersonates the account of the inputs with the scopes it is given', async function() {
+		const auth = await googleAuthFrom({ project: 'project-id', impersonateServiceAccount: target }, scopes);
+		const client = await auth.getClient();
+
+		expect(client).toBeInstanceOf(Impersonated);
+		expect(client).toMatchObject({ targetPrincipal: target, targetScopes: scopes });
+	});
+
+	it('uses the credentials of the environment when the inputs name no account', async function() {
+		const auth = await googleAuthFrom({ project: 'project-id' }, scopes);
+		const client = await auth.getClient();
+
+		expect(auth).toBeInstanceOf(GoogleAuth);
+		expect(client).not.toBeInstanceOf(Impersonated);
+		expect(client).toMatchObject({ email: 'adc@project-id.iam.gserviceaccount.com' });
 	});
 });
