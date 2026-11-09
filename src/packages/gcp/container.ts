@@ -41,6 +41,8 @@ interface ContainerGenericOptions<SupportSecretRefEnvs extends boolean> {
 	 * (logging and metrics) that the identity grants to the service account,
 	 * this does not: its own grant stays as a retained tombstone, so the
 	 * binding that exists is never revoked. Any other role is granted here.
+	 *
+	 * @internal Set by `CloudRunService`, which owns the identity; a component you build yourself grants for itself.
 	 */
 	identity?: ServiceIdentityRef;
 
@@ -786,6 +788,16 @@ export class ContainerCloudRun extends pulumi.ComponentResource {
 				region: region,
 				description: `[${name}] Cloud NAT router for Cloud Run Worker Pool`
 			}, { parent: this });
+
+			new gcp.compute.Route(`${name}-nat-default-route`, {
+				network: networkID,
+				destRange: "0.0.0.0/0",
+				nextHopGateway: "default-internet-gateway",
+				priority: 1000
+			}, {
+				parent: this,
+				dependsOn: [nat]
+			});
 
 			this.cloudNAT = {
 				router: router,

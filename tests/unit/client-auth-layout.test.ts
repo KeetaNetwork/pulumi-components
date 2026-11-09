@@ -36,7 +36,7 @@ class GoogleAuth {
 		this.library = exports.version;
 	}
 	async getClient() {
-		return(new Credentials(this.library));
+		return(this.options?.authClient ?? new Credentials(this.library));
 	}
 }
 class Impersonated {
@@ -95,15 +95,13 @@ exports.GoogleAuth = exports.googleAuthLibrary.GoogleAuth;
 `;
 
 const SCRIPT = `
-const { authenticateAs } = require('./client-auth.js');
+const { googleAuthForClient } = require('./client-auth.js');
 const { CloudBuildClient } = require('@google-cloud/cloudbuild');
 
 async function main() {
-	const plain = new CloudBuildClient({ projectId: 'project-id' });
-	authenticateAs(plain, '@google-cloud/cloudbuild', { project: 'project-id' });
+	const plain = new CloudBuildClient({ projectId: 'project-id', auth: await googleAuthForClient('@google-cloud/cloudbuild', { project: 'project-id' }) });
 
-	const impersonating = new CloudBuildClient({ projectId: 'project-id' });
-	authenticateAs(impersonating, '@google-cloud/cloudbuild', { project: 'project-id', impersonateServiceAccount: 'deployer@project-id.iam.gserviceaccount.com' });
+	const impersonating = new CloudBuildClient({ projectId: 'project-id', auth: await googleAuthForClient('@google-cloud/cloudbuild', { project: 'project-id', impersonateServiceAccount: 'deployer@project-id.iam.gserviceaccount.com' }) });
 
 	console.log(JSON.stringify({ plain: await plain.call(), impersonating: await impersonating.call() }));
 }
@@ -122,7 +120,7 @@ function compiled() {
 	return(output.outputText);
 }
 
-describe('authenticateAs in the layout of a consumer', function() {
+describe('googleAuthForClient in the layout of a consumer', function() {
 	const directories = useTempDirectories();
 
 	function run(topLevelHeaders: (source: string) => string) {
@@ -148,7 +146,7 @@ describe('authenticateAs in the layout of a consumer', function() {
 
 		expect(result.stderr).toBe('');
 		expect(result.status).toBe(0);
-		/* The plain client is left to find its own credentials, and the impersonated one is made of the library of the client, over those */
+		/* The plain client is left to find its own credentials, and the impersonated one is made of the library of the client */
 		expect(JSON.parse(result.stdout)).toEqual({ plain: 'of-gax', impersonating: 'of-gax' });
 	});
 });

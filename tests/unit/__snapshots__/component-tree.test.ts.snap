@@ -46,6 +46,30 @@ exports[`component tree > provider propagation > gives the passed provider to th
 }
 `;
 
+exports[`component tree > snapshot > ecdsa-key-pair keeps its resources, parents, aliases and key inputs 1`] = `
+[
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "algorithm": "ECDSA",
+      "ecdsaCurve": "P256",
+    },
+    "name": "ecdsa-key-pair-keypair",
+    "parent": "Keeta:Crypto:ECDSAKeyPair::ecdsa-key-pair",
+    "type": "tls:index/privateKey:PrivateKey",
+    "urn": "Keeta:Crypto:ECDSAKeyPair$tls:index/privateKey:PrivateKey::ecdsa-key-pair-keypair",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "ecdsa-key-pair",
+    "type": "Keeta:Crypto:ECDSAKeyPair",
+    "urn": "Keeta:Crypto:ECDSAKeyPair::ecdsa-key-pair",
+  },
+]
+`;
+
 exports[`component tree > snapshot > external-load-balancer keeps its resources, parents, aliases and key inputs 1`] = `
 [
   {
@@ -3028,6 +3052,20 @@ exports[`component tree > snapshot > service-crwp keeps its resources, parents, 
     "aliases": [],
     "custom": true,
     "inputs": {
+      "destRange": "0.0.0.0/0",
+      "network": "self-link.service-crwp-vpc",
+      "nextHopGateway": "default-internet-gateway",
+      "priority": 1000,
+    },
+    "name": "service-crwp-crwp-nat-default-route",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun::service-crwp-crwp",
+    "type": "gcp:compute/route:Route",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun$gcp:compute/route:Route::service-crwp-crwp-nat-default-route",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
       "description": "[service-crwp-crwp] Cloud NAT router for Cloud Run Worker Pool",
       "network": "self-link.service-crwp-vpc",
       "region": "us-central1",
@@ -4078,6 +4116,36 @@ exports[`component tree > snapshot > service-environment keeps its resources, pa
 
 exports[`component tree > snapshot > service-kv keeps its resources, parents, aliases and key inputs 1`] = `
 [
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/firewall:Firewall::service-kv-kv-firewall",
+    ],
+    "custom": true,
+    "inputs": {
+      "allows": [
+        {
+          "ports": [
+            "6379",
+          ],
+          "protocol": "tcp",
+        },
+      ],
+      "description": "Allow VPC connector for to access KV (Redis)",
+      "destinationRanges": [
+        "redis.service-kv-kv/32",
+      ],
+      "direction": "EGRESS",
+      "network": "service-kv-vpc-id",
+      "priority": 850,
+      "sourceRanges": [
+        "10.97.36.0/28",
+      ],
+    },
+    "name": "service-kv-kv-firewall",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-kv-network",
+    "type": "gcp:compute/firewall:Firewall",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:compute/firewall:Firewall::service-kv-kv-firewall",
+  },
   {
     "aliases": [
       "Keeta:GCP:CloudRunService$gcp:compute/network:Network::service-kv-vpc",

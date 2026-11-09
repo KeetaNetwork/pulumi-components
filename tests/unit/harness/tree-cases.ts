@@ -2,6 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as gcp from '@pulumi/gcp';
 
+import type * as crypto from '../../../src/packages/crypto';
 import type * as apps from '../../../src/packages/gcp/apps';
 import type * as container from '../../../src/packages/gcp/container';
 import type * as lb from '../../../src/packages/gcp/lb';
@@ -14,6 +15,7 @@ const { ContainerCloudRun, ContainerMIG } = requireSource<typeof container>('src
 const { MigrationJob } = requireSource<typeof migration>('src/packages/gcp/migration.ts');
 const { ExternalLoadBalancer, InternalLoadBalancer } = requireSource<typeof lb>('src/packages/gcp/lb.ts');
 const { PostgresCloudSQL } = requireSource<typeof sql>('src/packages/gcp/sql.ts');
+const { ECDSAKeyPair } = requireSource<typeof crypto>('src/packages/crypto.ts');
 
 const fixtures = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../fixtures');
 const APP_DIRECTORY = path.join(fixtures, 'app');
@@ -265,6 +267,12 @@ export const TREE_CASES: TreeCase[] = [
 				domainName: 'app.example.com',
 				allowedSources: [ '10.0.0.0/8' ]
 			}));
+		}
+	},
+	{
+		name: 'ecdsa-key-pair',
+		build: function() {
+			return(new ECDSAKeyPair('ecdsa-key-pair', { curve: 'P256' }));
 		}
 	}
 ];

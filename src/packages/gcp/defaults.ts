@@ -30,9 +30,11 @@ export const POSTGRES_DEFAULTS = deepFreeze({
 	version: 'POSTGRES_14',
 	queryStringLength: 4500,
 	maxConnections: 25000,
+	deletionProtection: false,
+	queryInsights: false,
 
 	/** Prefix length of the private service access range that the instance is reached through */
-	privateAccessPrefixLength: 16
+	psaPrefixLength: 16
 });
 
 /**
@@ -85,7 +87,7 @@ export const CLOUD_RUN_SERVICE_DEFAULTS = deepFreeze({
 		},
 
 		/** Prefix length of the private service access range (the Cloud SQL peering) */
-		psaPrefixLength: POSTGRES_DEFAULTS.privateAccessPrefixLength
+		psaPrefixLength: POSTGRES_DEFAULTS.psaPrefixLength
 	},
 
 	kv: {
@@ -97,10 +99,12 @@ export const CLOUD_RUN_SERVICE_DEFAULTS = deepFreeze({
 	worker: {
 		machineType: 'e2-micro',
 		egress: 'vpc',
+		instanceCount: 1,
+		enableSSH: false,
 
 		/** The range that GCP uses for IAP and the priority of the firewall that lets it reach SSH */
-		sshIapRange: '35.235.240.0/20',
-		sshIapPriority: 900
+		sshIAPRange: '35.235.240.0/20',
+		sshIAPPriority: 900
 	}
 });
 

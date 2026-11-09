@@ -55,6 +55,30 @@ interface Rule {
 
 const RULES: Rule[] = [
 	{
+		rule: 'service.maxInstances and the maxScale annotation are not both given',
+		outside: { service: { maxInstances: 3, annotations: { 'autoscaling.knative.dev/maxScale': '3' }}},
+		inside: { service: { maxInstances: 3 }},
+		message: /service\.maxInstances.*maxScale.*give one of them/
+	},
+	{
+		rule: 'worker.poolSize comes with database.poolSize',
+		outside: { database: {}, worker: { kind: 'crwp', poolSize: 5 }},
+		inside: { database: { poolSize: 5 }, worker: { kind: 'crwp', poolSize: 5 }},
+		message: /worker\.poolSize requires database\.poolSize/
+	},
+	{
+		rule: 'database.poolSize and environment do not both set MC_PSQL_DB_POOL_SIZE',
+		outside: { database: { poolSize: 5 }, environment: { MC_PSQL_DB_POOL_SIZE: '5' }},
+		inside: { database: { poolSize: 5 }},
+		message: /database\.poolSize sets MC_PSQL_DB_POOL_SIZE.*environment/
+	},
+	{
+		rule: 'worker.poolSize and worker.environmentOverrides do not both set MC_PSQL_DB_POOL_SIZE',
+		outside: { database: { poolSize: 5 }, worker: { kind: 'crwp', poolSize: 5, environmentOverrides: { MC_PSQL_DB_POOL_SIZE: '5' }}},
+		inside: { database: { poolSize: 5 }, worker: { kind: 'crwp', poolSize: 5 }},
+		message: /worker\.poolSize sets MC_PSQL_DB_POOL_SIZE.*worker\.environmentOverrides/
+	},
+	{
 		rule: 'an image needs a uri or a build',
 		outside: { image: {}},
 		inside: { image: { uri: IMAGE }},
@@ -140,15 +164,49 @@ describe('parseCloudRunServiceArgs rules', function() {
 	});
 });
 
+/* A count is a whole number of 1 or more: 0 would mean no instance and 1.5 half of one */
+const COUNTS: { argument: string; given: (count: number) => unknown }[] = [
+	{ argument: 'service.maxInstances', given: function(count) {
+		return({ service: { maxInstances: count }});
+	}},
+	{ argument: 'database.poolSize', given: function(count) {
+		return({ database: { poolSize: count }});
+	}},
+	{ argument: 'worker.poolSize', given: function(count) {
+		return({ database: { poolSize: 5 }, worker: { kind: 'crwp', poolSize: count }});
+	}}
+];
+
+describe('parseCloudRunServiceArgs counts', function() {
+	it.each(COUNTS)('accepts a count of 1 for $argument', function(testCase) {
+		expect(function() {
+			return(parse(testCase.given(1)));
+		}).not.toThrow();
+	});
+
+	it.each(COUNTS.flatMap(function(testCase) {
+		return([ 0, 1.5 ].map(function(count) {
+			return({ argument: testCase.argument, count, given: testCase.given });
+		}));
+	}))('rejects $count for $argument', function(testCase) {
+		expect(function() {
+			return(parse(testCase.given(testCase.count)));
+		}).toThrow(new RegExp(`${testCase.argument.replace('.', '\\.')} must be a whole number of 1 or more`));
+	});
+});
+
 describe('CloudRunService with arguments the parser rejects', function() {
 	useIsolatedHome();
 
 	it.each(RULE_ROWS)('is rejected by the parser when %s', async function(rule, row) {
 		const name = `rejected-${rule.replace(/ /g, '-')}`;
 
-		await expect(captureTree(function() {
+		const result = captureTree(function() {
 			return(new CloudRunService(name, callerArgs(row.outside)));
-		})).rejects.toThrow(CloudRunServiceArgsError);
+		});
+
+		await expect(result).rejects.toThrow(CloudRunServiceArgsError);
+		await expect(result).rejects.toThrow(row.message);
 	});
 });
 

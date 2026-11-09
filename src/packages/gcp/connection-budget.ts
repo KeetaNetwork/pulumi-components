@@ -43,6 +43,55 @@ export class ConnectionBudgetExceededError extends Error {
 	}
 }
 
+/** Thrown when `maxConnections` and `flags.max_connections` both say how many connections there are */
+export class MaxConnectionsConflictError extends Error {
+	constructor() {
+		super('maxConnections and flags.max_connections both set max_connections, give one of them');
+		this.name = 'MaxConnectionsConflictError';
+	}
+}
+
+/** What sets the `max_connections` of a database: the flag, `maxConnections`, or neither (the tier decides) */
+export interface MaxConnectionsSource {
+	flags?: { max_connections?: number };
+	maxConnections?: number | 'tier-default';
+}
+
+/**
+ * Checks that `maxConnections` and `flags.max_connections` are not both given
+ * (a flag that is `undefined` is not given)
+ *
+ * @throws MaxConnectionsConflictError when they are
+ */
+export function assertMaxConnectionsUnambiguous(source: MaxConnectionsSource): void {
+	if (source.flags?.max_connections !== undefined && source.maxConnections !== undefined) {
+		throw(new MaxConnectionsConflictError());
+	}
+}
+
+/**
+ * The one resolver of `max_connections`: the flag, else a number in
+ * `maxConnections`, else the default of the tier. The budget of
+ * `PostgresCloudSQL` and the check of `CloudRunService` both read it.
+ *
+ * @throws MaxConnectionsConflictError when the flag and `maxConnections` are both given
+ * @throws Error naming the tier when neither is given and the tier is not one that the library knows
+ */
+export function resolveMaxConnections(source: MaxConnectionsSource & { tier: string }): number {
+	assertMaxConnectionsUnambiguous(source);
+
+	const flag = source.flags?.max_connections;
+	if (flag !== undefined) {
+		return(flag);
+	}
+
+	if (typeof source.maxConnections === 'number') {
+		return(source.maxConnections);
+	}
+
+	return(tierDefaultMaxConnections(parseCloudSqlTier(source.tier)));
+}
+
 /** Reads the name of a tier. Never throws: a tier that is not known is a shape, and only a default asked of it fails. */
 export function parseCloudSqlTier(tier: string): TierShape {
 	const shared = CLOUD_SQL_CONNECTION_DEFAULTS.shared.find(function(entry) {

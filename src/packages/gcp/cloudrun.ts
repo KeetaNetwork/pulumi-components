@@ -34,10 +34,13 @@ interface CloudRunEnvManagerInput {
 	 * a secret that the caller owns is the same grant as the binding of this
 	 * environment, and deleting it would revoke the access that this one
 	 * relies on, so it is kept here, retained, at its old URN.
+	 *
+	 * @internal Set by `CloudRunService` for the managers it replaces.
 	 */
 	replaces?: ReplacedEnvironment[];
 }
 
+/** @internal A manager of 1.0.95 that an `EnvManager` replaces (see `replaces`) */
 export interface ReplacedEnvironment {
 	/** The name of the manager of 1.0.95 (it is the prefix of its resources) */
 	name: string;
