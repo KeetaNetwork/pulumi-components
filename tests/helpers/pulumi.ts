@@ -166,7 +166,7 @@ function operationKey(workDir: string, stackName: string): string {
 
 /**
  * Run an operation on a stack and record it until it ends
- * @param run - The operation; it checks the signal before every Pulumi command
+ * @param run - The operation; it passes the signal to every Pulumi command
  */
 async function trackOperation<T>(workDir: string, stackName: string, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
 	const key = operationKey(workDir, stackName);
@@ -184,9 +184,8 @@ async function trackOperation<T>(workDir: string, stackName: string, run: (signa
 }
 
 /**
- * Stop the stack's running operation, if any, before its next Pulumi command,
- * and wait until it ended. A Pulumi command already running completes, so
- * Pulumi saves its state and releases the lock.
+ * Cancel the stack's running operation, if any, and wait until it ended.
+ * Aborting sends SIGINT, so Pulumi saves its state and releases the lock.
  */
 async function endInFlightOperation(workDir: string, stackName: string): Promise<void> {
 	const operation = inFlightOperations.get(operationKey(workDir, stackName));
@@ -231,7 +230,7 @@ export async function deployStack(
 
 		// A teardown that began during the steps above must not race an "up"
 		signal.throwIfAborted();
-		const upResult = await stack.up({ onOutput });
+		const upResult = await stack.up({ onOutput, signal });
 
 		if (upResult.summary.result !== 'succeeded') {
 			throw(new Error(`Deployment failed with status '${upResult.summary.result}': ${upResult.summary.message}`));
@@ -356,7 +355,7 @@ export async function refreshStack(projectDir: string, stackName: string): Promi
 		});
 
 		signal.throwIfAborted();
-		await stack.refresh({ onOutput });
+		await stack.refresh({ onOutput, signal });
 	});
 }
 
@@ -379,6 +378,7 @@ export async function previewStack(projectDir: string, stackName: string): Promi
 		signal.throwIfAborted();
 		await stack.preview({
 			onOutput,
+			signal,
 			onEvent: function(event) {
 				const metadata = event.resourcePreEvent?.metadata;
 				if (metadata) {
