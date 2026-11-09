@@ -196,11 +196,12 @@ const SETTINGS: Setting[] = [
 ];
 
 /*
- * Each setting P6 adds has a default (the value of 1.0.95, which the P2
- * snapshot pins for the cases it covers) and an override. These captures
- * check the override on the input of the resource it is meant for.
+ * Each setting that can be overridden has a default (the value of 1.0.95,
+ * which the component tree snapshot pins for the cases it covers) and an
+ * override. These captures check the override on the input of the resource
+ * it is meant for.
  */
-describe('settings that P6 makes configurable', function() {
+describe('settings that can be overridden', function() {
 	useIsolatedHome();
 
 	const rows = SETTINGS.map(function(setting): [ string, Setting ] {

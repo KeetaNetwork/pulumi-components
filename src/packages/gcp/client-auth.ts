@@ -1,8 +1,7 @@
 import * as pulumi from '@pulumi/pulumi';
 import * as gcp from '@pulumi/gcp';
 import { createRequire } from 'node:module';
-import { GoogleAuth, Impersonated } from 'google-auth-library';
-import type * as GoogleAuthLibrary from 'google-auth-library';
+import * as GoogleAuthLibrary from 'google-auth-library';
 
 /**
  * What identifies the caller of a dynamic resource, and nothing that
@@ -26,24 +25,34 @@ const CLOUD_PLATFORM_SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
 
 /**
  * The caller of a component: the project that its arguments name, and the
+ * account that the GCP resources of the component run as. That is the
  * account that the provider the component runs with (its `providers`)
- * impersonates, if any. Call it on the component, once it is registered.
+ * impersonates, or without such a provider, the `gcp:impersonateServiceAccount`
+ * of the stack configuration, which the default provider uses. Call it on the
+ * component, once it is registered.
  */
 export function callerOf(component: pulumi.Resource, project: pulumi.Input<string>): ClientAuthProvider {
 	const provider = component.getProvider('gcp::');
-	let impersonateServiceAccount: pulumi.Output<string | undefined> | undefined;
-	if (provider instanceof gcp.Provider) {
-		impersonateServiceAccount = provider.impersonateServiceAccount;
+	if (gcp.Provider.isInstance(provider)) {
+		return({ project: pulumi.output(project), impersonateServiceAccount: provider.impersonateServiceAccount });
 	}
 
-	return({ project: pulumi.output(project), impersonateServiceAccount });
+	const configured = new pulumi.Config('gcp').get('impersonateServiceAccount');
+
+	return({ project: pulumi.output(project), impersonateServiceAccount: pulumi.output(configured) });
 }
 
 /**
- * The project and the account to impersonate of the provider. Its
- * `accessToken` and `credentials` are never read.
+ * The project and the account to impersonate of the provider, or nothing
+ * without a provider. Its `accessToken` and `credentials` are never read.
  */
-export function clientAuthInputs(provider: ClientAuthProvider): pulumi.Output<ClientAuthInputs> {
+export function clientAuthInputs(provider: ClientAuthProvider): pulumi.Output<ClientAuthInputs>;
+export function clientAuthInputs(provider: ClientAuthProvider | undefined): pulumi.Output<ClientAuthInputs> | undefined;
+export function clientAuthInputs(provider: ClientAuthProvider | undefined): pulumi.Output<ClientAuthInputs> | undefined {
+	if (provider === undefined) {
+		return(undefined);
+	}
+
 	return(pulumi.output({
 		project: provider.project,
 		impersonateServiceAccount: provider.impersonateServiceAccount
@@ -51,37 +60,36 @@ export function clientAuthInputs(provider: ClientAuthProvider): pulumi.Output<Cl
 }
 
 /**
- * A `GoogleAuth` that resolves its credentials from Application Default
- * Credentials when it is used (nothing is called here), impersonating the
- * account of the inputs when there is one.
- *
- * It is made of the `google-auth-library` of this package's own consumer, so
- * it is only for code that uses that library on its own. Do not hand it to a
- * Google Cloud client: the client's `google-gax` may use another version of
- * the library, and the two do not agree on their types of headers. Use
- * `authenticateAs` for a client.
+ * A `GoogleAuth` of the library given, for the inputs. Without an account to
+ * impersonate it finds Application Default Credentials when it is used. With
+ * one, it holds an `Impersonated` client that uses Application Default
+ * Credentials as its source, and no token is requested here.
  */
-export function googleAuthFrom(inputs: ClientAuthInputs, scopes: string[] = [ CLOUD_PLATFORM_SCOPE ]): GoogleAuth {
-	const auth = new GoogleAuth({ projectId: inputs.project, scopes });
-
+async function googleAuthOf(library: typeof GoogleAuthLibrary, inputs: ClientAuthInputs, scopes: string[]): Promise<GoogleAuthLibrary.GoogleAuth> {
 	const target = inputs.impersonateServiceAccount;
 	if (target === undefined) {
-		return(auth);
+		return(new library.GoogleAuth({ projectId: inputs.project, scopes }));
 	}
 
-	const source = new GoogleAuth({ projectId: inputs.project, scopes: [ CLOUD_PLATFORM_SCOPE ] });
-	let impersonated: Impersonated | undefined;
-	auth.getClient = async function() {
-		impersonated ??= new Impersonated({
-			sourceClient: await source.getClient(),
-			targetPrincipal: target,
-			targetScopes: scopes
-		});
+	const source = new library.GoogleAuth({ projectId: inputs.project, scopes: [ CLOUD_PLATFORM_SCOPE ] });
+	const impersonated = new library.Impersonated({
+		sourceClient: await source.getClient(),
+		targetPrincipal: target,
+		targetScopes: scopes
+	});
 
-		return(impersonated);
-	};
+	return(new library.GoogleAuth({ projectId: inputs.project, scopes, authClient: impersonated }));
+}
 
-	return(auth);
+/**
+ * A `GoogleAuth` for the inputs, made of the `google-auth-library` of this
+ * package's own consumer. It is only for code that uses that library on its
+ * own. Do not hand it to a Google Cloud client: the client's `google-gax` may
+ * use another version of the library, and the two do not agree on their
+ * types of headers. Use `googleAuthForClient` for a client.
+ */
+export async function googleAuthFrom(inputs: ClientAuthInputs, scopes: string[] = [ CLOUD_PLATFORM_SCOPE ]): Promise<GoogleAuthLibrary.GoogleAuth> {
+	return(await googleAuthOf(GoogleAuthLibrary, inputs, scopes));
 }
 
 function isAuthLibrary(value: unknown): value is typeof GoogleAuthLibrary {
@@ -105,31 +113,18 @@ function authLibraryOf(clientPackage: string): typeof GoogleAuthLibrary {
 }
 
 /**
- * Makes a Google Cloud client (one built on `google-gax`) call as the
- * account that the inputs name. Without an account to impersonate the client
- * is left as it is: it finds the credentials of the environment on its own.
+ * The `auth` option of a Google Cloud client (one built on `google-gax`) that
+ * calls as the account that the inputs name. Without inputs or an account to
+ * impersonate it is `undefined`, and the client finds the credentials of the
+ * environment on its own.
  *
- * The impersonation is built from the `google-auth-library` of the client's
- * own `google-gax` and wraps the credentials the client found, so the client
- * never meets an object of another version of the library.
+ * It is made of the `google-auth-library` of the client's own `google-gax`,
+ * so the client never meets an object of another version of the library.
  */
-export function authenticateAs(client: { auth: GoogleAuthLibrary.GoogleAuth }, clientPackage: string, inputs: ClientAuthInputs): void {
-	const target = inputs.impersonateServiceAccount;
-	if (target === undefined) {
-		return;
+export async function googleAuthForClient(clientPackage: string, inputs: ClientAuthInputs | undefined): Promise<GoogleAuthLibrary.GoogleAuth | undefined> {
+	if (inputs?.impersonateServiceAccount === undefined) {
+		return(undefined);
 	}
 
-	const library = authLibraryOf(clientPackage);
-	const auth = client.auth;
-	const getEnvironmentClient = auth.getClient.bind(auth);
-	let impersonated: GoogleAuthLibrary.Impersonated | undefined;
-	auth.getClient = async function() {
-		impersonated ??= new library.Impersonated({
-			sourceClient: await getEnvironmentClient(),
-			targetPrincipal: target,
-			targetScopes: [ CLOUD_PLATFORM_SCOPE ]
-		});
-
-		return(impersonated);
-	};
+	return(await googleAuthOf(authLibraryOf(clientPackage), inputs, [ CLOUD_PLATFORM_SCOPE ]));
 }
