@@ -83,9 +83,9 @@ export function selectStacksToClean(
 			continue;
 		}
 
-		const lastUpdate = summary.lastUpdate === undefined ? NaN : Date.parse(summary.lastUpdate);
+		const lastUpdate = summary.lastUpdate === undefined ? Number.NaN : Date.parse(summary.lastUpdate);
 		const createdMatch = /-(\d{13})$/.exec(name);
-		const createdAt = createdMatch === null ? NaN : Number(createdMatch[1]);
+		const createdAt = createdMatch === null ? Number.NaN : Number(createdMatch[1]);
 		const touchedAt = Math.max(...[lastUpdate, createdAt].filter(Number.isFinite));
 		if (!Number.isFinite(touchedAt)) {
 			console.warn(`Skipping stack ${name}: neither its last update nor its name gives its age`);
