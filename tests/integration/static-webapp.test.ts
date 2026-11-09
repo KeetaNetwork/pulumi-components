@@ -1,9 +1,9 @@
 import { describe, it, expect, afterAll } from 'vitest';
-import { deployStack, destroyStack, type StackOutputs } from '../helpers/pulumi';
+import { deployStack, destroyStack, testStackName, type StackOutputs } from '../helpers/pulumi';
 import { expectRecord, expectString } from '../helpers/narrow';
 
 describe('StaticWebApp', function() {
-	const stackName = `test-${Date.now()}`;
+	const stackName = testStackName('sw');
 	let outputs: StackOutputs | undefined;
 
 	it('deploys and serves content', async function() {
