@@ -54,6 +54,8 @@ export interface MigrationJobArgs {
 	 * The identity of the app that this is part of. When it grants the Cloud
 	 * SQL client role to the service account, this does not (its own grant
 	 * stays as a retained tombstone, so the binding is never revoked).
+	 *
+	 * @internal Set by `CloudRunService`, which owns the identity; a component you build yourself grants for itself.
 	 */
 	identity?: ServiceIdentityRef;
 
