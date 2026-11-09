@@ -110,7 +110,8 @@ export interface MigrationJobArgs {
 	taskTimeout?: number;
 
 	/**
-	 * Additional environment variables. Ignored when `env` is given.
+	 * Additional environment variables. Cannot be combined with `env`:
+	 * give the variables to the environment that `env` is a view of.
 	 */
 	environment?: EnvironmentVariables;
 
@@ -150,6 +151,10 @@ export class MigrationJob extends pulumi.ComponentResource {
 
 	constructor(name: string, args: MigrationJobArgs, opts?: pulumi.ComponentResourceOptions) {
 		super('Keeta:GCP:MigrationJob', name, args, opts);
+
+		if (args.env !== undefined && args.environment !== undefined) {
+			throw(new TypeError('MigrationJob: environment and env cannot both be given, the variables come from the environment that env is a view of'));
+		}
 
 		// Extract database connection info
 		let dbHost: pulumi.Input<string>;
