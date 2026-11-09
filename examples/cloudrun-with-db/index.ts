@@ -85,3 +85,11 @@ export const apiTokenReference = backend.service.template.apply(function(templat
 
 	return(entry?.valueFrom?.secretKeyRef);
 });
+
+// The image that the service runs, pinned by the digest of the local build
+export const deployedImage = backend.service.template.apply(function(template) {
+	return(template?.spec.containers[0]?.image);
+});
+
+// The status of the migration run, as the dynamic resource of the run reported it
+export const migrationStatus = backend.migration?.status;

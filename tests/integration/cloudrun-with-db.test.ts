@@ -2,7 +2,7 @@ import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
 import { describe, it, expect, afterAll } from 'vitest';
 import { deployStack, destroyStack, testStackName, type StackOutputs } from '../helpers/pulumi';
 import { expectRecord, expectString } from '../helpers/narrow';
-import { expectHealthyDatabaseService, expectMigrationsApplied } from '../helpers/service-checks';
+import { expectDynamicOutputs, expectHealthyDatabaseService, expectMigrationsApplied } from '../helpers/service-checks';
 
 const EXAMPLE = 'examples/cloudrun-with-db';
 
@@ -38,6 +38,9 @@ describe('CloudRunService with Database', function() {
 
 		// Verify migrations ran by querying the test_migrations table
 		await expectMigrationsApplied(`${serviceUrl}/migrations`);
+
+		// The dynamic resources report their outputs: the digest of the local build pins the image, and the run of the migration reports its status
+		expectDynamicOutputs(outputs);
 	}, 1_800_000); // 30 min timeout for Cloud SQL + image build
 
 	it('rolls onto a new secret version when the secret value changes, and disables the old one', async function() {
