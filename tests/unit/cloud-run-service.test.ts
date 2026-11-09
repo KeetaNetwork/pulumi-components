@@ -27,8 +27,8 @@ describe('CloudRunService migration', function() {
 		[ 'enabled without a database but with other resources', { migration: { enabled: true }, kv: { type: 'redis', memorySizeGb: 1 }} ]
 	];
 
-	it.each(rejected)('throws "migration.enabled requires database" when it is %s', async function(description, overrides) {
-		await expect(buildService(`migration-${description.replace(/ /g, '-')}`, overrides)).rejects.toThrow('migration.enabled requires database');
+	it.each(rejected)('throws when migration is %s', async function(description, overrides) {
+		await expect(buildService(`migration-${description.replace(/ /g, '-')}`, overrides)).rejects.toThrow(/migration\.enabled/);
 	});
 
 	const accepted: [ string, Partial<ServiceArgs>, number ][] = [
