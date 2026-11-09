@@ -246,7 +246,7 @@ const EDITION_OF_TIER = {
 	custom: 'ENTERPRISE',
 	'perf-optimized': 'ENTERPRISE_PLUS',
 	unknown: undefined
-} satisfies Record<TierShape['kind'], Edition | undefined>;
+} satisfies { [kind in TierShape['kind']]: Edition | undefined };
 
 export class PostgresCloudSQL extends pulumi.ComponentResource {
 	#prefix: string;
