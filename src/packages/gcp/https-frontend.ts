@@ -330,7 +330,7 @@ type Aliases = pulumi.Output<pulumi.URN>[] | undefined;
 interface VariantShape {
 	managedCertificate(cert: ManagedCert, parent: pulumi.Resource): pulumi.Output<string>;
 	certMap: { name: string; description: string; aliases: Aliases };
-	entry: { name: string; aliases: Aliases; host(cert: CertificateManagerCert): { hostname?: pulumi.Input<string>; matcher?: string } };
+	entry: { name: string; aliases: Aliases; host(cert: CertificateManagerCert): { hostname?: pulumi.Input<string>; matcher?: string }};
 	proxy: {
 		name: string;
 		description?: string;
@@ -371,7 +371,7 @@ function appShape(name: string, urlMap: gcp.compute.URLMap): VariantShape {
 		// An app has one map for each load balancer, so its entry matches everything
 		entry: { name: `${name}-cert-map-entry`, aliases: undefined, host: function() {
 			return({ matcher: 'PRIMARY' });
-		}},
+		} },
 		proxy: {
 			name: `${name}-https-proxy`,
 			urlMap: urlMap.id,
