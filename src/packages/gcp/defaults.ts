@@ -140,29 +140,26 @@ export const PROFILE_PRESETS = deepFreeze({
 		small: {
 			tier: 'db-g1-small',
 			maxConnections: 75,
-			maxInstances: 12,
-			servicePoolSize: 5,
-			workerPoolSize: 7,
+			service: { maxInstances: 12, poolSize: 5 },
+			worker: { poolSize: 7 },
 			connector: { minInstances: 2, maxInstances: 3 },
-			redisMemorySizeGb: 1
+			kv: { memorySizeGb: 1 }
 		},
 		medium: {
 			tier: 'db-custom-1-3840',
 			maxConnections: 155,
-			maxInstances: 12,
-			servicePoolSize: 10,
-			workerPoolSize: 16,
+			service: { maxInstances: 12, poolSize: 10 },
+			worker: { poolSize: 16 },
 			connector: { minInstances: 2, maxInstances: 5 },
-			redisMemorySizeGb: 2
+			kv: { memorySizeGb: 2 }
 		},
 		large: {
 			tier: 'db-custom-4-15360',
 			maxConnections: 850,
-			maxInstances: 70,
-			servicePoolSize: 10,
-			workerPoolSize: 64,
+			service: { maxInstances: 70, poolSize: 10 },
+			worker: { poolSize: 64 },
 			connector: { minInstances: 3, maxInstances: 10 },
-			redisMemorySizeGb: 5
+			kv: { memorySizeGb: 5 }
 		}
 	}
 });

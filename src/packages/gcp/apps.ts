@@ -1255,12 +1255,6 @@ export interface FullStackAppArgs {
 	backend: CloudRunServiceArgs;
 
 	/**
-	 * Environment and size profile of the backend (see `CloudRunServiceArgs.profile`);
-	 * an argument of the backend beats it, and so does a `backend.profile`
-	 */
-	profile?: DeploymentProfile;
-
-	/**
 	 * Routing configuration
 	 */
 	routing?: {
@@ -1300,12 +1294,7 @@ export class FullStackApp extends pulumi.ComponentResource {
 
 		let routeRules: RouteRuleConfig[];
 
-		let backendArgs = args.backend;
-		if (args.profile !== undefined && backendArgs.profile === undefined) {
-			backendArgs = { ...backendArgs, profile: args.profile };
-		}
-
-		this.backend = new CloudRunService(`${name}-backend`, backendArgs, { parent: this });
+		this.backend = new CloudRunService(`${name}-backend`, args.backend, { parent: this });
 
 		if (args.frontend) {
 			const frontend = new StaticWebApp(`${name}-frontend`, args.frontend, { parent: this });

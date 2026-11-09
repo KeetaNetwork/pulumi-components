@@ -1,20 +1,16 @@
 import * as gcp from '@pulumi/gcp';
-import * as pulumi from '@pulumi/pulumi';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { expectDefined } from '../helpers/narrow';
 import { captureTree, moveAliases, ofType, useIsolatedHome } from './harness/pulumi-tree';
 import { buildService } from './harness/service-builder';
+import { captureWarningsAsync } from './harness/warnings';
 
 const APP_NETWORK = 'Keeta:GCP:AppNetwork';
 const CONNECTION = 'gcp:servicenetworking/connection:Connection';
 const NETWORK = 'gcp:compute/network:Network';
 const SUBNETWORK = 'gcp:compute/subnetwork:Subnetwork';
 const ADDRESS = 'gcp:compute/globalAddress:GlobalAddress';
-
-afterEach(function() {
-	vi.restoreAllMocks();
-});
 
 /*
  * Uniqueness of a connection across separately built services is not
@@ -32,22 +28,22 @@ describe('services that share a VPC of the caller without an AppNetwork', functi
 	}
 
 	it('warns, naming AppNetwork, once for each service that builds a network from a VPC', async function() {
-		const warn = vi.spyOn(pulumi.log, 'warn');
+		const { warnings } = await captureWarningsAsync(function() {
+			return(sharedVpc('legacy-warn'));
+		});
 
-		await sharedVpc('legacy-warn');
-
-		expect(warn).toHaveBeenCalledTimes(1);
-		expect(warn).toHaveBeenCalledWith(expect.stringMatching(/AppNetwork/));
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toMatch(/AppNetwork/);
 	});
 
 	it('does not warn about a network that the service creates for itself', async function() {
-		const warn = vi.spyOn(pulumi.log, 'warn');
-
-		await captureTree(function() {
-			return(buildService('own-network', { database: {}}));
+		const { warnings } = await captureWarningsAsync(function() {
+			return(captureTree(function() {
+				return(buildService('own-network', { database: {}}));
+			}));
 		});
 
-		expect(warn).not.toHaveBeenCalled();
+		expect(warnings).toEqual([]);
 	});
 
 	function twoServices() {

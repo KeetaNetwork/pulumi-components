@@ -565,6 +565,31 @@ function profileMaxConnections(database: NonNullable<CloudRunServiceArgs['databa
 	return(tierDefaultMaxConnections(shape));
 }
 
+type BackupsArgs = NonNullable<NonNullable<CloudRunServiceArgs['database']>['backups']>;
+
+/**
+ * The backups of the caller over those of the profile, field by field (a
+ * caller who sets only `startTime` keeps the retention and the point-in-time
+ * recovery of the profile). Without a profile value the caller's are kept
+ * as they are.
+ */
+function mergeBackups(explicit: BackupsArgs | undefined, profileValue: BackupsArgs | undefined): BackupsArgs | undefined {
+	if (profileValue === undefined) {
+		return(explicit);
+	}
+
+	return({
+		...profileValue,
+		...explicit,
+		pointInTimeRecovery: explicit?.pointInTimeRecovery ?? profileValue.pointInTimeRecovery,
+		startTime: explicit?.startTime ?? profileValue.startTime,
+		retentionSettings: {
+			retainCount: explicit?.retentionSettings?.retainCount ?? profileValue.retentionSettings?.retainCount,
+			transactionLogRetentionDays: explicit?.retentionSettings?.transactionLogRetentionDays ?? profileValue.retentionSettings?.transactionLogRetentionDays
+		}
+	});
+}
+
 /**
  * Fills in what the arguments leave out from the profile: an explicit
  * argument beats the profile (the profile beats the default, which the rest
@@ -593,7 +618,7 @@ function applyProfile(args: CloudRunServiceArgs): CloudRunServiceArgs {
 			poolSize: database.poolSize ?? values.database.poolSize,
 			deletionProtection: database.deletionProtection ?? values.database.deletionProtection,
 			queryInsights: database.queryInsights ?? values.database.queryInsights,
-			backups: database.backups ?? values.database.backups,
+			backups: mergeBackups(database.backups, values.database.backups),
 			flags: { max_connections: profileMaxConnections(database, values.database.flags.max_connections), ...database.flags }
 		};
 
