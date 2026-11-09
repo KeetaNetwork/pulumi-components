@@ -23,6 +23,7 @@ help:
 	@echo "  test-unit        - Runs the unit tests (no cloud access)"
 	@echo "  test-integration - Runs the integration tests (deploys to GCP)"
 	@echo "  cleanup-integration - Destroys this run's and stale integration test stacks"
+	@echo "  ci-stop-test-processes - CI only: stops leftover vitest and pulumi processes"
 	@echo "  clean            - Removes build artifacts"
 	@echo "  distclean        - Removes all build artifacts and dependencies"
 	@echo "  do-npm-pack      - Creates a distributable package for this project"
@@ -67,6 +68,16 @@ test-integration: node_modules
 cleanup-integration: dist
 	node tests/helpers/cleanup-integration.ts $(CLEANUP_ARGS)
 
+# CI only: stops every vitest and pulumi process left on this machine by an
+# aborted test step, so that their stack locks are free. Vitest stops first,
+# so it starts no new Pulumi command. Pulumi gets SIGINT, on which it saves
+# its state and releases its lock, and SIGKILL if it still runs after 5
+# minutes. ("[v]itest" keeps pkill from matching the shell running it.)
+ci-stop-test-processes:
+	-pkill -TERM -f '[v]itest'
+	-pkill -INT -x pulumi
+	@timeout 300 sh -c 'while pgrep -x pulumi > /dev/null; do sleep 5; done' || { echo 'pulumi still running after 5 minutes; killing it'; pkill -KILL -x pulumi; true; }
+
 # This is a synthetic target that runs this test suite.
 test: test-unit test-integration
 
@@ -100,4 +111,4 @@ clean:
 distclean: clean
 	rm -rf node_modules
 
-.PHONY: all help test test-unit test-integration cleanup-integration typecheck clean distclean do-lint do-npm-pack
+.PHONY: all help test test-unit test-integration cleanup-integration ci-stop-test-processes typecheck clean distclean do-lint do-npm-pack
