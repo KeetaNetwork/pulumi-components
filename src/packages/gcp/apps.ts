@@ -15,9 +15,9 @@ import { MigrationJob } from './migration';
 import { AppNetwork } from './network';
 import { ServiceIdentity } from './identity';
 import { CloudRunServiceArgsError, parseCloudRunServiceArgs } from './apps-args';
-import type { MigWorkerArgs, CrwpWorkerArgs, LegacyMigArgs, ParsedCloudRunServiceArgs, ParsedRemote } from './apps-args';
+import type { MIGWorkerArgs, CRWPWorkerArgs, LegacyMIGArgs, ParsedCloudRunServiceArgs, ParsedRemote } from './apps-args';
 export { CloudRunServiceArgsError } from './apps-args';
-export type { MigWorkerArgs, CrwpWorkerArgs, LegacyMigArgs } from './apps-args';
+export type { MIGWorkerArgs, CRWPWorkerArgs, LegacyMIGArgs } from './apps-args';
 import { CLOUD_RUN_SERVICE_DEFAULTS, ROUTING_DEFAULTS } from './defaults';
 import { callerOf } from './client-auth';
 import { buildDatabaseEnvVars, buildRedisEnvVars } from './database-env';
@@ -662,7 +662,7 @@ export interface CloudRunServiceArgs {
 	 * Instance Group of VMs (`kind: 'mig'`) or a Cloud Run Worker Pool
 	 * (`kind: 'crwp'`). Cannot be combined with `mig`.
 	 */
-	worker?: MigWorkerArgs | CrwpWorkerArgs;
+	worker?: MIGWorkerArgs | CRWPWorkerArgs;
 
 	/**
 	 * Worker configuration of 1.0.x (optional, for background workers/queue processors)
@@ -672,7 +672,7 @@ export interface CloudRunServiceArgs {
 	 *             defaults to 'mig'), and `enabled: false` becomes no
 	 *             `worker` at all
 	 */
-	mig?: LegacyMigArgs;
+	mig?: LegacyMIGArgs;
 
 	/**
 	 * Database migration configuration (optional)
@@ -819,6 +819,13 @@ export class CloudRunService extends pulumi.ComponentResource {
 				}, {
 					parent: this,
 					dependsOn: [ vpc, vpcConnector ]
+				});
+
+				appNetwork.allowKvEgress(name, {
+					port: kv.port,
+					host: kv.host,
+					priority: CLOUD_RUN_SERVICE_DEFAULTS.kv.firewallPriority,
+					extra: parsed.gcp.firewallConfig
 				});
 			}
 		}
@@ -1051,8 +1058,8 @@ export class CloudRunService extends pulumi.ComponentResource {
 			// Enable SSH firewall if requested
 			if (worker.kind === 'mig' && worker.enableSSH) {
 				appNetwork.allowIapSsh(name, {
-					sourceRange: CLOUD_RUN_SERVICE_DEFAULTS.worker.sshIapRange, // GCP IAP range
-					priority: CLOUD_RUN_SERVICE_DEFAULTS.worker.sshIapPriority,
+					sourceRange: CLOUD_RUN_SERVICE_DEFAULTS.worker.sshIAPRange, // GCP IAP range
+					priority: CLOUD_RUN_SERVICE_DEFAULTS.worker.sshIAPPriority,
 					extra: parsed.gcp.firewallConfig
 				});
 			}
@@ -1144,9 +1151,9 @@ export class CloudRunService extends pulumi.ComponentResource {
 		remote: ParsedRemote
 	) {
 		/*
-		 * The project comes from the arguments, as it did when the build had a
-		 * provider of its own; the resources of the build now use the provider
-		 * of the component, and the build only needs to know who the caller is
+		 * The project comes from the arguments. The resources of the build use
+		 * the provider of the component, and the build only needs to know who
+		 * the caller is
 		 */
 		const provider = callerOf(this, parsed.gcp.project);
 

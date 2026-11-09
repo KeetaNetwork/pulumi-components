@@ -2,7 +2,7 @@ import * as pulumi from '@pulumi/pulumi';
 import { randomUUID } from 'node:crypto';
 
 import type { DeepInput, DeepOutput } from '../../types';
-import { authenticateAs, clientAuthInputs } from './client-auth';
+import { clientAuthInputs, googleAuthForClient } from './client-auth';
 import type { ClientAuthInputs, ClientAuthProvider } from './client-auth';
 import type * as runTypes from '@google-cloud/run';
 
@@ -28,22 +28,30 @@ interface ExecutionOutput {
 
 type PulumiExecutionOutput = DeepOutput<ExecutionOutput>;
 
+/** The full resource name of the job, which holds its project and region */
+function jobPathOf(inputs: Partial<CloudRunJobExecutionInputs>): string {
+	return(`projects/${inputs.projectId}/locations/${inputs.region}/jobs/${inputs.jobName}`);
+}
+
+/**
+ * The state of an execution: its inputs and the result of the run. The
+ * state holds the inputs because `diff` receives the old state, not the
+ * old inputs.
+ */
+function executionStateOf(inputs: CloudRunJobExecutionInputs, output: ExecutionOutput): CloudRunJobExecutionInputs & ExecutionOutput {
+	return({ ...inputs, ...output });
+}
+
 async function runJob(inputs: CloudRunJobExecutionInputs): Promise<ExecutionOutput> {
 	// Dynamic import to avoid issues with Pulumi serialization
 	// eslint-disable-next-line @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-require-imports
 	const { JobsClient } = require('@google-cloud/run') as typeof runTypes;
 
-	const client = new JobsClient();
-
-	/* The client finds the credentials of the environment itself; `auth` only says who to impersonate */
-	if (inputs.auth !== undefined) {
-		authenticateAs(client, '@google-cloud/run', inputs.auth);
-	}
-
-	const jobPath = `projects/${inputs.projectId}/locations/${inputs.region}/jobs/${inputs.jobName}`;
+	/* Without an account to impersonate the client finds the credentials of the environment itself */
+	const client = new JobsClient({ auth: await googleAuthForClient('@google-cloud/run', inputs.auth) });
 
 	// Run the job and wait for completion
-	const [operation] = await client.runJob({ name: jobPath });
+	const [operation] = await client.runJob({ name: jobPathOf(inputs) });
 	const [execution] = await operation.promise();
 
 	// Extract completion status from conditions
@@ -75,15 +83,16 @@ async function runJob(inputs: CloudRunJobExecutionInputs): Promise<ExecutionOutp
 }
 
 /**
- * Whether the job has to run again.  Only the trigger and the job say so:
- * the project and the region are part of the job's identity, and when they
- * change so does `jobName`.
+ * Whether the job has to run again: the trigger changed, or the job is
+ * another job. The full resource name identifies the job, so a job of the
+ * same name in another project or region runs again.
  */
 function jobExecutionHasChanges(olds: Partial<CloudRunJobExecutionInputs>, news: Partial<CloudRunJobExecutionInputs>) {
-	return(olds.trigger !== news.trigger || olds.jobName !== news.jobName);
+	return(olds.trigger !== news.trigger || jobPathOf(olds) !== jobPathOf(news));
 }
 
 export const _Testing = {
+	executionStateOf,
 	jobExecutionHasChanges
 };
 
@@ -99,12 +108,12 @@ const cloudRunJobExecutionProvider: pulumi.dynamic.ResourceProvider = {
 	async create(inputs: CloudRunJobExecutionInputs) {
 		const id = randomUUID();
 		const output = await runJob(inputs);
-		return({ id, outs: output });
+		return({ id, outs: executionStateOf(inputs, output) });
 	},
 
 	async update(_ignore_id: string, _ignore_oldInput: CloudRunJobExecutionInputs, newInput: CloudRunJobExecutionInputs) {
 		const output = await runJob(newInput);
-		return({ outs: output });
+		return({ outs: executionStateOf(newInput, output) });
 	},
 
 	async delete() {
@@ -147,11 +156,8 @@ export class CloudRunJobExecution extends pulumi.dynamic.Resource implements Pul
 			projectId: args.projectId,
 			region: args.region,
 			trigger: args.trigger,
-			auth: undefined
+			auth: clientAuthInputs(args.provider)
 		};
-		if (args.provider !== undefined) {
-			passArgs.auth = clientAuthInputs(args.provider);
-		}
 
 		super(cloudRunJobExecutionProvider, name, {
 			...passArgs,
