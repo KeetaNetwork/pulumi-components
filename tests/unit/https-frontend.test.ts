@@ -132,12 +132,12 @@ describe('parseFrontEndConfig', function() {
 		}
 	];
 
-	it.each(certificates)('maps $title', async function({ ssl, choice }) {
+	it.each(certificates)('maps $title', async function(testCase) {
 		const parsed = await parseInProgram(function() {
-			return({ domain: DOMAIN, ssl: ssl() });
+			return({ domain: DOMAIN, ssl: testCase.ssl() });
 		});
 
-		expect(await settled(parsed.cert)).toMatchObject(choice);
+		expect(await settled(parsed.cert)).toMatchObject(testCase.choice);
 	});
 
 	it('leaves version and protect unset for domains alone', async function() {
@@ -175,14 +175,14 @@ describe('parseFrontEndConfig', function() {
 		}
 	];
 
-	it.each(policies)('maps $title', async function({ policy, choice }) {
+	it.each(policies)('maps $title', async function(testCase) {
 		const parsed = await parseInProgram(function() {
-			return({ domain: DOMAIN, ssl: { domains: DOMAINS }, ...policy() });
+			return({ domain: DOMAIN, ssl: { domains: DOMAINS }, ...testCase.policy() });
 		});
 		const settledPolicy = await settled(parsed.sslPolicy);
 
-		expect(settledPolicy).toMatchObject(choice);
-		expect(Object.keys(expectRecord(settledPolicy, 'the policy choice')).length).toBe(Object.keys(choice).length);
+		expect(settledPolicy).toMatchObject(testCase.choice);
+		expect(Object.keys(expectRecord(settledPolicy, 'the policy choice')).length).toBe(Object.keys(testCase.choice).length);
 	});
 });
 
