@@ -5,6 +5,9 @@ import type { EnvironmentVariables } from './cloudrun';
 import type { GCPCommonOptions } from './common';
 import type { GCPRegion } from './constants';
 import type { AppNetwork } from './network';
+import { assertWithinBudget, connectionBudget } from './connection-budget';
+import type { ConnectionConsumer } from './connection-budget';
+import { DATABASE_POOL_SIZE_VARIABLE } from './database-env';
 import { BUILD_DEFAULTS, CLOUD_RUN_SERVICE_DEFAULTS, MIGRATION_DEFAULTS, POSTGRES_DEFAULTS } from './defaults';
 
 /**
@@ -63,6 +66,14 @@ interface WorkerCommonArgs {
 	 * These are merged with the main environment variables
 	 */
 	environmentOverrides?: EnvironmentOverrides;
+
+	/**
+	 * Size of the connection pool of each instance of the worker. Only the
+	 * worker reads it (it replaces `database.poolSize` for the worker); without
+	 * it the worker reads the pool size of the database. Needs `database.poolSize`
+	 * (the service connects too, and the connection budget counts it).
+	 */
+	poolSize?: number;
 }
 
 /**
@@ -133,6 +144,9 @@ interface ParsedWorkerCommon {
 	tags?: string[];
 	egress: WorkerEgress;
 	environmentOverrides?: EnvironmentOverrides;
+
+	/** The pool size of the worker itself (not the one it inherits from the database) */
+	poolSize?: number;
 }
 
 export interface ParsedMigWorker extends ParsedWorkerCommon {
@@ -199,10 +213,14 @@ export interface ParsedNetwork {
 	servicePeeringDeletionPolicy?: 'ABANDON';
 }
 
+/** The annotation that sets the most instances that Cloud Run starts for a service */
+export const MAX_SCALE_ANNOTATION = 'autoscaling.knative.dev/maxScale';
+
 export interface ParsedService {
 	cpuLimit: number;
 	memoryLimit: number;
 	annotations?: { [key: string]: pulumi.Input<string> };
+	maxInstances?: number;
 }
 
 export interface ParsedIdentity {
@@ -289,7 +307,8 @@ function parseWorkerCommon(worker: WorkerInput): ParsedWorkerCommon {
 		machineType: worker.machineType ?? CLOUD_RUN_SERVICE_DEFAULTS.worker.machineType,
 		tags: worker.tags,
 		egress: worker.egress ?? CLOUD_RUN_SERVICE_DEFAULTS.worker.egress,
-		environmentOverrides: worker.environmentOverrides
+		environmentOverrides: worker.environmentOverrides,
+		poolSize: worker.poolSize
 	});
 }
 
@@ -410,16 +429,95 @@ function parseIdentity(service: CloudRunServiceArgs['service']): ParsedIdentity 
 	return({ grantRoles: false, account: { email: pulumi.output(account) }});
 }
 
+
+function assertCount(name: string, value: number | undefined) {
+	if (value !== undefined && (!Number.isInteger(value) || value < 1)) {
+		throw(new CloudRunServiceArgsError(`${name} must be a whole number of 1 or more (got ${value})`));
+	}
+}
+
+/**
+ * Reads the instance and pool-size arguments and checks the rules they
+ * share, before the connection budget is looked at
+ */
+function checkConnectionArgs(args: CloudRunServiceArgs, worker: ParsedWorker | undefined) {
+	assertCount('service.maxInstances', args.service?.maxInstances);
+	assertCount('database.poolSize', args.database?.poolSize);
+	assertCount('worker.poolSize', worker?.poolSize);
+
+	if (args.service?.maxInstances !== undefined && args.service.annotations?.[MAX_SCALE_ANNOTATION] !== undefined) {
+		throw(new CloudRunServiceArgsError(`service.maxInstances and the ${MAX_SCALE_ANNOTATION} annotation both set the most instances, give one of them`));
+	}
+
+	if (worker?.poolSize !== undefined && args.database?.poolSize === undefined) {
+		throw(new CloudRunServiceArgsError('worker.poolSize requires database.poolSize: the service connects to the database too, and the budget must count it'));
+	}
+
+	if (args.database?.poolSize !== undefined && args.environment?.[DATABASE_POOL_SIZE_VARIABLE] !== undefined) {
+		throw(new CloudRunServiceArgsError(`database.poolSize sets ${DATABASE_POOL_SIZE_VARIABLE}, so environment cannot set it too`));
+	}
+
+	if (worker?.poolSize !== undefined && worker.environmentOverrides?.[DATABASE_POOL_SIZE_VARIABLE] !== undefined) {
+		throw(new CloudRunServiceArgsError(`worker.poolSize sets ${DATABASE_POOL_SIZE_VARIABLE}, so worker.environmentOverrides cannot set it too`));
+	}
+}
+
+/**
+ * The applications that hold a pool of connections open. The migration job is
+ * not one: it is one task that ends before the service takes traffic. A
+ * service without `maxInstances` counts with the number of instances that
+ * Cloud Run scales to by default.
+ */
+function connectionConsumers(args: CloudRunServiceArgs, worker: ParsedWorker | undefined): ConnectionConsumer[] {
+	const databasePoolSize = args.database?.poolSize;
+	const consumers: ConnectionConsumer[] = [];
+
+	if (databasePoolSize !== undefined) {
+		const maxInstances = args.service?.maxInstances;
+		if (maxInstances === undefined) {
+			consumers.push({ name: `service (no maxInstances, so Cloud Run may start ${CLOUD_RUN_SERVICE_DEFAULTS.service.maxInstances})`, maxInstances: CLOUD_RUN_SERVICE_DEFAULTS.service.maxInstances, poolSize: databasePoolSize });
+		} else {
+			consumers.push({ name: 'service', maxInstances, poolSize: databasePoolSize });
+		}
+	}
+
+	const workerPoolSize = worker?.poolSize ?? databasePoolSize;
+	if (worker !== undefined && workerPoolSize !== undefined) {
+		consumers.push({ name: 'worker', maxInstances: worker.instanceCount ?? 1, poolSize: workerPoolSize });
+	}
+
+	return(consumers);
+}
+
+/**
+ * Checks that the pools of the service and the worker fit in the connections
+ * that the database has to share (its `max_connections`, less a reserve).
+ * Nothing is checked when no pool size is given.
+ *
+ * @throws ConnectionBudgetExceededError when they do not fit
+ */
+function assertConnectionsFit(args: CloudRunServiceArgs, worker: ParsedWorker | undefined, database: ParsedDatabase) {
+	const consumers = connectionConsumers(args, worker);
+	if (consumers.length === 0) {
+		return;
+	}
+
+	assertWithinBudget(connectionBudget({ maxConnections: database.flags.max_connections }), consumers);
+}
+
 /**
  * Checks the arguments of `CloudRunService` and fills in every default.
  * This is the only place that reads them: the constructor works from the
  * result. The arguments of the caller are not changed.
  *
  * @throws CloudRunServiceArgsError when the arguments break a rule
+ * @throws ConnectionBudgetExceededError when the pool sizes do not fit in the connections of the database
  */
 export function parseCloudRunServiceArgs(args: CloudRunServiceArgs): ParsedCloudRunServiceArgs {
 	const image = parseImage(args);
 	const worker = parseWorkerArgs(args);
+
+	checkConnectionArgs(args, worker);
 
 	if (args.migration?.enabled && !args.database) {
 		throw(new CloudRunServiceArgsError('migration.enabled requires database'));
@@ -433,7 +531,8 @@ export function parseCloudRunServiceArgs(args: CloudRunServiceArgs): ParsedCloud
 		service: {
 			cpuLimit: args.service?.cpuLimit ?? CLOUD_RUN_SERVICE_DEFAULTS.service.cpuLimit,
 			memoryLimit: args.service?.memoryLimit ?? CLOUD_RUN_SERVICE_DEFAULTS.service.memoryLimit,
-			annotations: args.service?.annotations
+			annotations: args.service?.annotations,
+			maxInstances: args.service?.maxInstances
 		},
 		identity: parseIdentity(args.service)
 	};
@@ -456,6 +555,7 @@ export function parseCloudRunServiceArgs(args: CloudRunServiceArgs): ParsedCloud
 
 		if (args.database) {
 			vpc.data = { database: parseDatabase(args.database) };
+			assertConnectionsFit(args, worker, vpc.data.database);
 
 			if (args.migration?.enabled) {
 				vpc.data.migration = parseMigration(args.migration);

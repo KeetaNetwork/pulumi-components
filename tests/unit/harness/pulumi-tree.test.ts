@@ -177,3 +177,16 @@ describe('matchLegacyUrns', function() {
 		});
 	});
 });
+
+describe('secrets in a captured tree', function() {
+	it('are masked in the inputs and in a snapshot, and unwrapped in `revealed`', async function() {
+		const tree = await captureTree(function() {
+			leaf('with-secret', undefined, { password: pulumi.secret('hunter2') });
+		});
+		const [ resource ] = tree.resources;
+
+		expect(resource?.inputs).toMatchObject({ password: '<secret>' });
+		expect(resource?.revealed).toMatchObject({ password: 'hunter2' });
+		expect(JSON.stringify(describeTree(tree))).not.toContain('hunter2');
+	});
+});
