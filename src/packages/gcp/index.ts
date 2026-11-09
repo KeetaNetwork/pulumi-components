@@ -15,3 +15,4 @@ export * as common from './common';
 export * as databaseEnv from './database-env';
 export * as bucket from './bucket';
 export * as apps from './apps';
+export * as profiles from './profiles';

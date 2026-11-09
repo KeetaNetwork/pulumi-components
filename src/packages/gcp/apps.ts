@@ -14,6 +14,7 @@ import { MigrationJob } from './migration';
 import { AppNetwork } from './network';
 import { ServiceIdentity } from './identity';
 import { MAX_SCALE_ANNOTATION, parseCloudRunServiceArgs } from './apps-args';
+import type { DeploymentProfile } from './profiles';
 import type { MigWorkerArgs, CrwpWorkerArgs, LegacyMigArgs, ParsedCloudRunServiceArgs, ParsedRemote } from './apps-args';
 export { CloudRunServiceArgsError } from './apps-args';
 export type { MigWorkerArgs, CrwpWorkerArgs, LegacyMigArgs } from './apps-args';
@@ -582,7 +583,24 @@ export interface CloudRunServiceArgs {
 	 */
 	kv?: ({
 		type?: 'redis';
-	} & Omit<gcp.redis.InstanceArgs, 'region' | 'authorizedNetwork' | 'authEnabled'>)
+
+		/**
+		 * Memory of the store, in GB. Required unless `profile` gives it.
+		 */
+		memorySizeGb?: pulumi.Input<number>;
+	} & Omit<gcp.redis.InstanceArgs, 'region' | 'authorizedNetwork' | 'authEnabled' | 'memorySizeGb'>)
+
+	/**
+	 * Environment and size profile (optional). It fills in what the
+	 * arguments leave out: an explicit argument beats the profile, which
+	 * beats the default of the library. It applies to `database` (tier,
+	 * `flags.max_connections`, `poolSize`, deletion protection, backups, query
+	 * insights), `service.maxInstances`, `worker.poolSize`, the VPC connector
+	 * and `kv.memorySizeGb`, where the app has them. The connection budget is
+	 * checked with its numbers. `profiles` (`gcp.profiles`) holds the same
+	 * values to spread yourself.
+	 */
+	profile?: DeploymentProfile;
 
 	/**
 	 * Cloud Run service configuration
@@ -1233,6 +1251,12 @@ export interface FullStackAppArgs {
 	backend: CloudRunServiceArgs;
 
 	/**
+	 * Environment and size profile of the backend (see `CloudRunServiceArgs.profile`);
+	 * an argument of the backend beats it, and so does a `backend.profile`
+	 */
+	profile?: DeploymentProfile;
+
+	/**
 	 * Routing configuration
 	 */
 	routing?: {
@@ -1272,7 +1296,12 @@ export class FullStackApp extends pulumi.ComponentResource {
 
 		let routeRules: RouteRuleConfig[];
 
-		this.backend = new CloudRunService(`${name}-backend`, args.backend, { parent: this });
+		let backendArgs = args.backend;
+		if (args.profile !== undefined && backendArgs.profile === undefined) {
+			backendArgs = { ...backendArgs, profile: args.profile };
+		}
+
+		this.backend = new CloudRunService(`${name}-backend`, backendArgs, { parent: this });
 
 		if (args.frontend) {
 			const frontend = new StaticWebApp(`${name}-frontend`, args.frontend, { parent: this });

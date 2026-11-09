@@ -5,9 +5,10 @@ import type { EnvironmentVariables } from './cloudrun';
 import type { GCPCommonOptions } from './common';
 import type { GCPRegion } from './constants';
 import type { AppNetwork } from './network';
-import { assertWithinBudget, connectionBudget } from './connection-budget';
+import { assertWithinBudget, connectionBudget, parseCloudSqlTier, tierDefaultMaxConnections } from './connection-budget';
 import type { ConnectionConsumer } from './connection-budget';
 import { DATABASE_POOL_SIZE_VARIABLE } from './database-env';
+import { resolveProfile } from './profiles';
 import { BUILD_DEFAULTS, CLOUD_RUN_SERVICE_DEFAULTS, MIGRATION_DEFAULTS, POSTGRES_DEFAULTS } from './defaults';
 
 /**
@@ -248,7 +249,7 @@ export interface ParsedVpc {
 		database: ParsedDatabase;
 		migration?: ParsedMigration;
 	};
-	kv?: NonNullable<CloudRunServiceArgs['kv']>;
+	kv?: Omit<NonNullable<CloudRunServiceArgs['kv']>, 'memorySizeGb'> & { memorySizeGb: pulumi.Input<number> };
 	worker?: ParsedWorker;
 }
 
@@ -402,6 +403,19 @@ function parseMigration(migration: MigrationArgs): ParsedMigration {
 	});
 }
 
+function parseKv(kv: CloudRunServiceArgs['kv']): ParsedVpc['kv'] {
+	if (kv === undefined) {
+		return(undefined);
+	}
+
+	const { memorySizeGb } = kv;
+	if (memorySizeGb === undefined) {
+		throw(new CloudRunServiceArgsError('kv.memorySizeGb is required unless a profile gives it'));
+	}
+
+	return({ ...kv, memorySizeGb });
+}
+
 function parseNetwork(vpc: CloudRunServiceArgs['vpc']): ParsedNetwork {
 	return({
 		existing: vpc?.network,
@@ -462,18 +476,29 @@ function checkConnectionArgs(args: CloudRunServiceArgs, worker: ParsedWorker | u
 	}
 }
 
+/** The most instances that a plain, whole-number `maxScale` annotation sets (an Output or any other text says nothing the check can use) */
+function maxScaleOfAnnotation(annotations: ParsedService['annotations']): number | undefined {
+	const value = annotations?.[MAX_SCALE_ANNOTATION];
+	if (typeof value !== 'string' || !/^[1-9]\d*$/.test(value)) {
+		return(undefined);
+	}
+
+	return(Number(value));
+}
+
 /**
  * The applications that hold a pool of connections open. The migration job is
  * not one: it is one task that ends before the service takes traffic. A
- * service without `maxInstances` counts with the number of instances that
- * Cloud Run scales to by default.
+ * service without `maxInstances` (or a plain whole-number `maxScale`
+ * annotation) counts with the number of instances that Cloud Run scales to by
+ * default.
  */
 function connectionConsumers(args: CloudRunServiceArgs, worker: ParsedWorker | undefined): ConnectionConsumer[] {
 	const databasePoolSize = args.database?.poolSize;
 	const consumers: ConnectionConsumer[] = [];
 
 	if (databasePoolSize !== undefined) {
-		const maxInstances = args.service?.maxInstances;
+		const maxInstances = args.service?.maxInstances ?? maxScaleOfAnnotation(args.service?.annotations);
 		if (maxInstances === undefined) {
 			consumers.push({ name: `service (no maxInstances, so Cloud Run may start ${CLOUD_RUN_SERVICE_DEFAULTS.service.maxInstances})`, maxInstances: CLOUD_RUN_SERVICE_DEFAULTS.service.maxInstances, poolSize: databasePoolSize });
 		} else {
@@ -505,6 +530,87 @@ function assertConnectionsFit(args: CloudRunServiceArgs, worker: ParsedWorker | 
 	assertWithinBudget(connectionBudget({ maxConnections: database.flags.max_connections }), consumers);
 }
 
+
+/**
+ * The `max_connections` that a profile gives a database: its own, unless the
+ * caller chose the tier, which then brings the default of that tier (the
+ * number of the profile was sized for the tier of the profile).
+ *
+ * @throws CloudRunServiceArgsError when the tier is not one that the library knows
+ */
+function profileMaxConnections(database: NonNullable<CloudRunServiceArgs['database']>, profileValue: number): number {
+	if (database.tier === undefined || database.flags?.max_connections !== undefined) {
+		return(profileValue);
+	}
+
+	const shape = parseCloudSqlTier(database.tier);
+	if (shape.kind === 'unknown') {
+		throw(new CloudRunServiceArgsError(`database.tier '${database.tier}' is not a tier that the profile knows the max_connections of: give database.flags.max_connections`));
+	}
+
+	return(tierDefaultMaxConnections(shape));
+}
+
+/**
+ * Fills in what the arguments leave out from the profile: an explicit
+ * argument beats the profile (the profile beats the default, which the rest
+ * of the parser applies). The result is the arguments the caller would have
+ * written by hand. Each part applies only where the app has it: a profile
+ * adds no database, no worker and no network.
+ */
+function applyProfile(args: CloudRunServiceArgs): CloudRunServiceArgs {
+	if (args.profile === undefined) {
+		return(args);
+	}
+
+	const values = resolveProfile(args.profile);
+	const layered: CloudRunServiceArgs = { ...args };
+
+	/* An annotation of the caller that sets the scale is an explicit argument too */
+	if (args.service?.annotations?.[MAX_SCALE_ANNOTATION] === undefined) {
+		layered.service = { ...args.service, maxInstances: args.service?.maxInstances ?? values.service.maxInstances };
+	}
+
+	if (args.database !== undefined) {
+		const { database } = args;
+		layered.database = {
+			...database,
+			tier: database.tier ?? values.database.tier,
+			poolSize: database.poolSize ?? values.database.poolSize,
+			deletionProtection: database.deletionProtection ?? values.database.deletionProtection,
+			queryInsights: database.queryInsights ?? values.database.queryInsights,
+			backups: database.backups ?? values.database.backups,
+			flags: { max_connections: profileMaxConnections(database, values.database.flags.max_connections), ...database.flags }
+		};
+
+		if (args.worker !== undefined) {
+			layered.worker = { ...args.worker, poolSize: args.worker.poolSize ?? values.worker.poolSize };
+		}
+
+		if (args.mig !== undefined) {
+			layered.mig = { ...args.mig, poolSize: args.mig.poolSize ?? values.worker.poolSize };
+		}
+	}
+
+	if (args.kv !== undefined) {
+		layered.kv = { ...args.kv, memorySizeGb: args.kv.memorySizeGb ?? values.kvMemorySizeGb };
+	}
+
+	/* An AppNetwork owns its connector, and an app with no network resource gets none from a profile */
+	const hasNetwork = args.database !== undefined || args.kv !== undefined || args.vpc !== undefined || args.worker !== undefined || args.mig?.enabled === true;
+	if (args.network === undefined && hasNetwork) {
+		layered.vpc = {
+			...args.vpc,
+			connector: {
+				minInstances: args.vpc?.connector?.minInstances ?? values.vpc.connector.minInstances,
+				maxInstances: args.vpc?.connector?.maxInstances ?? values.vpc.connector.maxInstances
+			}
+		};
+	}
+
+	return(layered);
+}
+
 /**
  * Checks the arguments of `CloudRunService` and fills in every default.
  * This is the only place that reads them: the constructor works from the
@@ -513,7 +619,8 @@ function assertConnectionsFit(args: CloudRunServiceArgs, worker: ParsedWorker | 
  * @throws CloudRunServiceArgsError when the arguments break a rule
  * @throws ConnectionBudgetExceededError when the pool sizes do not fit in the connections of the database
  */
-export function parseCloudRunServiceArgs(args: CloudRunServiceArgs): ParsedCloudRunServiceArgs {
+export function parseCloudRunServiceArgs(input: CloudRunServiceArgs): ParsedCloudRunServiceArgs {
+	const args = applyProfile(input);
 	const image = parseImage(args);
 	const worker = parseWorkerArgs(args);
 
@@ -545,7 +652,7 @@ export function parseCloudRunServiceArgs(args: CloudRunServiceArgs): ParsedCloud
 		const vpc: ParsedVpc = {
 			network: parseNetwork(args.vpc),
 			appNetwork: args.network,
-			kv: args.kv,
+			kv: parseKv(args.kv),
 			worker
 		};
 

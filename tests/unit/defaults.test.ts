@@ -5,7 +5,7 @@ import { isDeeplyFrozen, leavesOf } from '../helpers/leaves';
 import { requireSource } from './harness/load-sources';
 
 const moduleDefaults = requireSource<typeof defaults>('src/packages/gcp/defaults.ts');
-const { CLOUD_RUN_SERVICE_DEFAULTS, POSTGRES_DEFAULTS, BUILD_DEFAULTS, CONTAINER_DEFAULTS, MIGRATION_DEFAULTS, ROUTING_DEFAULTS, FRONT_END_DEFAULTS } = moduleDefaults;
+const { CLOUD_RUN_SERVICE_DEFAULTS, POSTGRES_DEFAULTS, BUILD_DEFAULTS, CONTAINER_DEFAULTS, MIGRATION_DEFAULTS, ROUTING_DEFAULTS, FRONT_END_DEFAULTS, PROFILE_PRESETS } = moduleDefaults;
 
 const exported = {
 	CLOUD_RUN_SERVICE_DEFAULTS,
@@ -14,7 +14,8 @@ const exported = {
 	CONTAINER_DEFAULTS,
 	MIGRATION_DEFAULTS,
 	ROUTING_DEFAULTS,
-	FRONT_END_DEFAULTS
+	FRONT_END_DEFAULTS,
+	PROFILE_PRESETS
 };
 
 type ExportName = keyof typeof exported;

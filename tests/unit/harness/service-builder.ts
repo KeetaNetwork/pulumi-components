@@ -1,8 +1,8 @@
 import type * as apps from '../../../src/packages/gcp/apps';
 import type * as defaults from '../../../src/packages/gcp/defaults';
-import { expectString, optionalRecord } from '../../helpers/narrow';
+import { expectArray, expectRecord, expectString, optionalRecord, valueAt } from '../../helpers/narrow';
 import { requireSource } from './load-sources';
-import { captureTree } from './pulumi-tree';
+import { captureTree, ofType } from './pulumi-tree';
 import type { TreeSnapshot } from './pulumi-tree';
 
 const { CloudRunService } = requireSource<typeof apps>('src/packages/gcp/apps.ts');
@@ -83,4 +83,29 @@ export function environmentOf(tree: TreeSnapshot, type: string) {
 /** The arguments of an AppNetwork in the test region, with the defaults of the library */
 export function appNetworkArgs() {
 	return({ region: 'us-central1' as const, ...CLOUD_RUN_SERVICE_DEFAULTS.network });
+}
+
+/** The annotations of the template of the one Cloud Run service in a tree */
+export function annotationsOf(tree: TreeSnapshot) {
+	const [ service ] = ofType(tree, 'gcp:cloudrun/service:Service');
+
+	return(expectRecord(valueAt(service?.inputs, [ 'template', 'metadata', 'annotations' ]) ?? {}, 'the annotations of the service'));
+}
+
+/** The settings of the first database instance in a tree: `path` is read from its inputs */
+export function databaseInput(tree: TreeSnapshot, path: (string | number)[]) {
+	const [ instance ] = ofType(tree, 'gcp:sql/databaseInstance:DatabaseInstance');
+
+	return(valueAt(instance?.inputs, path));
+}
+
+/** The database flags of the first database instance in a tree, by name, as text */
+export function flagsOf(tree: TreeSnapshot) {
+	const flags = expectArray(databaseInput(tree, [ 'settings', 'databaseFlags' ]) ?? [], 'the database flags');
+
+	return(Object.fromEntries(flags.map(function(flag) {
+		const record = expectRecord(flag, 'a database flag');
+
+		return([ String(record.name), String(record.value) ]);
+	})));
 }

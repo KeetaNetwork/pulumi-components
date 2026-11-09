@@ -1,0 +1,1538 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`a service with a profile > keeps its resources, parents and key inputs for production large 1`] = `
+[
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/globalAddress:GlobalAddress::profile-production-large-private-ip-alloc",
+    ],
+    "custom": true,
+    "inputs": {
+      "addressType": "INTERNAL",
+      "network": "self-link.profile-production-large-vpc",
+      "prefixLength": 16,
+      "purpose": "VPC_PEERING",
+    },
+    "name": "profile-production-large-private-ip-alloc",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::profile-production-large-network",
+    "type": "gcp:compute/globalAddress:GlobalAddress",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:compute/globalAddress:GlobalAddress::profile-production-large-private-ip-alloc",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network::profile-production-large-vpc",
+    ],
+    "custom": true,
+    "inputs": {
+      "autoCreateSubnetworks": false,
+      "description": "[profile-production-large] VPC network",
+    },
+    "name": "profile-production-large-vpc",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::profile-production-large-network",
+    "type": "gcp:compute/network:Network",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:compute/network:Network::profile-production-large-vpc",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork::profile-production-large-subnet",
+    ],
+    "custom": true,
+    "inputs": {
+      "description": "[profile-production-large] Subnet",
+      "ipCidrRange": "10.97.35.0/24",
+      "network": "self-link.profile-production-large-vpc",
+      "privateIpGoogleAccess": true,
+      "region": "us-central1",
+    },
+    "name": "profile-production-large-subnet",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::profile-production-large-network",
+    "type": "gcp:compute/subnetwork:Subnetwork",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:compute/subnetwork:Subnetwork::profile-production-large-subnet",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/globalAddress:GlobalAddress$gcp:servicenetworking/connection:Connection::profile-production-large-svc-networking",
+    ],
+    "custom": true,
+    "inputs": {
+      "network": "self-link.profile-production-large-vpc",
+      "reservedPeeringRanges": [
+        "profile-production-large-private-ip-alloc",
+      ],
+      "service": "servicenetworking.googleapis.com",
+    },
+    "name": "profile-production-large-svc-networking",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::profile-production-large-network",
+    "type": "gcp:servicenetworking/connection:Connection",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:servicenetworking/connection:Connection::profile-production-large-svc-networking",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork$gcp:vpcaccess/connector:Connector::profile-production-large-vpc-connector",
+    ],
+    "custom": true,
+    "inputs": {
+      "ipCidrRange": "10.97.36.0/28",
+      "maxInstances": 10,
+      "minInstances": 3,
+      "name": "profile-producab7e72-vpc",
+      "network": "self-link.profile-production-large-vpc",
+      "region": "us-central1",
+    },
+    "name": "profile-production-large-vpc-connector",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::profile-production-large-network",
+    "type": "gcp:vpcaccess/connector:Connector",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:vpcaccess/connector:Connector::profile-production-large-vpc-connector",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "profile-production-large-network",
+    "parent": "Keeta:GCP:CloudRunService::profile-production-large",
+    "type": "Keeta:GCP:AppNetwork",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::profile-production-large-network",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "replication": {
+        "userManaged": {
+          "replicas": [
+            {
+              "location": "us-central1",
+            },
+          ],
+        },
+      },
+      "secretId": "profile-production-large-env-mc-psql-db-password",
+    },
+    "name": "profile-production-large-env-mc-psql-db-password",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::profile-production-large-env",
+    "type": "gcp:secretmanager/secret:Secret",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::profile-production-large-env-mc-psql-db-password",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "replication": {
+        "userManaged": {
+          "replicas": [
+            {
+              "location": "us-central1",
+            },
+          ],
+        },
+      },
+      "secretId": "profile-production-large-env-mc-psql-db-url",
+    },
+    "name": "profile-production-large-env-mc-psql-db-url",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::profile-production-large-env",
+    "type": "gcp:secretmanager/secret:Secret",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::profile-production-large-env-mc-psql-db-url",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretIamMember:SecretIamMember::profile-production-large-env-mc-psql-db-password-iam-binding",
+    ],
+    "custom": true,
+    "deletedWith": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::profile-production-large-env-mc-psql-db-password",
+    "inputs": {
+      "member": "serviceAccount:profile-production-large-sa@mock.iam.gserviceaccount.com",
+      "role": "roles/secretmanager.secretAccessor",
+      "secretId": "profile-production-large-env-mc-psql-db-password",
+    },
+    "name": "profile-production-large-env-mc-psql-db-password-iam-binding",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::profile-production-large-env",
+    "type": "gcp:secretmanager/secretIamMember:SecretIamMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secretIamMember:SecretIamMember::profile-production-large-env-mc-psql-db-password-iam-binding",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretIamMember:SecretIamMember::profile-production-large-env-mc-psql-db-url-iam-binding",
+    ],
+    "custom": true,
+    "deletedWith": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::profile-production-large-env-mc-psql-db-url",
+    "inputs": {
+      "member": "serviceAccount:profile-production-large-sa@mock.iam.gserviceaccount.com",
+      "role": "roles/secretmanager.secretAccessor",
+      "secretId": "profile-production-large-env-mc-psql-db-url",
+    },
+    "name": "profile-production-large-env-mc-psql-db-url-iam-binding",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::profile-production-large-env",
+    "type": "gcp:secretmanager/secretIamMember:SecretIamMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secretIamMember:SecretIamMember::profile-production-large-env-mc-psql-db-url-iam-binding",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::profile-production-large-env-mc-psql-db-password-version",
+    ],
+    "custom": true,
+    "deletedWith": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::profile-production-large-env-mc-psql-db-password",
+    "inputs": {
+      "deletionPolicy": "DISABLE",
+      "secret": "profile-production-large-env-mc-psql-db-password-id",
+      "secretData": "<secret>",
+    },
+    "name": "profile-production-large-env-mc-psql-db-password-version",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::profile-production-large-env",
+    "type": "gcp:secretmanager/secretVersion:SecretVersion",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secretVersion:SecretVersion::profile-production-large-env-mc-psql-db-password-version",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::profile-production-large-env-mc-psql-db-url-version",
+    ],
+    "custom": true,
+    "deletedWith": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::profile-production-large-env-mc-psql-db-url",
+    "inputs": {
+      "deletionPolicy": "DISABLE",
+      "secret": "profile-production-large-env-mc-psql-db-url-id",
+      "secretData": "<secret>",
+    },
+    "name": "profile-production-large-env-mc-psql-db-url-version",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::profile-production-large-env",
+    "type": "gcp:secretmanager/secretVersion:SecretVersion",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secretVersion:SecretVersion::profile-production-large-env-mc-psql-db-url-version",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "profile-production-large-env",
+    "parent": "Keeta:GCP:CloudRunService::profile-production-large",
+    "type": "Keeta:GCP:CloudRunEnvManager",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::profile-production-large-env",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:profile-production-large-sa@mock.iam.gserviceaccount.com",
+      "repository": "projects/project-id/locations/us-central1/repositories/keeta",
+      "role": "roles/artifactregistry.reader",
+    },
+    "name": "profile-production-large-crwp-ar-1-iam",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun::profile-production-large-crwp",
+    "type": "gcp:artifactregistry/repositoryIamMember:RepositoryIamMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun$gcp:artifactregistry/repositoryIamMember:RepositoryIamMember::profile-production-large-crwp-ar-1-iam",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "deletionPolicy": "DELETE",
+      "deletionProtection": false,
+      "location": "us-central1",
+      "scaling": {
+        "manualInstanceCount": 1,
+      },
+      "template": {
+        "containers": [
+          {
+            "envs": [
+              {
+                "name": "MC_PSQL_DB_USER",
+                "value": "profile-production-large-db-db-user",
+              },
+              {
+                "name": "MC_PSQL_DB_PASSWORD",
+                "valueSource": {
+                  "secretKeyRef": {
+                    "secret": "profile-production-large-env-mc-psql-db-password",
+                    "version": "1",
+                  },
+                },
+              },
+              {
+                "name": "MC_PSQL_DB_NAME",
+                "value": "profile-production-large-db-db",
+              },
+              {
+                "name": "MC_PSQL_DB_HOST",
+                "value": "ip.profile-production-large-db-master",
+              },
+              {
+                "name": "MC_PSQL_DB_PORT",
+                "value": "5432",
+              },
+              {
+                "name": "MC_PSQL_DB_SSLMODE",
+                "value": "require",
+              },
+              {
+                "name": "MC_PSQL_DB_CA_CERT",
+                "value": "ca-certificate.profile-production-large-db-master",
+              },
+              {
+                "name": "MC_PSQL_DB_URL",
+                "valueSource": {
+                  "secretKeyRef": {
+                    "secret": "profile-production-large-env-mc-psql-db-url",
+                    "version": "1",
+                  },
+                },
+              },
+              {
+                "name": "MC_PSQL_DB_POOL_SIZE",
+                "value": "64",
+              },
+            ],
+            "image": "us-central1-docker.pkg.dev/project-id/keeta/app:1",
+            "name": "profile-production-large-worker",
+            "resources": {
+              "limits": {
+                "cpu": "1",
+                "memory": "1024Mi",
+              },
+            },
+          },
+        ],
+        "serviceAccount": "profile-production-large-sa@mock.iam.gserviceaccount.com",
+        "vpcAccess": {
+          "egress": "ALL_TRAFFIC",
+          "networkInterfaces": [
+            {
+              "subnetwork": "profile-production-large-subnet-id",
+            },
+          ],
+        },
+      },
+    },
+    "name": "profile-production-large-crwp-pool",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun::profile-production-large-crwp",
+    "type": "gcp:cloudrunv2/workerPool:WorkerPool",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun$gcp:cloudrunv2/workerPool:WorkerPool::profile-production-large-crwp-pool",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:profile-production-large-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/logging.logWriter",
+    },
+    "name": "profile-production-large-crwp-iam-logging",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun::profile-production-large-crwp",
+    "retainOnDelete": true,
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun$gcp:projects/iAMMember:IAMMember::profile-production-large-crwp-iam-logging",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:profile-production-large-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/monitoring.metricWriter",
+    },
+    "name": "profile-production-large-crwp-iam-metric",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun::profile-production-large-crwp",
+    "retainOnDelete": true,
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun$gcp:projects/iAMMember:IAMMember::profile-production-large-crwp-iam-metric",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "profile-production-large-crwp",
+    "parent": "Keeta:GCP:CloudRunService::profile-production-large",
+    "type": "Keeta:GCP:ContainerCloudRun",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun::profile-production-large-crwp",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "deletionProtection": false,
+      "location": "us-central1",
+      "template": {
+        "template": {
+          "containers": [
+            {
+              "envs": [
+                {
+                  "name": "MC_PSQL_DB_USER",
+                  "value": "profile-production-large-db-db-user",
+                },
+                {
+                  "name": "MC_PSQL_DB_PASSWORD",
+                  "valueSource": {
+                    "secretKeyRef": {
+                      "secret": "profile-production-large-env-mc-psql-db-password",
+                      "version": "1",
+                    },
+                  },
+                },
+                {
+                  "name": "MC_PSQL_DB_NAME",
+                  "value": "profile-production-large-db-db",
+                },
+                {
+                  "name": "MC_PSQL_DB_HOST",
+                  "value": "ip.profile-production-large-db-master",
+                },
+                {
+                  "name": "MC_PSQL_DB_PORT",
+                  "value": "5432",
+                },
+                {
+                  "name": "MC_PSQL_DB_SSLMODE",
+                  "value": "require",
+                },
+                {
+                  "name": "MC_PSQL_DB_CA_CERT",
+                  "value": "ca-certificate.profile-production-large-db-master",
+                },
+                {
+                  "name": "MC_PSQL_DB_URL",
+                  "valueSource": {
+                    "secretKeyRef": {
+                      "secret": "profile-production-large-env-mc-psql-db-url",
+                      "version": "1",
+                    },
+                  },
+                },
+                {
+                  "name": "MC_PSQL_DB_POOL_SIZE",
+                  "value": "10",
+                },
+              ],
+              "image": "us-central1-docker.pkg.dev/project-id/keeta/app:1",
+              "resources": {
+                "limits": {
+                  "cpu": "1",
+                  "memory": "512Mi",
+                },
+              },
+            },
+          ],
+          "maxRetries": 1,
+          "serviceAccount": "profile-production-large-sa@mock.iam.gserviceaccount.com",
+          "timeout": "600s",
+          "vpcAccess": {
+            "connector": "profile-production-large-vpc-connector-id",
+            "egress": "PRIVATE_RANGES_ONLY",
+          },
+        },
+      },
+    },
+    "name": "profile-production-large-migration-job",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob::profile-production-large-migration",
+    "type": "gcp:cloudrunv2/job:Job",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$gcp:cloudrunv2/job:Job::profile-production-large-migration-job",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:profile-production-large-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/cloudsql.client",
+    },
+    "name": "profile-production-large-migration-cloudsql-client",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob::profile-production-large-migration",
+    "retainOnDelete": true,
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$gcp:projects/iAMMember:IAMMember::profile-production-large-migration-cloudsql-client",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$gcp:cloudrunv2/job:Job$pulumi-nodejs:dynamic:Resource::profile-production-large-migration-exec",
+    ],
+    "custom": true,
+    "inputs": {
+      "auth": {
+        "project": "project-id",
+      },
+      "jobName": "profile-production-large-migration-job",
+      "projectId": "project-id",
+      "region": "us-central1",
+      "trigger": "us-central1-docker.pkg.dev/project-id/keeta/app:1",
+    },
+    "name": "profile-production-large-migration-exec",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob::profile-production-large-migration",
+    "type": "pulumi-nodejs:dynamic:Resource",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$pulumi-nodejs:dynamic:Resource::profile-production-large-migration-exec",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "profile-production-large-migration",
+    "parent": "Keeta:GCP:CloudRunService::profile-production-large",
+    "type": "Keeta:GCP:MigrationJob",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob::profile-production-large-migration",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL$gcp:sql/databaseInstance:DatabaseInstance$gcp:sql/database:Database::profile-production-large-db-db",
+    ],
+    "custom": true,
+    "deletedWith": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL$gcp:sql/databaseInstance:DatabaseInstance::profile-production-large-db-master",
+    "inputs": {
+      "deletionPolicy": "ABANDON",
+      "instance": "profile-production-large-db-master",
+    },
+    "name": "profile-production-large-db-db",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL::profile-production-large-db",
+    "protect": true,
+    "type": "gcp:sql/database:Database",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL$gcp:sql/database:Database::profile-production-large-db-db",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "databaseVersion": "POSTGRES_14",
+      "deletionProtection": true,
+      "region": "us-central1",
+      "settings": {
+        "availabilityType": "ZONAL",
+        "backupConfiguration": {
+          "backupRetentionSettings": {
+            "retainedBackups": 14,
+          },
+          "enabled": true,
+          "pointInTimeRecoveryEnabled": true,
+          "transactionLogRetentionDays": 7,
+        },
+        "databaseFlags": [
+          {
+            "name": "max_connections",
+            "value": "850",
+          },
+        ],
+        "insightsConfig": {
+          "queryInsightsEnabled": true,
+          "queryStringLength": 4500,
+        },
+        "ipConfiguration": {
+          "ipv4Enabled": false,
+          "privateNetwork": "profile-production-large-vpc-id",
+          "sslMode": "ENCRYPTED_ONLY",
+        },
+        "tier": "db-custom-4-15360",
+      },
+    },
+    "name": "profile-production-large-db-master",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL::profile-production-large-db",
+    "protect": true,
+    "type": "gcp:sql/databaseInstance:DatabaseInstance",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL$gcp:sql/databaseInstance:DatabaseInstance::profile-production-large-db-master",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL$gcp:sql/databaseInstance:DatabaseInstance$gcp:sql/user:User::profile-production-large-db-db-user",
+    ],
+    "custom": true,
+    "deletedWith": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL$gcp:sql/databaseInstance:DatabaseInstance::profile-production-large-db-master",
+    "inputs": {
+      "deletionPolicy": "ABANDON",
+      "instance": "profile-production-large-db-master",
+      "password": "<secret>",
+    },
+    "name": "profile-production-large-db-db-user",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL::profile-production-large-db",
+    "protect": true,
+    "type": "gcp:sql/user:User",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL$gcp:sql/user:User::profile-production-large-db-db-user",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "length": 24,
+      "number": true,
+      "special": false,
+    },
+    "name": "profile-production-large-db-postgres-password",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL::profile-production-large-db",
+    "type": "random:index/randomString:RandomString",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL$random:index/randomString:RandomString::profile-production-large-db-postgres-password",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "profile-production-large-db",
+    "parent": "Keeta:GCP:CloudRunService::profile-production-large",
+    "type": "Keeta:GCP:PostgresCloudSQL",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL::profile-production-large-db",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL$gcp:projects/iAMMember:IAMMember::profile-production-large-cloudsql-client",
+    ],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:profile-production-large-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/cloudsql.client",
+    },
+    "name": "profile-production-large-cloudsql-client",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::profile-production-large-identity",
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:projects/iAMMember:IAMMember::profile-production-large-cloudsql-client",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:projects/iAMMember:IAMMember::profile-production-large-log-writer",
+    ],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:profile-production-large-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/logging.logWriter",
+    },
+    "name": "profile-production-large-log-writer",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::profile-production-large-identity",
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:projects/iAMMember:IAMMember::profile-production-large-log-writer",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:profile-production-large-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/monitoring.metricWriter",
+    },
+    "name": "profile-production-large-metric-writer",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::profile-production-large-identity",
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:projects/iAMMember:IAMMember::profile-production-large-metric-writer",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:serviceaccount/account:Account::profile-production-large-sa",
+      "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:serviceAccount/account:Account::profile-production-large-sa",
+    ],
+    "custom": true,
+    "inputs": {
+      "accountId": "profile-production-large-sa",
+      "description": "[profile-production-large] Service account",
+    },
+    "name": "profile-production-large-sa",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::profile-production-large-identity",
+    "type": "gcp:serviceaccount/account:Account",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:serviceaccount/account:Account::profile-production-large-sa",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "profile-production-large-identity",
+    "parent": "Keeta:GCP:CloudRunService::profile-production-large",
+    "type": "Keeta:GCP:ServiceIdentity",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::profile-production-large-identity",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:cloudrun/service:Service$gcp:cloudrun/iamMember:IamMember::profile-production-large-invoker",
+    ],
+    "custom": true,
+    "deletedWith": "Keeta:GCP:CloudRunService$gcp:cloudrun/service:Service::profile-production-large-api",
+    "inputs": {
+      "location": "us-central1",
+      "member": "allUsers",
+      "role": "roles/run.invoker",
+      "service": "profile-production-large-api",
+    },
+    "name": "profile-production-large-invoker",
+    "parent": "Keeta:GCP:CloudRunService::profile-production-large",
+    "type": "gcp:cloudrun/iamMember:IamMember",
+    "urn": "Keeta:GCP:CloudRunService$gcp:cloudrun/iamMember:IamMember::profile-production-large-invoker",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "location": "us-central1",
+      "template": {
+        "metadata": {
+          "annotations": {
+            "autoscaling.knative.dev/maxScale": "70",
+            "run.googleapis.com/vpc-access-connector": "self-link.profile-production-large-vpc-connector",
+          },
+        },
+        "spec": {
+          "containers": [
+            {
+              "envs": [
+                {
+                  "name": "MC_PSQL_DB_USER",
+                  "value": "profile-production-large-db-db-user",
+                },
+                {
+                  "name": "MC_PSQL_DB_PASSWORD",
+                  "valueFrom": {
+                    "secretKeyRef": {
+                      "key": "1",
+                      "name": "profile-production-large-env-mc-psql-db-password",
+                    },
+                  },
+                },
+                {
+                  "name": "MC_PSQL_DB_NAME",
+                  "value": "profile-production-large-db-db",
+                },
+                {
+                  "name": "MC_PSQL_DB_HOST",
+                  "value": "ip.profile-production-large-db-master",
+                },
+                {
+                  "name": "MC_PSQL_DB_PORT",
+                  "value": "5432",
+                },
+                {
+                  "name": "MC_PSQL_DB_SSLMODE",
+                  "value": "require",
+                },
+                {
+                  "name": "MC_PSQL_DB_CA_CERT",
+                  "value": "ca-certificate.profile-production-large-db-master",
+                },
+                {
+                  "name": "MC_PSQL_DB_URL",
+                  "valueFrom": {
+                    "secretKeyRef": {
+                      "key": "1",
+                      "name": "profile-production-large-env-mc-psql-db-url",
+                    },
+                  },
+                },
+                {
+                  "name": "MC_PSQL_DB_POOL_SIZE",
+                  "value": "10",
+                },
+              ],
+              "image": "us-central1-docker.pkg.dev/project-id/keeta/app:1",
+              "resources": {
+                "limits": {
+                  "cpu": "1",
+                  "memory": "512Mi",
+                },
+              },
+            },
+          ],
+          "serviceAccountName": "profile-production-large-sa@mock.iam.gserviceaccount.com",
+        },
+      },
+    },
+    "name": "profile-production-large-api",
+    "parent": "Keeta:GCP:CloudRunService::profile-production-large",
+    "type": "gcp:cloudrun/service:Service",
+    "urn": "Keeta:GCP:CloudRunService$gcp:cloudrun/service:Service::profile-production-large-api",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:cloudrun/service:Service$gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup$gcp:compute/backendService:BackendService::profile-production-large-backend",
+    ],
+    "custom": true,
+    "inputs": {
+      "backends": [
+        {
+          "group": "profile-production-large-neg-id",
+        },
+      ],
+      "loadBalancingScheme": "EXTERNAL_MANAGED",
+      "protocol": "HTTP",
+    },
+    "name": "profile-production-large-backend",
+    "parent": "Keeta:GCP:CloudRunService::profile-production-large",
+    "type": "gcp:compute/backendService:BackendService",
+    "urn": "Keeta:GCP:CloudRunService$gcp:compute/backendService:BackendService::profile-production-large-backend",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:cloudrun/service:Service$gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup::profile-production-large-neg",
+    ],
+    "custom": true,
+    "deletedWith": "Keeta:GCP:CloudRunService$gcp:cloudrun/service:Service::profile-production-large-api",
+    "inputs": {
+      "cloudRun": {
+        "service": "profile-production-large-api",
+      },
+      "networkEndpointType": "SERVERLESS",
+      "region": "us-central1",
+    },
+    "name": "profile-production-large-neg",
+    "parent": "Keeta:GCP:CloudRunService::profile-production-large",
+    "type": "gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup",
+    "urn": "Keeta:GCP:CloudRunService$gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup::profile-production-large-neg",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "profile-production-large",
+    "type": "Keeta:GCP:CloudRunService",
+    "urn": "Keeta:GCP:CloudRunService::profile-production-large",
+  },
+]
+`;
+
+exports[`a service with a profile > keeps its resources, parents and key inputs for test small 1`] = `
+[
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/globalAddress:GlobalAddress::profile-test-small-private-ip-alloc",
+    ],
+    "custom": true,
+    "inputs": {
+      "addressType": "INTERNAL",
+      "network": "self-link.profile-test-small-vpc",
+      "prefixLength": 16,
+      "purpose": "VPC_PEERING",
+    },
+    "name": "profile-test-small-private-ip-alloc",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::profile-test-small-network",
+    "type": "gcp:compute/globalAddress:GlobalAddress",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:compute/globalAddress:GlobalAddress::profile-test-small-private-ip-alloc",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network::profile-test-small-vpc",
+    ],
+    "custom": true,
+    "inputs": {
+      "autoCreateSubnetworks": false,
+      "description": "[profile-test-small] VPC network",
+    },
+    "name": "profile-test-small-vpc",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::profile-test-small-network",
+    "type": "gcp:compute/network:Network",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:compute/network:Network::profile-test-small-vpc",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork::profile-test-small-subnet",
+    ],
+    "custom": true,
+    "inputs": {
+      "description": "[profile-test-small] Subnet",
+      "ipCidrRange": "10.97.35.0/24",
+      "network": "self-link.profile-test-small-vpc",
+      "privateIpGoogleAccess": true,
+      "region": "us-central1",
+    },
+    "name": "profile-test-small-subnet",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::profile-test-small-network",
+    "type": "gcp:compute/subnetwork:Subnetwork",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:compute/subnetwork:Subnetwork::profile-test-small-subnet",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/globalAddress:GlobalAddress$gcp:servicenetworking/connection:Connection::profile-test-small-svc-networking",
+    ],
+    "custom": true,
+    "inputs": {
+      "network": "self-link.profile-test-small-vpc",
+      "reservedPeeringRanges": [
+        "profile-test-small-private-ip-alloc",
+      ],
+      "service": "servicenetworking.googleapis.com",
+    },
+    "name": "profile-test-small-svc-networking",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::profile-test-small-network",
+    "type": "gcp:servicenetworking/connection:Connection",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:servicenetworking/connection:Connection::profile-test-small-svc-networking",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork$gcp:vpcaccess/connector:Connector::profile-test-small-vpc-connector",
+    ],
+    "custom": true,
+    "inputs": {
+      "ipCidrRange": "10.97.36.0/28",
+      "maxInstances": 3,
+      "minInstances": 2,
+      "name": "profile-test-small-vpc",
+      "network": "self-link.profile-test-small-vpc",
+      "region": "us-central1",
+    },
+    "name": "profile-test-small-vpc-connector",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::profile-test-small-network",
+    "type": "gcp:vpcaccess/connector:Connector",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:vpcaccess/connector:Connector::profile-test-small-vpc-connector",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "profile-test-small-network",
+    "parent": "Keeta:GCP:CloudRunService::profile-test-small",
+    "type": "Keeta:GCP:AppNetwork",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::profile-test-small-network",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "replication": {
+        "userManaged": {
+          "replicas": [
+            {
+              "location": "us-central1",
+            },
+          ],
+        },
+      },
+      "secretId": "profile-test-small-env-mc-psql-db-password",
+    },
+    "name": "profile-test-small-env-mc-psql-db-password",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::profile-test-small-env",
+    "type": "gcp:secretmanager/secret:Secret",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::profile-test-small-env-mc-psql-db-password",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "replication": {
+        "userManaged": {
+          "replicas": [
+            {
+              "location": "us-central1",
+            },
+          ],
+        },
+      },
+      "secretId": "profile-test-small-env-mc-psql-db-url",
+    },
+    "name": "profile-test-small-env-mc-psql-db-url",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::profile-test-small-env",
+    "type": "gcp:secretmanager/secret:Secret",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::profile-test-small-env-mc-psql-db-url",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretIamMember:SecretIamMember::profile-test-small-env-mc-psql-db-password-iam-binding",
+    ],
+    "custom": true,
+    "deletedWith": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::profile-test-small-env-mc-psql-db-password",
+    "inputs": {
+      "member": "serviceAccount:profile-test-small-sa@mock.iam.gserviceaccount.com",
+      "role": "roles/secretmanager.secretAccessor",
+      "secretId": "profile-test-small-env-mc-psql-db-password",
+    },
+    "name": "profile-test-small-env-mc-psql-db-password-iam-binding",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::profile-test-small-env",
+    "type": "gcp:secretmanager/secretIamMember:SecretIamMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secretIamMember:SecretIamMember::profile-test-small-env-mc-psql-db-password-iam-binding",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretIamMember:SecretIamMember::profile-test-small-env-mc-psql-db-url-iam-binding",
+    ],
+    "custom": true,
+    "deletedWith": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::profile-test-small-env-mc-psql-db-url",
+    "inputs": {
+      "member": "serviceAccount:profile-test-small-sa@mock.iam.gserviceaccount.com",
+      "role": "roles/secretmanager.secretAccessor",
+      "secretId": "profile-test-small-env-mc-psql-db-url",
+    },
+    "name": "profile-test-small-env-mc-psql-db-url-iam-binding",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::profile-test-small-env",
+    "type": "gcp:secretmanager/secretIamMember:SecretIamMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secretIamMember:SecretIamMember::profile-test-small-env-mc-psql-db-url-iam-binding",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::profile-test-small-env-mc-psql-db-password-version",
+    ],
+    "custom": true,
+    "deletedWith": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::profile-test-small-env-mc-psql-db-password",
+    "inputs": {
+      "deletionPolicy": "DISABLE",
+      "secret": "profile-test-small-env-mc-psql-db-password-id",
+      "secretData": "<secret>",
+    },
+    "name": "profile-test-small-env-mc-psql-db-password-version",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::profile-test-small-env",
+    "type": "gcp:secretmanager/secretVersion:SecretVersion",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secretVersion:SecretVersion::profile-test-small-env-mc-psql-db-password-version",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::profile-test-small-env-mc-psql-db-url-version",
+    ],
+    "custom": true,
+    "deletedWith": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::profile-test-small-env-mc-psql-db-url",
+    "inputs": {
+      "deletionPolicy": "DISABLE",
+      "secret": "profile-test-small-env-mc-psql-db-url-id",
+      "secretData": "<secret>",
+    },
+    "name": "profile-test-small-env-mc-psql-db-url-version",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::profile-test-small-env",
+    "type": "gcp:secretmanager/secretVersion:SecretVersion",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secretVersion:SecretVersion::profile-test-small-env-mc-psql-db-url-version",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "profile-test-small-env",
+    "parent": "Keeta:GCP:CloudRunService::profile-test-small",
+    "type": "Keeta:GCP:CloudRunEnvManager",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::profile-test-small-env",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:profile-test-small-sa@mock.iam.gserviceaccount.com",
+      "repository": "projects/project-id/locations/us-central1/repositories/keeta",
+      "role": "roles/artifactregistry.reader",
+    },
+    "name": "profile-test-small-crwp-ar-1-iam",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun::profile-test-small-crwp",
+    "type": "gcp:artifactregistry/repositoryIamMember:RepositoryIamMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun$gcp:artifactregistry/repositoryIamMember:RepositoryIamMember::profile-test-small-crwp-ar-1-iam",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "deletionPolicy": "DELETE",
+      "deletionProtection": false,
+      "location": "us-central1",
+      "scaling": {
+        "manualInstanceCount": 1,
+      },
+      "template": {
+        "containers": [
+          {
+            "envs": [
+              {
+                "name": "MC_PSQL_DB_USER",
+                "value": "profile-test-small-db-db-user",
+              },
+              {
+                "name": "MC_PSQL_DB_PASSWORD",
+                "valueSource": {
+                  "secretKeyRef": {
+                    "secret": "profile-test-small-env-mc-psql-db-password",
+                    "version": "1",
+                  },
+                },
+              },
+              {
+                "name": "MC_PSQL_DB_NAME",
+                "value": "profile-test-small-db-db",
+              },
+              {
+                "name": "MC_PSQL_DB_HOST",
+                "value": "ip.profile-test-small-db-master",
+              },
+              {
+                "name": "MC_PSQL_DB_PORT",
+                "value": "5432",
+              },
+              {
+                "name": "MC_PSQL_DB_SSLMODE",
+                "value": "require",
+              },
+              {
+                "name": "MC_PSQL_DB_CA_CERT",
+                "value": "ca-certificate.profile-test-small-db-master",
+              },
+              {
+                "name": "MC_PSQL_DB_URL",
+                "valueSource": {
+                  "secretKeyRef": {
+                    "secret": "profile-test-small-env-mc-psql-db-url",
+                    "version": "1",
+                  },
+                },
+              },
+              {
+                "name": "MC_PSQL_DB_POOL_SIZE",
+                "value": "7",
+              },
+            ],
+            "image": "us-central1-docker.pkg.dev/project-id/keeta/app:1",
+            "name": "profile-test-small-worker",
+            "resources": {
+              "limits": {
+                "cpu": "1",
+                "memory": "1024Mi",
+              },
+            },
+          },
+        ],
+        "serviceAccount": "profile-test-small-sa@mock.iam.gserviceaccount.com",
+        "vpcAccess": {
+          "egress": "ALL_TRAFFIC",
+          "networkInterfaces": [
+            {
+              "subnetwork": "profile-test-small-subnet-id",
+            },
+          ],
+        },
+      },
+    },
+    "name": "profile-test-small-crwp-pool",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun::profile-test-small-crwp",
+    "type": "gcp:cloudrunv2/workerPool:WorkerPool",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun$gcp:cloudrunv2/workerPool:WorkerPool::profile-test-small-crwp-pool",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:profile-test-small-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/logging.logWriter",
+    },
+    "name": "profile-test-small-crwp-iam-logging",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun::profile-test-small-crwp",
+    "retainOnDelete": true,
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun$gcp:projects/iAMMember:IAMMember::profile-test-small-crwp-iam-logging",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:profile-test-small-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/monitoring.metricWriter",
+    },
+    "name": "profile-test-small-crwp-iam-metric",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun::profile-test-small-crwp",
+    "retainOnDelete": true,
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun$gcp:projects/iAMMember:IAMMember::profile-test-small-crwp-iam-metric",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "profile-test-small-crwp",
+    "parent": "Keeta:GCP:CloudRunService::profile-test-small",
+    "type": "Keeta:GCP:ContainerCloudRun",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun::profile-test-small-crwp",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "deletionProtection": false,
+      "location": "us-central1",
+      "template": {
+        "template": {
+          "containers": [
+            {
+              "envs": [
+                {
+                  "name": "MC_PSQL_DB_USER",
+                  "value": "profile-test-small-db-db-user",
+                },
+                {
+                  "name": "MC_PSQL_DB_PASSWORD",
+                  "valueSource": {
+                    "secretKeyRef": {
+                      "secret": "profile-test-small-env-mc-psql-db-password",
+                      "version": "1",
+                    },
+                  },
+                },
+                {
+                  "name": "MC_PSQL_DB_NAME",
+                  "value": "profile-test-small-db-db",
+                },
+                {
+                  "name": "MC_PSQL_DB_HOST",
+                  "value": "ip.profile-test-small-db-master",
+                },
+                {
+                  "name": "MC_PSQL_DB_PORT",
+                  "value": "5432",
+                },
+                {
+                  "name": "MC_PSQL_DB_SSLMODE",
+                  "value": "require",
+                },
+                {
+                  "name": "MC_PSQL_DB_CA_CERT",
+                  "value": "ca-certificate.profile-test-small-db-master",
+                },
+                {
+                  "name": "MC_PSQL_DB_URL",
+                  "valueSource": {
+                    "secretKeyRef": {
+                      "secret": "profile-test-small-env-mc-psql-db-url",
+                      "version": "1",
+                    },
+                  },
+                },
+                {
+                  "name": "MC_PSQL_DB_POOL_SIZE",
+                  "value": "5",
+                },
+              ],
+              "image": "us-central1-docker.pkg.dev/project-id/keeta/app:1",
+              "resources": {
+                "limits": {
+                  "cpu": "1",
+                  "memory": "512Mi",
+                },
+              },
+            },
+          ],
+          "maxRetries": 1,
+          "serviceAccount": "profile-test-small-sa@mock.iam.gserviceaccount.com",
+          "timeout": "600s",
+          "vpcAccess": {
+            "connector": "profile-test-small-vpc-connector-id",
+            "egress": "PRIVATE_RANGES_ONLY",
+          },
+        },
+      },
+    },
+    "name": "profile-test-small-migration-job",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob::profile-test-small-migration",
+    "type": "gcp:cloudrunv2/job:Job",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$gcp:cloudrunv2/job:Job::profile-test-small-migration-job",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:profile-test-small-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/cloudsql.client",
+    },
+    "name": "profile-test-small-migration-cloudsql-client",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob::profile-test-small-migration",
+    "retainOnDelete": true,
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$gcp:projects/iAMMember:IAMMember::profile-test-small-migration-cloudsql-client",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$gcp:cloudrunv2/job:Job$pulumi-nodejs:dynamic:Resource::profile-test-small-migration-exec",
+    ],
+    "custom": true,
+    "inputs": {
+      "auth": {
+        "project": "project-id",
+      },
+      "jobName": "profile-test-small-migration-job",
+      "projectId": "project-id",
+      "region": "us-central1",
+      "trigger": "us-central1-docker.pkg.dev/project-id/keeta/app:1",
+    },
+    "name": "profile-test-small-migration-exec",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob::profile-test-small-migration",
+    "type": "pulumi-nodejs:dynamic:Resource",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$pulumi-nodejs:dynamic:Resource::profile-test-small-migration-exec",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "profile-test-small-migration",
+    "parent": "Keeta:GCP:CloudRunService::profile-test-small",
+    "type": "Keeta:GCP:MigrationJob",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob::profile-test-small-migration",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL$gcp:sql/databaseInstance:DatabaseInstance$gcp:sql/database:Database::profile-test-small-db-db",
+    ],
+    "custom": true,
+    "deletedWith": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL$gcp:sql/databaseInstance:DatabaseInstance::profile-test-small-db-master",
+    "inputs": {
+      "deletionPolicy": "ABANDON",
+      "instance": "profile-test-small-db-master",
+    },
+    "name": "profile-test-small-db-db",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL::profile-test-small-db",
+    "protect": false,
+    "type": "gcp:sql/database:Database",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL$gcp:sql/database:Database::profile-test-small-db-db",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "databaseVersion": "POSTGRES_14",
+      "deletionProtection": false,
+      "region": "us-central1",
+      "settings": {
+        "availabilityType": "ZONAL",
+        "backupConfiguration": {
+          "backupRetentionSettings": {
+            "retainedBackups": 3,
+          },
+          "enabled": true,
+          "pointInTimeRecoveryEnabled": false,
+        },
+        "databaseFlags": [
+          {
+            "name": "max_connections",
+            "value": "75",
+          },
+        ],
+        "insightsConfig": {
+          "queryInsightsEnabled": true,
+          "queryStringLength": 4500,
+        },
+        "ipConfiguration": {
+          "ipv4Enabled": false,
+          "privateNetwork": "profile-test-small-vpc-id",
+          "sslMode": "ENCRYPTED_ONLY",
+        },
+        "tier": "db-g1-small",
+      },
+    },
+    "name": "profile-test-small-db-master",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL::profile-test-small-db",
+    "protect": false,
+    "type": "gcp:sql/databaseInstance:DatabaseInstance",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL$gcp:sql/databaseInstance:DatabaseInstance::profile-test-small-db-master",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL$gcp:sql/databaseInstance:DatabaseInstance$gcp:sql/user:User::profile-test-small-db-db-user",
+    ],
+    "custom": true,
+    "deletedWith": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL$gcp:sql/databaseInstance:DatabaseInstance::profile-test-small-db-master",
+    "inputs": {
+      "deletionPolicy": "ABANDON",
+      "instance": "profile-test-small-db-master",
+      "password": "<secret>",
+    },
+    "name": "profile-test-small-db-db-user",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL::profile-test-small-db",
+    "protect": false,
+    "type": "gcp:sql/user:User",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL$gcp:sql/user:User::profile-test-small-db-db-user",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "length": 24,
+      "number": true,
+      "special": false,
+    },
+    "name": "profile-test-small-db-postgres-password",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL::profile-test-small-db",
+    "type": "random:index/randomString:RandomString",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL$random:index/randomString:RandomString::profile-test-small-db-postgres-password",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "profile-test-small-db",
+    "parent": "Keeta:GCP:CloudRunService::profile-test-small",
+    "type": "Keeta:GCP:PostgresCloudSQL",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL::profile-test-small-db",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL$gcp:projects/iAMMember:IAMMember::profile-test-small-cloudsql-client",
+    ],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:profile-test-small-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/cloudsql.client",
+    },
+    "name": "profile-test-small-cloudsql-client",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::profile-test-small-identity",
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:projects/iAMMember:IAMMember::profile-test-small-cloudsql-client",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:projects/iAMMember:IAMMember::profile-test-small-log-writer",
+    ],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:profile-test-small-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/logging.logWriter",
+    },
+    "name": "profile-test-small-log-writer",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::profile-test-small-identity",
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:projects/iAMMember:IAMMember::profile-test-small-log-writer",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:profile-test-small-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/monitoring.metricWriter",
+    },
+    "name": "profile-test-small-metric-writer",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::profile-test-small-identity",
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:projects/iAMMember:IAMMember::profile-test-small-metric-writer",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:serviceaccount/account:Account::profile-test-small-sa",
+      "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:serviceAccount/account:Account::profile-test-small-sa",
+    ],
+    "custom": true,
+    "inputs": {
+      "accountId": "profile-test-small-sa",
+      "description": "[profile-test-small] Service account",
+    },
+    "name": "profile-test-small-sa",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::profile-test-small-identity",
+    "type": "gcp:serviceaccount/account:Account",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:serviceaccount/account:Account::profile-test-small-sa",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "profile-test-small-identity",
+    "parent": "Keeta:GCP:CloudRunService::profile-test-small",
+    "type": "Keeta:GCP:ServiceIdentity",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::profile-test-small-identity",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:cloudrun/service:Service$gcp:cloudrun/iamMember:IamMember::profile-test-small-invoker",
+    ],
+    "custom": true,
+    "deletedWith": "Keeta:GCP:CloudRunService$gcp:cloudrun/service:Service::profile-test-small-api",
+    "inputs": {
+      "location": "us-central1",
+      "member": "allUsers",
+      "role": "roles/run.invoker",
+      "service": "profile-test-small-api",
+    },
+    "name": "profile-test-small-invoker",
+    "parent": "Keeta:GCP:CloudRunService::profile-test-small",
+    "type": "gcp:cloudrun/iamMember:IamMember",
+    "urn": "Keeta:GCP:CloudRunService$gcp:cloudrun/iamMember:IamMember::profile-test-small-invoker",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "location": "us-central1",
+      "template": {
+        "metadata": {
+          "annotations": {
+            "autoscaling.knative.dev/maxScale": "12",
+            "run.googleapis.com/vpc-access-connector": "self-link.profile-test-small-vpc-connector",
+          },
+        },
+        "spec": {
+          "containers": [
+            {
+              "envs": [
+                {
+                  "name": "MC_PSQL_DB_USER",
+                  "value": "profile-test-small-db-db-user",
+                },
+                {
+                  "name": "MC_PSQL_DB_PASSWORD",
+                  "valueFrom": {
+                    "secretKeyRef": {
+                      "key": "1",
+                      "name": "profile-test-small-env-mc-psql-db-password",
+                    },
+                  },
+                },
+                {
+                  "name": "MC_PSQL_DB_NAME",
+                  "value": "profile-test-small-db-db",
+                },
+                {
+                  "name": "MC_PSQL_DB_HOST",
+                  "value": "ip.profile-test-small-db-master",
+                },
+                {
+                  "name": "MC_PSQL_DB_PORT",
+                  "value": "5432",
+                },
+                {
+                  "name": "MC_PSQL_DB_SSLMODE",
+                  "value": "require",
+                },
+                {
+                  "name": "MC_PSQL_DB_CA_CERT",
+                  "value": "ca-certificate.profile-test-small-db-master",
+                },
+                {
+                  "name": "MC_PSQL_DB_URL",
+                  "valueFrom": {
+                    "secretKeyRef": {
+                      "key": "1",
+                      "name": "profile-test-small-env-mc-psql-db-url",
+                    },
+                  },
+                },
+                {
+                  "name": "MC_PSQL_DB_POOL_SIZE",
+                  "value": "5",
+                },
+              ],
+              "image": "us-central1-docker.pkg.dev/project-id/keeta/app:1",
+              "resources": {
+                "limits": {
+                  "cpu": "1",
+                  "memory": "512Mi",
+                },
+              },
+            },
+          ],
+          "serviceAccountName": "profile-test-small-sa@mock.iam.gserviceaccount.com",
+        },
+      },
+    },
+    "name": "profile-test-small-api",
+    "parent": "Keeta:GCP:CloudRunService::profile-test-small",
+    "type": "gcp:cloudrun/service:Service",
+    "urn": "Keeta:GCP:CloudRunService$gcp:cloudrun/service:Service::profile-test-small-api",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:cloudrun/service:Service$gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup$gcp:compute/backendService:BackendService::profile-test-small-backend",
+    ],
+    "custom": true,
+    "inputs": {
+      "backends": [
+        {
+          "group": "profile-test-small-neg-id",
+        },
+      ],
+      "loadBalancingScheme": "EXTERNAL_MANAGED",
+      "protocol": "HTTP",
+    },
+    "name": "profile-test-small-backend",
+    "parent": "Keeta:GCP:CloudRunService::profile-test-small",
+    "type": "gcp:compute/backendService:BackendService",
+    "urn": "Keeta:GCP:CloudRunService$gcp:compute/backendService:BackendService::profile-test-small-backend",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:cloudrun/service:Service$gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup::profile-test-small-neg",
+    ],
+    "custom": true,
+    "deletedWith": "Keeta:GCP:CloudRunService$gcp:cloudrun/service:Service::profile-test-small-api",
+    "inputs": {
+      "cloudRun": {
+        "service": "profile-test-small-api",
+      },
+      "networkEndpointType": "SERVERLESS",
+      "region": "us-central1",
+    },
+    "name": "profile-test-small-neg",
+    "parent": "Keeta:GCP:CloudRunService::profile-test-small",
+    "type": "gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup",
+    "urn": "Keeta:GCP:CloudRunService$gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup::profile-test-small-neg",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "profile-test-small",
+    "type": "Keeta:GCP:CloudRunService",
+    "urn": "Keeta:GCP:CloudRunService::profile-test-small",
+  },
+]
+`;
