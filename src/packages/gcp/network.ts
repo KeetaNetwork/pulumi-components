@@ -75,6 +75,7 @@ export class AppNetwork extends pulumi.ComponentResource {
 	readonly #args: AppNetworkArgs;
 	readonly #oldNetwork?: OldParent;
 	#privateServiceAccess?: gcp.servicenetworking.Connection;
+	#natWorker = false;
 
 	/**
 	 * @param name Prefix of the resources: `${name}-vpc`, `${name}-subnet` and
@@ -131,6 +132,23 @@ export class AppNetwork extends pulumi.ComponentResource {
 		}, { parent: this, aliases: connectorAliases });
 
 		this.registerOutputs({ network: this.network, subnet: this.subnet, connector: this.connector });
+	}
+
+	/**
+	 * Claims the Cloud NAT of the network for a worker (`egress: 'vpc+nat'`).
+	 * GCP allows one NAT that serves all subnets for a network and region, so
+	 * a network has one worker with a NAT, like it has one connection.
+	 *
+	 * @returns false when another worker already has it
+	 */
+	claimNatWorker(): boolean {
+		if (this.#natWorker) {
+			return(false);
+		}
+
+		this.#natWorker = true;
+
+		return(true);
 	}
 
 	/**

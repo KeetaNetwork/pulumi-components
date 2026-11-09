@@ -1235,14 +1235,16 @@ export class CloudRunService extends pulumi.ComponentResource {
 			const workerEnv = envManager?.view(worker.environmentOverrides) ?? new EnvView({}, [], worker.environmentOverrides ?? {});
 
 			if (worker.kind === 'mig') {
-				// Create external IP if requested
-				let extIP: gcp.compute.Address | undefined;
+				// Reserve the external IP if the worker egresses through a NAT
+				let natIps: pulumi.Input<string>[] | undefined;
 				if (worker.egress === 'vpc+nat') {
-					extIP = new gcp.compute.Address(`${name}-mig-ext-ip`, {
+					// The reserved address (and so the IP that peers allow) stays; the NAT of the worker uses it
+					const extIP = new gcp.compute.Address(`${name}-mig-ext-ip`, {
 						description: `[${name}] External IP for MIG`,
 						addressType: 'EXTERNAL',
 						region: parsed.region
 					}, { parent: this });
+					natIps = [extIP.selfLink];
 				}
 
 				mig = new ContainerMIG(`${name}-mig`, {
@@ -1256,11 +1258,8 @@ export class CloudRunService extends pulumi.ComponentResource {
 					enableVMSSH: worker.enableSSH,
 					count: worker.instanceCount,
 					diskSizeGb: worker.diskSizeGb,
-					networkInterfaces: extIP ? [{
-						accessConfigs: [{
-							natIp: extIP.address
-						}]
-					}] : undefined,
+					egress: worker.egress,
+					natIps: natIps,
 					common: {
 						gcp: parsed.gcp
 					},

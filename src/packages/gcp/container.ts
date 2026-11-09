@@ -119,6 +119,22 @@ interface ContainerMIGOptions extends ContainerGenericOptions<false> {
 	networkInterfaces?: NonNullable<ConstructorParameters<typeof gcp.compute.InstanceTemplate>[1]>['networkInterfaces'];
 
 	/**
+	 * How the VMs reach the internet:
+	 *    - vpc: Through the VPC alone, they have no external address (default)
+	 *    - vpc+direct: Each VM gets an ephemeral external IP address
+	 *    - vpc+nat: A Cloud NAT is created on the network, and every VM
+	 *      leaves through it (through `natIps` if they are given, else
+	 *      through addresses that GCP picks). The VMs have no external address.
+	 */
+	egress?: ContainerEgress;
+
+	/**
+	 * The addresses (self links of reserved external addresses) that the Cloud
+	 * NAT of `vpc+nat` uses. Without them GCP allocates the addresses.
+	 */
+	natIps?: pulumi.Input<string>[];
+
+	/**
 	 * HTTP Server Port
 	 */
 	httpPort?: pulumi.Input<number>;
@@ -169,9 +185,83 @@ type ContainerCloudRunOptions = ContainerGenericOptions<true> & ({
 	 * This replaces the "networkInterfaces" option from MIGs, since Cloud
 	 * Run Worker Pools do not support specifying network interfaces directly.
 	 */
-	egress?: 'vpc' | 'vpc+nat' | 'vpc+direct';
+	egress?: ContainerEgress;
 };
 
+
+/** How a worker reaches the internet (B4) */
+export type ContainerEgress = 'vpc' | 'vpc+nat' | 'vpc+direct';
+
+interface CloudNatArgs {
+	/** Self link or ID of the network */
+	network: pulumi.Input<string>;
+	region: pulumi.Input<string>;
+
+	/**
+	 * Reserved external addresses (self links) for the NAT to use. Without
+	 * them GCP allocates the addresses.
+	 */
+	natIps?: pulumi.Input<string>[];
+
+	/**
+	 * The subnets (IDs) that the NAT serves, with all their IP ranges. Without
+	 * them it serves every subnet of the network in the region: GCP then allows
+	 * no other NAT for that network and region, so a worker that shares its
+	 * network gives a list.
+	 */
+	subnets?: pulumi.Input<string>[];
+
+	/** Description of the router */
+	description?: string;
+}
+
+/**
+ * A Cloud Router and a Cloud NAT for every range of the network (or of the
+ * `subnets` that are given), named
+ * `${name}-cloudnat-router` and `${name}-cloudnat`. The NAT is the way out to
+ * the internet for workers that have no external address.
+ */
+function createCloudNat(name: string, args: CloudNatArgs, opts: { parent: pulumi.Resource; dependsOn?: pulumi.Input<pulumi.Input<pulumi.Resource>[]> }) {
+	const router = new gcp.compute.Router(`${name}-cloudnat-router`, {
+		description: args.description ?? `[${name}] Cloud NAT router`,
+		network: args.network,
+		region: args.region
+	}, {
+		parent: opts.parent
+	});
+
+	let natIpArgs: { natIps?: pulumi.Input<string>[] } = {};
+	let natIpAllocateOption = 'AUTO_ONLY';
+	if (args.natIps !== undefined) {
+		natIpArgs = { natIps: args.natIps };
+		natIpAllocateOption = 'MANUAL_ONLY';
+	}
+
+	let subnetArgs: Pick<gcp.compute.RouterNatArgs, 'sourceSubnetworkIpRangesToNat' | 'subnetworks'> = {
+		sourceSubnetworkIpRangesToNat: 'ALL_SUBNETWORKS_ALL_IP_RANGES'
+	};
+	if (args.subnets !== undefined) {
+		subnetArgs = {
+			sourceSubnetworkIpRangesToNat: 'LIST_OF_SUBNETWORKS',
+			subnetworks: args.subnets.map(function(subnet) {
+				return({ name: subnet, sourceIpRangesToNats: [ 'ALL_IP_RANGES' ] });
+			})
+		};
+	}
+
+	const nat = new gcp.compute.RouterNat(`${name}-cloudnat`, {
+		router: router.name,
+		region: args.region,
+		natIpAllocateOption,
+		...natIpArgs,
+		...subnetArgs
+	}, {
+		parent: opts.parent,
+		dependsOn: opts.dependsOn
+	});
+
+	return({ router, nat });
+}
 
 function handleGenericOptions(name: string, options: ContainerGenericOptions<true> | ContainerGenericOptions<false>, parent: pulumi.ComponentResource) {
 	if (options.common.gcp.project === undefined) {
@@ -370,15 +460,31 @@ function handleGenericOptions(name: string, options: ContainerGenericOptions<tru
 	});
 }
 
+/**
+ * The options that the component registers. `natIps` names the reserved
+ * addresses of the NAT: the NAT depends on them, the component (and so the
+ * group of VMs) does not, so they are left out.
+ */
+function registeredMIGOptions(options: ContainerMIGOptions): Omit<ContainerMIGOptions, 'natIps'> {
+	const registered = { ...options };
+	delete registered.natIps;
+
+	return(registered);
+}
+
 export class ContainerMIG extends pulumi.ComponentResource {
 	private static defaultCOSImage?: ReturnType<typeof gcp.compute.getImage>;
 	instanceGroupManager: gcp.compute.RegionInstanceGroupManager | gcp.compute.InstanceGroupManager;
+	cloudNAT?: {
+		router: gcp.compute.Router;
+		nat: gcp.compute.RouterNat;
+	};
 	subnetwork: ContainerMIGOptions['subnetwork'];
 	serviceAccount: ContainerMIGOptions['serviceAccount'];
 	readonly type = 'MIG' as const;
 
 	constructor(name: string, options: ContainerMIGOptions, args?: pulumi.ComponentResourceOptions) {
-		super('Keeta:GCP:ContainerMIG', name, options, args);
+		super('Keeta:GCP:ContainerMIG', name, registeredMIGOptions(options), args);
 
 		const {
 			subnetwork,
@@ -462,6 +568,15 @@ export class ContainerMIG extends pulumi.ComponentResource {
 			runCommands.push('pkill -9 -x sshd');
 		}
 
+		/*
+		 * `vpc+direct` gives each VM an ephemeral external IP. `vpc+nat` gives
+		 * it none: it leaves through the Cloud NAT.
+		 */
+		const vmAccessConfigs: { natIp?: string }[] = [];
+		if (options.egress === 'vpc+direct') {
+			vmAccessConfigs.push({});
+		}
+
 		/**
 		 * Create the Managed Instance Group Template, from which each instance will be created
 		 */
@@ -496,7 +611,7 @@ export class ContainerMIG extends pulumi.ComponentResource {
 					{
 						network: networkIDResolved,
 						subnetwork: subnetworkIDResolved,
-						accessConfigs: [],
+						accessConfigs: vmAccessConfigs,
 						...networkInterfaces[0]
 					}
 				];
@@ -533,7 +648,14 @@ export class ContainerMIG extends pulumi.ComponentResource {
 		/*
 		 * Create the instance manager (the resource which constructs the instances from the templates)
 		 */
+		let waitArgs: { waitForInstances?: boolean; waitForInstancesStatus?: string } = {};
+		if (options.egress === 'vpc+nat') {
+			/* The NAT takes the address of the old VMs: wait until the rollout has replaced them (UPDATED), not just until the group is stable */
+			waitArgs = { waitForInstances: true, waitForInstancesStatus: 'UPDATED' };
+		}
+
 		const igmBaseArgs = {
+			...waitArgs,
 			baseInstanceName: baseInstanceName,
 			targetSize: options.count ?? 1,
 			namedPorts: [{
@@ -600,6 +722,16 @@ export class ContainerMIG extends pulumi.ComponentResource {
 		}
 
 		this.instanceGroupManager = igm;
+
+		if (options.egress === 'vpc+nat') {
+			this.cloudNAT = createCloudNat(name, {
+				network: networkID,
+				region,
+				natIps: options.natIps,
+				subnets: [subnetworkID],
+				description: `[${name}] Cloud NAT router for the container VMs`
+			}, { parent: this, dependsOn: [igm] });
+		}
 	}
 }
 
@@ -635,22 +767,11 @@ export class ContainerCloudRun extends pulumi.ComponentResource {
 				return(subnetworkResolved.network);
 			});
 
-			const router = new gcp.compute.Router(`${name}-cloudnat-router`, {
-				description: `[${name}] Cloud NAT router for Cloud Run Worker Pool`,
+			const { router, nat } = createCloudNat(name, {
 				network: networkID,
-				region: region
-			}, {
-				parent: this
-			});
-
-			const nat = new gcp.compute.RouterNat(`${name}-cloudnat`, {
-				router: router.name,
 				region: region,
-				natIpAllocateOption: 'AUTO_ONLY',
-				sourceSubnetworkIpRangesToNat: 'ALL_SUBNETWORKS_ALL_IP_RANGES'
-			}, {
-				parent: this
-			});
+				description: `[${name}] Cloud NAT router for Cloud Run Worker Pool`
+			}, { parent: this });
 
 			this.cloudNAT = {
 				router: router,

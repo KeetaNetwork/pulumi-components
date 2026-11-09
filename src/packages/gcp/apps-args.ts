@@ -462,6 +462,10 @@ export function parseCloudRunServiceArgs(args: CloudRunServiceArgs): ParsedCloud
 			}
 		}
 
+		if (worker?.egress === 'vpc+nat' && args.network !== undefined && !args.network.claimNatWorker()) {
+			throw(new CloudRunServiceArgsError('worker.egress \'vpc+nat\' is already used by another worker on this AppNetwork: a network has one Cloud NAT worker, so give the second worker egress \'vpc\' or its own AppNetwork'));
+		}
+
 		parsed.vpc = vpc;
 	}
 
