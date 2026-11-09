@@ -119,7 +119,7 @@ export interface MigrationJobArgs {
  * Features:
  * - Works with existing PostgresCloudSQL instances or explicit credentials
  * - Auto-injects MC_PSQL_DB_* vars for database connection
- * - Connects to the database over the VPC private IP through the VPC connector given in "vpc", not through a Cloud SQL volume mount
+ * - Connects to the database over the VPC private IP through the VPC connector given in "vpc"
  * - Re-runs when trigger value changes (e.g., new image)
  */
 export class MigrationJob extends pulumi.ComponentResource {
