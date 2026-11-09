@@ -1,7 +1,7 @@
-import fs from 'fs';
-import { createRequire, registerHooks, type LoadHookSync, type ResolveHookSync } from 'module';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import fs from 'node:fs';
+import { createRequire, registerHooks, type LoadHookSync, type ResolveHookSync } from 'node:module';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
 /*
