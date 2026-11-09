@@ -5,6 +5,7 @@ import type { GCPCommonOptions } from './common';
 import { generateName } from '../../utils';
 import { CONTAINER_DEFAULTS } from './defaults';
 import type { ServiceIdentityRef } from './identity';
+import type { WorkerEgress } from './apps-args';
 
 /**
  * Common options for GCP
@@ -88,7 +89,7 @@ interface ContainerGenericOptions<SupportSecretRefEnvs extends boolean> {
 /**
  * Options for creating a managed instance group (MIG) for containers
  */
-interface ContainerMIGOptions extends ContainerGenericOptions<false> {
+interface ContainerMIGBaseOptions extends ContainerGenericOptions<false> {
 	/**
 	 * Zone to deploy the VMs to -- if this is specified it will create a
 	 * zonal instance group manager instead of a regional one
@@ -119,22 +120,6 @@ interface ContainerMIGOptions extends ContainerGenericOptions<false> {
 	networkInterfaces?: NonNullable<ConstructorParameters<typeof gcp.compute.InstanceTemplate>[1]>['networkInterfaces'];
 
 	/**
-	 * How the VMs reach the internet:
-	 *    - vpc: Through the VPC alone, they have no external address (default)
-	 *    - vpc+direct: Each VM gets an ephemeral external IP address
-	 *    - vpc+nat: A Cloud NAT is created on the network, and every VM
-	 *      leaves through it (through `natIps` if they are given, else
-	 *      through addresses that GCP picks). The VMs have no external address.
-	 */
-	egress?: ContainerEgress;
-
-	/**
-	 * The addresses (self links of reserved external addresses) that the Cloud
-	 * NAT of `vpc+nat` uses. Without them GCP allocates the addresses.
-	 */
-	natIps?: pulumi.Input<string>[];
-
-	/**
 	 * HTTP Server Port
 	 */
 	httpPort?: pulumi.Input<number>;
@@ -148,6 +133,27 @@ interface ContainerMIGOptions extends ContainerGenericOptions<false> {
 	 */
 	enableVMSSH?: boolean;
 }
+
+/**
+ * How the VMs reach the internet:
+ *    - vpc: Through the VPC alone, they have no external address (default)
+ *    - vpc+direct: Each VM gets an ephemeral external IP address
+ *    - vpc+nat: A Cloud NAT is created on the network, and every VM
+ *      leaves through it (through `natIps`, the self links of reserved
+ *      external addresses, if they are given, else through addresses that
+ *      GCP picks). The VMs have no external address.
+ *
+ * `natIps` belongs to `vpc+nat` alone, so the other two cannot be given it.
+ */
+export type ContainerMIGEgressOptions = {
+	egress?: 'vpc' | 'vpc+direct';
+	natIps?: never;
+} | {
+	egress: 'vpc+nat';
+	natIps?: pulumi.Input<string>[];
+};
+
+type ContainerMIGOptions = ContainerMIGBaseOptions & ContainerMIGEgressOptions;
 
 /**
  * Options for creating a Cloud Run Worker Pool (CRWP) for containers
@@ -190,7 +196,7 @@ type ContainerCloudRunOptions = ContainerGenericOptions<true> & ({
 
 
 /** How a worker reaches the internet (B4) */
-export type ContainerEgress = 'vpc' | 'vpc+nat' | 'vpc+direct';
+export type ContainerEgress = WorkerEgress;
 
 interface CloudNatArgs {
 	/** Self link or ID of the network */
@@ -463,9 +469,10 @@ function handleGenericOptions(name: string, options: ContainerGenericOptions<tru
 /**
  * The options that the component registers. `natIps` names the reserved
  * addresses of the NAT: the NAT depends on them, the component (and so the
- * group of VMs) does not, so they are left out.
+ * group of VMs) does not, so they are left out. This is about dependencies,
+ * not state: the registered options of a component change no diff.
  */
-function registeredMIGOptions(options: ContainerMIGOptions): Omit<ContainerMIGOptions, 'natIps'> {
+function registeredMIGOptions(options: ContainerMIGOptions): Omit<ContainerMIGBaseOptions, 'egress'> & { egress?: ContainerEgress } {
 	const registered = { ...options };
 	delete registered.natIps;
 
@@ -725,6 +732,12 @@ export class ContainerMIG extends pulumi.ComponentResource {
 		this.instanceGroupManager = igm;
 
 		if (options.egress === 'vpc+nat') {
+			/*
+			 * The NAT waits for the group so that it takes the address after the old
+			 * VMs have released it. The order is only safe while the group has no
+			 * autohealing on a health check that needs internet egress: the group
+			 * would wait for the NAT, and the NAT for the group.
+			 */
 			this.cloudNAT = createCloudNat(name, {
 				network: networkID,
 				region,

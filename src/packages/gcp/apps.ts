@@ -10,10 +10,11 @@ import type { ReplacedEnvironment } from './cloudrun';
 import { PostgresCloudSQL } from './sql';
 import type { ContainerGeneric } from './container';
 import { ContainerMIG, ContainerCloudRun } from './container';
+import type { ContainerMIGEgressOptions } from './container';
 import { MigrationJob } from './migration';
 import { AppNetwork } from './network';
 import { ServiceIdentity } from './identity';
-import { MAX_SCALE_ANNOTATION, parseCloudRunServiceArgs } from './apps-args';
+import { CloudRunServiceArgsError, MAX_SCALE_ANNOTATION, parseCloudRunServiceArgs } from './apps-args';
 import type { DeploymentProfile } from './profiles';
 import type { MigWorkerArgs, CrwpWorkerArgs, LegacyMigArgs, ParsedCloudRunServiceArgs, ParsedRemote } from './apps-args';
 export { CloudRunServiceArgsError } from './apps-args';
@@ -815,6 +816,9 @@ export class CloudRunService extends pulumi.ComponentResource {
 				}, { parent: this });
 			} else {
 				appNetwork = parsedVpc.appNetwork;
+				if (parsedVpc.worker?.egress === 'vpc+nat' && !appNetwork.claimNatWorker()) {
+					throw(new CloudRunServiceArgsError('worker.egress \'vpc+nat\' is already used by another worker on this AppNetwork: a network has one Cloud NAT worker, so give the second worker egress \'vpc\' or its own AppNetwork'));
+				}
 			}
 
 			vpc = appNetwork.network;
@@ -1111,7 +1115,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 
 			if (worker.kind === 'mig') {
 				// Reserve the external IP if the worker egresses through a NAT
-				let natIps: pulumi.Input<string>[] | undefined;
+				let egress: ContainerMIGEgressOptions = { egress: worker.egress === 'vpc+direct' ? 'vpc+direct' : 'vpc' };
 				if (worker.egress === 'vpc+nat') {
 					// The reserved address (and so the IP that peers allow) stays; the NAT of the worker uses it
 					const extIP = new gcp.compute.Address(`${name}-mig-ext-ip`, {
@@ -1119,7 +1123,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 						addressType: 'EXTERNAL',
 						region: parsed.region
 					}, { parent: this });
-					natIps = [extIP.selfLink];
+					egress = { egress: 'vpc+nat', natIps: [extIP.selfLink] };
 				}
 
 				mig = new ContainerMIG(`${name}-mig`, {
@@ -1133,8 +1137,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 					enableVMSSH: worker.enableSSH,
 					count: worker.instanceCount,
 					diskSizeGb: worker.diskSizeGb,
-					egress: worker.egress,
-					natIps: natIps,
+					...egress,
 					common: {
 						gcp: parsed.gcp
 					},

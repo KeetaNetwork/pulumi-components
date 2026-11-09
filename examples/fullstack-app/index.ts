@@ -79,3 +79,11 @@ export const app = new gcpComponents.apps.FullStackApp(name, {
 
 export const serviceUrl = app.backend.service.statuses.apply(function(s) { return(s[0]?.url); });
 export const ips = app.ips;
+
+// The image that the service runs, pinned by the digest that Cloud Build reported
+export const deployedImage = app.backend.service.template.apply(function(template) {
+	return(template?.spec.containers[0]?.image);
+});
+
+// The status of the migration run, as the dynamic resource of the run reported it
+export const migrationStatus = app.backend.migration?.status;

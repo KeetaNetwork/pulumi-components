@@ -51,6 +51,8 @@ const TEST_STACK_PREFIXES = ['ci-', 'test-'];
 export interface StackToClean {
 	name: string;
 	reason: string;
+	/** True for a stack of the current run, false for a stale one */
+	ownedByRun: boolean;
 }
 
 /**
@@ -73,7 +75,7 @@ export function selectStacksToClean(
 		const name = summary.name;
 
 		if (options.runId !== undefined && name.startsWith(runStackPrefix(options.runId))) {
-			selected.push({ name, reason: `belongs to run ${options.runId}` });
+			selected.push({ name, reason: `belongs to run ${options.runId}`, ownedByRun: true });
 			continue;
 		}
 
@@ -81,9 +83,9 @@ export function selectStacksToClean(
 			continue;
 		}
 
-		const lastUpdate = summary.lastUpdate === undefined ? NaN : Date.parse(summary.lastUpdate);
+		const lastUpdate = summary.lastUpdate === undefined ? Number.NaN : Date.parse(summary.lastUpdate);
 		const createdMatch = /-(\d{13})$/.exec(name);
-		const createdAt = createdMatch === null ? NaN : Number(createdMatch[1]);
+		const createdAt = createdMatch === null ? Number.NaN : Number(createdMatch[1]);
 		const touchedAt = Math.max(...[lastUpdate, createdAt].filter(Number.isFinite));
 		if (!Number.isFinite(touchedAt)) {
 			console.warn(`Skipping stack ${name}: neither its last update nor its name gives its age`);
@@ -92,11 +94,32 @@ export function selectStacksToClean(
 
 		const ageMs = options.now - touchedAt;
 		if (ageMs > options.maxAgeMs) {
-			selected.push({ name, reason: `stale: last touched ${Math.round(ageMs / 60_000)} minutes ago` });
+			selected.push({ name, reason: `stale: last touched ${Math.round(ageMs / 60_000)} minutes ago`, ownedByRun: false });
 		}
 	}
 
 	return(selected);
+}
+
+/**
+ * Whether the cleanup may delete a stack's update lock. A lock of this run's
+ * stack is stale once the test processes are stopped. Another run's lock is
+ * stale only when older than maxAgeMs: a fresh one belongs to a live run.
+ * @param stack - The stack, as selectStacksToClean returned it
+ * @param lockedAt - When the lock was taken (ms since the epoch), or NaN if unknown
+ * @param options.maxAgeMs - Age after which a lock is stale
+ * @param options.now - The current time
+ */
+export function lockIsRemovable(
+	stack: StackToClean,
+	lockedAt: number,
+	options: { maxAgeMs: number; now: number }
+): boolean {
+	if (stack.ownedByRun) {
+		return(true);
+	}
+
+	return(Number.isFinite(lockedAt) && options.now - lockedAt > options.maxAgeMs);
 }
 
 function onOutput(msg: string): void {
@@ -123,6 +146,58 @@ async function setRequiredConfig(stack: automation.Stack): Promise<void> {
 	});
 }
 
+interface InFlightOperation {
+	controller: AbortController;
+	/** Settles, never rejects, once the operation ended */
+	ended: Promise<void>;
+}
+
+/**
+ * Operations still running per stack (keyed by workDir and stack name). A
+ * test that times out leaves its "up" running; destroyStack cancels it and
+ * waits, or the destroy would hit the stack's lock and the "up" would keep
+ * creating resources.
+ */
+const inFlightOperations = new Map<string, InFlightOperation>();
+
+function operationKey(workDir: string, stackName: string): string {
+	return(`${workDir}\0${stackName}`);
+}
+
+/**
+ * Run an operation on a stack and record it until it ends
+ * @param run - The operation; it passes the signal to every Pulumi command
+ */
+async function trackOperation<T>(workDir: string, stackName: string, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+	const key = operationKey(workDir, stackName);
+	const controller = new AbortController();
+	const result = run(controller.signal);
+	/* The caller gets the result and its error; this only marks the end */
+	const ended = result.then(function() { return(undefined); }, function() { return(undefined); });
+	inFlightOperations.set(key, { controller, ended });
+
+	try {
+		return(await result);
+	} finally {
+		inFlightOperations.delete(key);
+	}
+}
+
+/**
+ * Cancel the stack's running operation, if any, and wait until it ended.
+ * Aborting sends SIGINT, so Pulumi saves its state and releases the lock.
+ */
+async function endInFlightOperation(workDir: string, stackName: string): Promise<void> {
+	const operation = inFlightOperations.get(operationKey(workDir, stackName));
+	if (operation === undefined) {
+		return;
+	}
+
+	console.log(`Stack ${stackName} has an operation still running; cancelling it and waiting for it to end`);
+	operation.controller.abort();
+	await operation.ended;
+}
+
 /**
  * Deploy a Pulumi stack from a project directory
  * @param projectDir - Path to the Pulumi project directory (relative to repo root)
@@ -139,35 +214,38 @@ export async function deployStack(
 
 	installProjectDependencies(workDir);
 
-	const stack = await automation.LocalWorkspace.createOrSelectStack(
-		{ stackName, workDir },
-		{ secretsProvider: SECRETS_PROVIDER }
-	);
+	return(await trackOperation(workDir, stackName, async function(signal) {
+		const stack = await automation.LocalWorkspace.createOrSelectStack(
+			{ stackName, workDir },
+			{ secretsProvider: SECRETS_PROVIDER }
+		);
 
-	await setRequiredConfig(stack);
+		await setRequiredConfig(stack);
 
-	if (extraConfig) {
-		for (const [key, value] of Object.entries(extraConfig)) {
-			await stack.setConfig(key, { value });
+		if (extraConfig) {
+			for (const [key, value] of Object.entries(extraConfig)) {
+				await stack.setConfig(key, { value });
+			}
 		}
-	}
 
-	// Run pulumi up
-	const upResult = await stack.up({ onOutput });
+		// A teardown that began during the steps above must not race an "up"
+		signal.throwIfAborted();
+		const upResult = await stack.up({ onOutput, signal });
 
-	if (upResult.summary.result !== 'succeeded') {
-		throw(new Error(`Deployment failed with status '${upResult.summary.result}': ${upResult.summary.message}`));
-	}
+		if (upResult.summary.result !== 'succeeded') {
+			throw(new Error(`Deployment failed with status '${upResult.summary.result}': ${upResult.summary.message}`));
+		}
 
-	// Get outputs
-	const outputs = await stack.outputs();
-	const result: StackOutputs = {};
+		// Get outputs
+		const outputs = await stack.outputs();
+		const result: StackOutputs = {};
 
-	for (const [key, output] of Object.entries(outputs)) {
-		result[key] = output.value;
-	}
+		for (const [key, output] of Object.entries(outputs)) {
+			result[key] = output.value;
+		}
 
-	return(result);
+		return(result);
+	}));
 }
 
 async function destroyOnce(stack: automation.Stack): Promise<void> {
@@ -187,6 +265,8 @@ async function destroyOnce(stack: automation.Stack): Promise<void> {
  */
 export async function destroyStack(projectDir: string, stackName: string): Promise<void> {
 	const workDir = path.resolve(process.cwd(), projectDir);
+
+	await endInFlightOperation(workDir, stackName);
 
 	let stack: automation.Stack;
 	try {
@@ -268,12 +348,15 @@ export async function fetchWithRetry(
 export async function refreshStack(projectDir: string, stackName: string): Promise<void> {
 	const workDir = path.resolve(process.cwd(), projectDir);
 
-	const stack = await automation.LocalWorkspace.selectStack({
-		stackName,
-		workDir
-	});
+	await trackOperation(workDir, stackName, async function(signal) {
+		const stack = await automation.LocalWorkspace.selectStack({
+			stackName,
+			workDir
+		});
 
-	await stack.refresh({ onOutput });
+		signal.throwIfAborted();
+		await stack.refresh({ onOutput, signal });
+	});
 }
 
 /**
@@ -285,21 +368,25 @@ export async function refreshStack(projectDir: string, stackName: string): Promi
 export async function previewStack(projectDir: string, stackName: string): Promise<{ [urn: string]: string }> {
 	const workDir = path.resolve(process.cwd(), projectDir);
 
-	const stack = await automation.LocalWorkspace.selectStack({
-		stackName,
-		workDir
-	});
+	return(await trackOperation(workDir, stackName, async function(signal) {
+		const stack = await automation.LocalWorkspace.selectStack({
+			stackName,
+			workDir
+		});
 
-	const operations: { [urn: string]: string } = {};
-	await stack.preview({
-		onOutput,
-		onEvent: function(event) {
-			const metadata = event.resourcePreEvent?.metadata;
-			if (metadata) {
-				operations[metadata.urn] = metadata.op;
+		const operations: { [urn: string]: string } = {};
+		signal.throwIfAborted();
+		await stack.preview({
+			onOutput,
+			signal,
+			onEvent: function(event) {
+				const metadata = event.resourcePreEvent?.metadata;
+				if (metadata) {
+					operations[metadata.urn] = metadata.op;
+				}
 			}
-		}
-	});
+		});
 
-	return(operations);
+		return(operations);
+	}));
 }

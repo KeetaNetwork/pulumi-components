@@ -10,7 +10,7 @@ const { CLOUD_RUN_SERVICE_DEFAULTS } = requireSource<typeof defaults>('src/packa
 
 type ServiceArgs = ConstructorParameters<typeof CloudRunService>[1];
 
-const IMAGE = 'us-central1-docker.pkg.dev/project-id/keeta/app:1';
+export const IMAGE = 'us-central1-docker.pkg.dev/project-id/keeta/app:1';
 
 /** A CloudRunService of the test project with a ready image, and the arguments that a test changes */
 export function buildService(name: string, overrides: Partial<ServiceArgs>) {

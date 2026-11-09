@@ -1,7 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import * as pulumi from '@pulumi/pulumi';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import type * as apps from '../../src/packages/gcp/apps';
 import type * as appsArgs from '../../src/packages/gcp/apps-args';
@@ -10,6 +9,7 @@ import { expectAt, optionalRecord, valueAt } from '../helpers/narrow';
 import { WORKER_FORMS } from '../helpers/worker-forms';
 import { requireSource } from './harness/load-sources';
 import { captureTree, useIsolatedHome } from './harness/pulumi-tree';
+import { captureWarnings } from './harness/warnings';
 
 const { CloudRunService } = requireSource<typeof apps>('src/packages/gcp/apps.ts');
 const { parseCloudRunServiceArgs, CloudRunServiceArgsError } = requireSource<typeof appsArgs>('src/packages/gcp/apps-args.ts');
@@ -43,10 +43,6 @@ function callerArgs(overrides: unknown) {
 function parse(overrides: unknown) {
 	return(parseCloudRunServiceArgs(callerArgs(overrides)));
 }
-
-afterEach(function() {
-	vi.restoreAllMocks();
-});
 
 interface Rule {
 	rule: string;
@@ -239,6 +235,12 @@ const WORKER_ROWS = WORKER_FORMS.map(function(form): [ string, typeof form ] {
 	return([ form.description, form ]);
 });
 
+function migDeprecations(warnings: string[]): string[] {
+	return(warnings.filter(function(message) {
+		return(message.includes('`mig` argument is deprecated'));
+	}));
+}
+
 describe('parseCloudRunServiceArgs legacy mig', function() {
 	it.each(WORKER_ROWS)('parses %s the same as the worker', function(_description, form) {
 		const legacy = parse({ mig: form.legacy });
@@ -249,24 +251,50 @@ describe('parseCloudRunServiceArgs legacy mig', function() {
 	});
 
 	it.each(WORKER_ROWS)('warns once about %s', function(_description, form) {
-		const warn = vi.spyOn(pulumi.log, 'warn');
+		const { warnings } = captureWarnings(function() {
+			return(parse({ mig: form.legacy }));
+		});
 
-		parse({ mig: form.legacy });
+		const deprecations = migDeprecations(warnings);
 
-		expect(warn).toHaveBeenCalledTimes(1);
-		expect(warn).toHaveBeenCalledWith(expect.stringMatching(/\bmig\b.*\bworker\b/));
+		expect(deprecations).toHaveLength(1);
+		expect(deprecations[0]).toMatch(/\bworker\b/);
 	});
 
 	it.each(WORKER_ROWS)('does not warn about %s given as a worker', function(_description, form) {
-		const warn = vi.spyOn(pulumi.log, 'warn');
+		const { warnings } = captureWarnings(function() {
+			return(parse({ worker: form.worker }));
+		});
 
-		parse({ worker: form.worker });
-
-		expect(warn).not.toHaveBeenCalled();
+		expect(migDeprecations(warnings)).toEqual([]);
 	});
 
 	it('parses a disabled mig as no worker at all', function() {
 		expect(parse({ database: {}, mig: { enabled: false }})).toEqual(parse({ database: {}}));
+	});
+});
+
+const DIRECT_WARNING = /egress 'vpc\+direct'.*external IP address/;
+
+const EGRESS_WARNINGS: { title: string; worker: unknown; warnings: number }[] = [
+	{ title: 'warns once about a container VM worker with vpc+direct', worker: { kind: 'mig', egress: 'vpc+direct' }, warnings: 1 },
+	{ title: 'does not warn about a container VM worker with vpc', worker: { kind: 'mig', egress: 'vpc' }, warnings: 0 },
+	{ title: 'does not warn about a container VM worker with vpc+nat', worker: { kind: 'mig', egress: 'vpc+nat' }, warnings: 0 },
+	{ title: 'does not warn about a container VM worker with no egress', worker: { kind: 'mig' }, warnings: 0 },
+	{ title: 'does not warn about a Cloud Run worker pool with vpc+direct', worker: { kind: 'crwp', egress: 'vpc+direct' }, warnings: 0 }
+];
+
+describe('parseCloudRunServiceArgs worker egress', function() {
+	it.each(EGRESS_WARNINGS)('$title', function(testCase) {
+		const { warnings } = captureWarnings(function() {
+			return(parse({ worker: testCase.worker }));
+		});
+
+		const direct = warnings.filter(function(message) {
+			return(DIRECT_WARNING.test(message));
+		});
+
+		expect(direct).toHaveLength(testCase.warnings);
 	});
 });
 
