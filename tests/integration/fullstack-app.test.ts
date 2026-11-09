@@ -4,15 +4,21 @@ import os from 'node:os';
 import path from 'node:path';
 import { deployStack, destroyStack, testStackName, fetchWithRetry, previewStack, type StackOutputs } from '../helpers/pulumi';
 import { expectBoolean, expectDefined, expectRecord, expectString, expectStringArray } from '../helpers/narrow';
-import { expectHealthyDatabaseService, expectMigrationsApplied } from '../helpers/service-checks';
+import { expectDynamicOutputs, expectHealthyDatabaseService, expectMigrationsApplied } from '../helpers/service-checks';
 
 /* An unset or empty TEST_DOMAIN selects the default */
 const configuredDomain = process.env.TEST_DOMAIN;
-const baseDomain = (configuredDomain === undefined || configuredDomain === '') ? 'fullstack.pulumi-components-test-zone.test.keeta.com' : configuredDomain;
+let baseDomain = 'fullstack.pulumi-components-test-zone.test.keeta.com';
+if (configuredDomain !== undefined && configuredDomain !== '') {
+	baseDomain = configuredDomain;
+}
 
 /* A prefix makes the domain unique to one run, inside the same DNS zone */
 const domainPrefix = process.env.TEST_DOMAIN_PREFIX;
-const domain = (domainPrefix === undefined || domainPrefix === '') ? baseDomain : `${domainPrefix}.${baseDomain}`;
+let domain = baseDomain;
+if (domainPrefix !== undefined && domainPrefix !== '') {
+	domain = `${domainPrefix}.${baseDomain}`;
+}
 const dnsZoneId = process.env.TEST_DNS_ZONE_ID;
 
 describe('FullStackApp', function() {
@@ -32,6 +38,9 @@ describe('FullStackApp', function() {
 		expect(outputs.app).toBeDefined();
 		expect(outputs.serviceUrl).toBeDefined();
 		expect(outputs.ips).toBeDefined();
+
+		// The dynamic resources report their outputs: the digest from Cloud Build pins the image, and the run of the migration reports its status
+		expectDynamicOutputs(outputs);
 	}, 1_800_000);
 
 	it('serves API health check via Cloud Run', async function() {

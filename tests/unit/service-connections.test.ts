@@ -170,22 +170,22 @@ describe('the connection budget of a service', function() {
 	});
 
 	/* The annotation of 1.0.95 caps scaling too: a plain whole number counts as maxInstances, anything else as the 100 that Cloud Run scales to */
-	const scales: { title: string; annotations: { [key: string]: pulumi.Input<string> }; fits: boolean }[] = [
-		{ title: 'counts a maxScale annotation of 6 as 6 instances, and fits', annotations: { [MAX_SCALE]: '6' }, fits: true },
-		{ title: 'counts a maxScale annotation of 7 as 7 instances, and rejects', annotations: { [MAX_SCALE]: '7' }, fits: false },
-		{ title: 'counts an annotation that is not a plain number as 100 instances, and rejects', annotations: { [MAX_SCALE]: '6.5' }, fits: false },
-		{ title: 'counts an annotation that is an Output as 100 instances, and rejects', annotations: { [MAX_SCALE]: pulumi.output('6') }, fits: false },
-		{ title: 'counts a service with neither as 100 instances, and rejects', annotations: {}, fits: false }
+	const crwp = { kind: 'crwp', instanceCount: 3, poolSize: 20 } as const;
+	const counted: { title: string; annotations: { [key: string]: pulumi.Input<string> }}[] = [
+		{ title: 'counts a maxScale annotation of 7 as 7 instances', annotations: { [MAX_SCALE]: '7' }},
+		{ title: 'counts an annotation that is not a plain number as 100 instances', annotations: { [MAX_SCALE]: '6.5' }},
+		{ title: 'counts an annotation that is an Output as 100 instances', annotations: { [MAX_SCALE]: pulumi.output('6') }},
+		{ title: 'counts a service with neither as 100 instances', annotations: {}}
 	];
 
-	it.each(scales)('$title', async function(row) {
-		const built = captureService('budget-annotation', budgeted({ service: { annotations: row.annotations }, worker: { kind: 'crwp', instanceCount: 3, poolSize: 20 }}));
+	it('counts a maxScale annotation of 6 as 6 instances, and fits', async function() {
+		const tree = await captureService('budget-annotation-fits', budgeted({ service: { annotations: { [MAX_SCALE]: '6' }}, worker: crwp }));
 
-		if (row.fits) {
-			expect(annotationsOf(await built)[MAX_SCALE]).toBe('6');
-		} else {
-			await expect(built).rejects.toBeInstanceOf(ConnectionBudgetExceededError);
-		}
+		expect(annotationsOf(tree)[MAX_SCALE]).toBe('6');
+	});
+
+	it.each(counted)('$title, and rejects', async function(row) {
+		await expect(captureService('budget-annotation', budgeted({ service: { annotations: row.annotations }, worker: crwp }))).rejects.toBeInstanceOf(ConnectionBudgetExceededError);
 	});
 
 	it('does not run the check when no pool size is given, however many instances there are', async function() {
