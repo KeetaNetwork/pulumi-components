@@ -30,9 +30,11 @@ export const POSTGRES_DEFAULTS = deepFreeze({
 	version: 'POSTGRES_18',
 	queryStringLength: 4500,
 	maxConnections: 25000,
+	deletionProtection: false,
+	queryInsights: false,
 
 	/** Prefix length of the private service access range that the instance is reached through */
-	privateAccessPrefixLength: 16
+	psaPrefixLength: 16
 });
 
 /**
@@ -85,7 +87,7 @@ export const CLOUD_RUN_SERVICE_DEFAULTS = deepFreeze({
 		},
 
 		/** Prefix length of the private service access range (the Cloud SQL peering) */
-		psaPrefixLength: POSTGRES_DEFAULTS.privateAccessPrefixLength
+		psaPrefixLength: POSTGRES_DEFAULTS.psaPrefixLength
 	},
 
 	kv: {
@@ -97,10 +99,12 @@ export const CLOUD_RUN_SERVICE_DEFAULTS = deepFreeze({
 	worker: {
 		machineType: 'e2-micro',
 		egress: 'vpc',
+		instanceCount: 1,
+		enableSSH: false,
 
 		/** The range that GCP uses for IAP and the priority of the firewall that lets it reach SSH */
-		sshIapRange: '35.235.240.0/20',
-		sshIapPriority: 900
+		sshIAPRange: '35.235.240.0/20',
+		sshIAPPriority: 900
 	}
 });
 
@@ -140,29 +144,26 @@ export const PROFILE_PRESETS = deepFreeze({
 		small: {
 			tier: 'db-g1-small',
 			maxConnections: 75,
-			maxInstances: 12,
-			servicePoolSize: 5,
-			workerPoolSize: 7,
+			service: { maxInstances: 12, poolSize: 5 },
+			worker: { poolSize: 7 },
 			connector: { minInstances: 2, maxInstances: 3 },
-			redisMemorySizeGb: 1
+			kv: { memorySizeGb: 1 }
 		},
 		medium: {
 			tier: 'db-custom-1-3840',
 			maxConnections: 155,
-			maxInstances: 12,
-			servicePoolSize: 10,
-			workerPoolSize: 16,
+			service: { maxInstances: 12, poolSize: 10 },
+			worker: { poolSize: 16 },
 			connector: { minInstances: 2, maxInstances: 5 },
-			redisMemorySizeGb: 2
+			kv: { memorySizeGb: 2 }
 		},
 		large: {
 			tier: 'db-custom-4-15360',
 			maxConnections: 850,
-			maxInstances: 70,
-			servicePoolSize: 10,
-			workerPoolSize: 64,
+			service: { maxInstances: 70, poolSize: 10 },
+			worker: { poolSize: 64 },
 			connector: { minInstances: 3, maxInstances: 10 },
-			redisMemorySizeGb: 5
+			kv: { memorySizeGb: 5 }
 		}
 	}
 });

@@ -54,6 +54,8 @@ export interface MigrationJobArgs {
 	 * The identity of the app that this is part of. When it grants the Cloud
 	 * SQL client role to the service account, this does not (its own grant
 	 * stays as a retained tombstone, so the binding is never revoked).
+	 *
+	 * @internal Set by `CloudRunService`, which owns the identity; a component you build yourself grants for itself.
 	 */
 	identity?: ServiceIdentityRef;
 
@@ -110,7 +112,8 @@ export interface MigrationJobArgs {
 	taskTimeout?: number;
 
 	/**
-	 * Additional environment variables. Ignored when `env` is given.
+	 * Additional environment variables. Cannot be combined with `env`:
+	 * give the variables to the environment that `env` is a view of.
 	 */
 	environment?: EnvironmentVariables;
 
@@ -150,6 +153,10 @@ export class MigrationJob extends pulumi.ComponentResource {
 
 	constructor(name: string, args: MigrationJobArgs, opts?: pulumi.ComponentResourceOptions) {
 		super('Keeta:GCP:MigrationJob', name, args, opts);
+
+		if (args.env !== undefined && args.environment !== undefined) {
+			throw(new TypeError('MigrationJob: environment and env cannot both be given, the variables come from the environment that env is a view of'));
+		}
 
 		// Extract database connection info
 		let dbHost: pulumi.Input<string>;

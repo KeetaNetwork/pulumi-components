@@ -173,7 +173,7 @@ export type SslPolicyChoice = {
 	kind: 'none';
 };
 
-export type IpChoice = { kind: 'ipv4' | 'ipv6' | ''; ip: pulumi.Input<string> };
+export type IPChoice = { kind: 'ipv4' | 'ipv6' | ''; ip: pulumi.Input<string> };
 
 export interface ParsedFrontEnd {
 	domain: pulumi.Input<string>;
@@ -233,12 +233,12 @@ export function parseFrontEndConfig(config: LoadBalancerConfig): ParsedFrontEnd 
  * Parse IP address configuration into structured format, creating the
  * global addresses when the caller gave none
  */
-export function resolveIpAddresses(
+export function resolveIPAddresses(
 	name: string,
 	ipAddress: IPAddressConfig | undefined,
 	opts: { parent: pulumi.Resource }
-): IpChoice[] {
-	const ipAddresses: IpChoice[] = [];
+): IPChoice[] {
+	const ipAddresses: IPChoice[] = [];
 
 	if (ipAddress === undefined) {
 		ipAddresses.push(
@@ -295,10 +295,10 @@ export type FrontEndVariant = {
 	legacyUrlMap: pulumi.Input<pulumi.URN>;
 };
 
-export interface HttpsFrontEnd {
+export interface HTTPSFrontEnd {
 	variant: FrontEndVariant;
 	urlMap: gcp.compute.URLMap;
-	ips: IpChoice[];
+	ips: IPChoice[];
 
 	/** Records `${name}-dns-${kind}` for these ips, for this domain in this zone (`app` only) */
 	dns?: {
@@ -307,15 +307,9 @@ export interface HttpsFrontEnd {
 	};
 }
 
-export interface HttpsFrontEndResources {
+export interface HTTPSFrontEndResources {
 	httpsProxy: gcp.compute.TargetHttpsProxy;
 	forwardingRules: gcp.compute.GlobalForwardingRule[];
-
-	/** The policy that the front end created for its proxy, if it did */
-	sslPolicy?: gcp.compute.SSLPolicy;
-
-	/** The certificate map entry, which the proxy waits for (certificate manager certificates only) */
-	certMapEntry?: gcp.certificatemanager.CertificateMapEntry;
 }
 
 type ManagedCert = Extract<ParsedFrontEnd['cert'], { kind: 'managed' }>;
@@ -337,7 +331,7 @@ interface VariantShape {
 		urlMap: pulumi.Input<string>;
 		options: Pick<pulumi.CustomResourceOptions, 'aliases' | 'replaceOnChanges'>;
 	};
-	rule(ipConfig: IpChoice, target: pulumi.Input<string>): {
+	rule(ipConfig: IPChoice, target: pulumi.Input<string>): {
 		name: string;
 		args: gcp.compute.GlobalForwardingRuleArgs;
 		options: Pick<pulumi.CustomResourceOptions, 'aliases' | 'deleteBeforeReplace'>;
@@ -451,7 +445,7 @@ function externalShape(name: string, urlMap: gcp.compute.URLMap, variant: Extrac
 	});
 }
 
-function shapeOf(name: string, front: HttpsFrontEnd): VariantShape {
+function shapeOf(name: string, front: HTTPSFrontEnd): VariantShape {
 	if (front.variant.kind === 'external') {
 		return(externalShape(name, front.urlMap, front.variant));
 	}
@@ -467,14 +461,14 @@ function resolveSslPolicy(name: string, choice: SslPolicyChoice, parent: pulumi.
 			minTlsVersion: choice.minTlsVersion
 		}, { parent });
 
-		return({ policy, id: policy.id });
+		return(policy.id);
 	}
 
 	if (choice.kind === 'existing') {
-		return({ policy: undefined, id: choice.id });
+		return(choice.id);
 	}
 
-	return({ policy: undefined, id: undefined });
+	return(undefined);
 }
 
 /** The certificate map and its entry (certificate manager certificates only) */
@@ -493,7 +487,7 @@ function createCertificateMap(shape: VariantShape, cert: CertificateManagerCert,
 }
 
 /** The DNS records of a domain in a zone, one for the kind of address */
-function createDnsRecord(name: string, ipConfig: IpChoice, dns: NonNullable<HttpsFrontEnd['dns']>, parent: pulumi.Resource) {
+function createDnsRecord(name: string, ipConfig: IPChoice, dns: NonNullable<HTTPSFrontEnd['dns']>, parent: pulumi.Resource) {
 	let recordType = 'AAAA';
 	if (ipConfig.kind === 'ipv4') {
 		recordType = 'A';
@@ -521,12 +515,12 @@ function createDnsRecord(name: string, ipConfig: IpChoice, dns: NonNullable<Http
  * HTTP redirect. It is a function and not a component, so the URNs of the
  * callers do not move again. Every resource is a child of `opts.parent`.
  */
-export function createHttpsFrontEnd(
+export function createHTTPSFrontEnd(
 	name: string,
 	parsed: Pick<ParsedFrontEnd, 'cert' | 'sslPolicy'>,
-	front: HttpsFrontEnd,
+	front: HTTPSFrontEnd,
 	opts: { parent: pulumi.Resource }
-): HttpsFrontEndResources {
+): HTTPSFrontEndResources {
 	const { cert } = parsed;
 	const { parent } = opts;
 	const shape = shapeOf(name, front);
@@ -539,19 +533,17 @@ export function createHttpsFrontEnd(
 		certificateID = cert.id;
 	}
 
-	const { policy: sslPolicy, id: sslPolicyID } = resolveSslPolicy(name, parsed.sslPolicy, parent);
+	const sslPolicyID = resolveSslPolicy(name, parsed.sslPolicy, parent);
 	let policyArgs: { sslPolicy?: pulumi.Output<string> } = {};
 	if (sslPolicyID !== undefined) {
 		policyArgs = { sslPolicy: sslPolicyID };
 	}
 
 	// The proxy must wait for the entry, so that the certificate is associated before the proxy is created, or it fails
-	let certMapEntry: gcp.certificatemanager.CertificateMapEntry | undefined;
 	let proxyCertArgs: { certificateMap: pulumi.Output<string> } | { sslCertificates: pulumi.Output<string>[] } = { sslCertificates: [certificateID] };
 	const dependsOn: pulumi.Resource[] = [];
 	if (cert.kind === 'certificate-manager') {
 		const map = createCertificateMap(shape, cert, certificateID, parent);
-		certMapEntry = map.entry;
 		proxyCertArgs = { certificateMap: map.mapId };
 		dependsOn.push(map.entry);
 	}
@@ -576,10 +568,5 @@ export function createHttpsFrontEnd(
 
 	createHttpRedirect(name, front.ips, { parent, oldParent: shape.redirectOldParent });
 
-	return({
-		httpsProxy,
-		forwardingRules,
-		sslPolicy,
-		certMapEntry
-	});
+	return({ httpsProxy, forwardingRules });
 }

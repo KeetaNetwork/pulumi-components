@@ -6,7 +6,7 @@ import { requireSource } from './harness/load-sources';
 import { useIsolatedHome } from './harness/pulumi-tree';
 import { buildDatabase, flagsOf } from './harness/service-builder';
 
-const { parseCloudSqlTier, tierDefaultMaxConnections, connectionBudget, assertWithinBudget, ConnectionBudgetExceededError } = requireSource<typeof budget>('src/packages/gcp/connection-budget.ts');
+const { parseCloudSqlTier, tierDefaultMaxConnections, resolveMaxConnections, connectionBudget, assertWithinBudget, ConnectionBudgetExceededError, MaxConnectionsConflictError } = requireSource<typeof budget>('src/packages/gcp/connection-budget.ts');
 
 const MEGABYTES_PER_GIGABYTE = 1024;
 
@@ -79,6 +79,40 @@ describe('tierDefaultMaxConnections', function() {
 		expect(function() {
 			return(tierDefaultMaxConnections(shape));
 		}).toThrow('db-mystery-8');
+	});
+});
+
+describe('resolveMaxConnections', function() {
+	const resolved = [
+		{ title: 'the flag', source: { tier: 'db-g1-small', flags: { max_connections: 75 }}, connections: 75 },
+		{ title: 'the number of maxConnections', source: { tier: 'db-g1-small', maxConnections: 120 }, connections: 120 },
+		{ title: 'the default of the tier for "tier-default"', source: { tier: 'db-g1-small', maxConnections: 'tier-default' as const }, connections: 50 },
+		{ title: 'the default of the tier when neither is given', source: { tier: 'db-custom-2-7680' }, connections: 400 },
+		{ title: 'the default of the tier when flags has no max_connections', source: { tier: 'db-f1-micro', flags: {}}, connections: 25 },
+		{ title: 'the number when the flag is undefined, since an undefined flag is not given', source: { tier: 'db-g1-small', flags: { max_connections: undefined }, maxConnections: 120 }, connections: 120 },
+		{ title: 'the flag of a tier it does not know', source: { tier: 'db-perf-optimized-N-8', flags: { max_connections: 300 }}, connections: 300 },
+		{ title: 'the number of a tier it does not know', source: { tier: 'db-perf-optimized-N-8', maxConnections: 300 }, connections: 300 }
+	];
+
+	it.each(resolved)('gives $title', function(testCase) {
+		expect(resolveMaxConnections(testCase.source)).toBe(testCase.connections);
+	});
+
+	const conflicting = [
+		{ title: 'a number', maxConnections: 120 as const },
+		{ title: '"tier-default"', maxConnections: 'tier-default' as const }
+	];
+
+	it.each(conflicting)('throws a MaxConnectionsConflictError when the flag and $title are both given', function(testCase) {
+		expect(function() {
+			return(resolveMaxConnections({ tier: 'db-g1-small', flags: { max_connections: 75 }, maxConnections: testCase.maxConnections }));
+		}).toThrow(MaxConnectionsConflictError);
+	});
+
+	it('names the tier when neither is given and the tier is not known', function() {
+		expect(function() {
+			return(resolveMaxConnections({ tier: 'db-perf-optimized-N-8' }));
+		}).toThrow('db-perf-optimized-N-8');
 	});
 });
 
@@ -204,5 +238,18 @@ describe('PostgresCloudSQL.connectionBudget', function() {
 		const { value } = await buildDatabase('budget-unknown-flag', { tier: 'db-mystery-8', flags: { max_connections: 300 }});
 
 		expect(value.connectionBudget).toEqual(connectionBudget({ maxConnections: 300 }));
+	});
+
+	it('rejects maxConnections together with flags.max_connections', async function() {
+		const result = buildDatabase('budget-conflict', { tier: 'db-g1-small', flags: { max_connections: 75 }, maxConnections: 75 });
+
+		await expect(result).rejects.toBeInstanceOf(MaxConnectionsConflictError);
+	});
+
+	it('counts a flag that is undefined as not given, so maxConnections is written', async function() {
+		const { tree, value } = await buildDatabase('budget-undefined-flag', { tier: 'db-g1-small', flags: { max_connections: undefined }, maxConnections: 120 });
+
+		expect(value.connectionBudget).toEqual(connectionBudget({ maxConnections: 120 }));
+		expect(flagsOf(tree).max_connections).toBe('120');
 	});
 });

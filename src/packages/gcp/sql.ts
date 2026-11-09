@@ -4,7 +4,7 @@ import * as random from '@pulumi/random';
 import type { GCPRegion, PerGCPRegion } from './constants';
 import { POSTGRES_DEFAULTS } from './defaults';
 import { movedFrom } from './aliases';
-import { connectionBudget, parseCloudSqlTier, tierDefaultMaxConnections } from './connection-budget';
+import { assertMaxConnectionsUnambiguous, connectionBudget, parseCloudSqlTier, resolveMaxConnections } from './connection-budget';
 import type { ConnectionBudget, TierShape } from './connection-budget';
 
 type VPCNetworkLike = Pick<gcp.compute.Network, 'id' | 'name'>;
@@ -175,8 +175,8 @@ export interface PostgresCloudSQLArgs {
 	/**
 	 * Writes the `max_connections` flag. A number is the value; 'tier-default'
 	 * writes what Cloud SQL applies to the tier already, so that the value is
-	 * explicit in the state. Without it no flag is written. An explicit
-	 * `flags.max_connections` wins over it.
+	 * explicit in the state. Without it no flag is written. Giving it together
+	 * with `flags.max_connections` throws a `MaxConnectionsConflictError`.
 	 *
 	 * Adding the flag to an instance that had none restarts Cloud SQL once.
 	 */
@@ -297,6 +297,8 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 	constructor(name: string, args: PostgresCloudSQLArgs, opts?: pulumi.ComponentResourceOptions) {
 		super('Keeta:GCP:PostgresCloudSQL', name, args, opts);
 
+		assertMaxConnectionsUnambiguous(args);
+
 		this.#prefix = args.prefix ?? name;
 		this.#options = args;
 
@@ -324,7 +326,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 			const privateIpAddress = new gcp.compute.GlobalAddress(`${this.#prefix}-postgres-private-ip`, {
 				purpose: 'VPC_PEERING',
 				addressType: 'INTERNAL',
-				prefixLength: POSTGRES_DEFAULTS.privateAccessPrefixLength,
+				prefixLength: POSTGRES_DEFAULTS.psaPrefixLength,
 				network: this.#vpcNetwork.id
 			}, { parent: this });
 
@@ -404,7 +406,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 		}, {
 			parent: this,
 			aliases: movedFrom(`${this.#prefix}-db-user`, 'gcp:sql/user:User', { kind: 'resource', urn: masterDatabase.urn }),
-			/* It used to inherit this from the instance it was a child of */
+			/* The user is protected like the instance */
 			protect: args.deletionProtection,
 			deletedWith: masterDatabase
 		});
@@ -420,17 +422,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 	 * `maxConnections` when it is a number, else the default of the tier
 	 */
 	#maxConnections(): number {
-		const flag = this.#options.flags?.max_connections;
-		if (flag !== undefined) {
-			return(flag);
-		}
-
-		const { maxConnections } = this.#options;
-		if (typeof maxConnections === 'number') {
-			return(maxConnections);
-		}
-
-		return(tierDefaultMaxConnections(parseCloudSqlTier(this.#options.tier)));
+		return(resolveMaxConnections({ flags: this.#options.flags, maxConnections: this.#options.maxConnections, tier: this.#options.tier }));
 	}
 
 	/**
@@ -524,14 +516,10 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 		}
 
 		if (this.#options.maxConnections !== undefined) {
-			if (this.#options.flags?.max_connections === undefined) {
-				databaseFlags.push({
-					name: 'max_connections',
-					value: String(this.#maxConnections())
-				});
-			} else {
-				void pulumi.log.warn(`PostgresCloudSQL ${name}: both flags.max_connections and maxConnections are given, flags.max_connections is used`);
-			}
+			databaseFlags.push({
+				name: 'max_connections',
+				value: String(this.#maxConnections())
+			});
 		}
 
 		const deletionProtection = this.#options.deletionProtection;

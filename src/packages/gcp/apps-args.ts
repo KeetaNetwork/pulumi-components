@@ -5,7 +5,7 @@ import type { EnvironmentVariables } from './cloudrun';
 import type { GCPCommonOptions } from './common';
 import type { GCPRegion } from './constants';
 import type { AppNetwork } from './network';
-import { assertWithinBudget, connectionBudget, knowsMaxConnections, parseCloudSqlTier, tierDefaultMaxConnections } from './connection-budget';
+import { assertWithinBudget, connectionBudget, knowsMaxConnections, parseCloudSqlTier, resolveMaxConnections, tierDefaultMaxConnections } from './connection-budget';
 import type { ConnectionConsumer } from './connection-budget';
 import { DATABASE_POOL_SIZE_VARIABLE } from './database-env';
 import { resolveProfile } from './profiles';
@@ -80,7 +80,7 @@ interface WorkerCommonArgs {
 /**
  * A worker that runs on a Managed Instance Group of VMs
  */
-export interface MigWorkerArgs extends WorkerCommonArgs {
+export interface MIGWorkerArgs extends WorkerCommonArgs {
 	kind: 'mig';
 
 	/**
@@ -104,7 +104,7 @@ export interface MigWorkerArgs extends WorkerCommonArgs {
  * A worker that runs on a Cloud Run Worker Pool (more modern -- it has
  * neither a `cosImage`, nor `enableSSH`, nor a disk)
  */
-export interface CrwpWorkerArgs extends WorkerCommonArgs {
+export interface CRWPWorkerArgs extends WorkerCommonArgs {
 	kind: 'crwp';
 	cosImage?: never;
 	enableSSH?: never;
@@ -117,7 +117,7 @@ export interface CrwpWorkerArgs extends WorkerCommonArgs {
  *
  * Deprecated: use `worker`. Kept for 2.x; the constructor warns when it is used.
  */
-export type LegacyMigArgs = Omit<MigWorkerArgs, 'kind' | 'diskSizeGb'> & {
+export type LegacyMIGArgs = Omit<MIGWorkerArgs, 'kind' | 'diskSizeGb'> & {
 	/**
 	 * Whether to enable the worker
 	 */
@@ -140,7 +140,7 @@ interface WorkerInput extends WorkerCommonArgs {
 }
 
 interface ParsedWorkerCommon {
-	instanceCount?: number;
+	instanceCount: number;
 	machineType: string;
 	tags?: string[];
 	egress: WorkerEgress;
@@ -150,18 +150,18 @@ interface ParsedWorkerCommon {
 	poolSize?: number;
 }
 
-export interface ParsedMigWorker extends ParsedWorkerCommon {
+export interface ParsedMIGWorker extends ParsedWorkerCommon {
 	kind: 'mig';
 	cosImage?: string;
 	enableSSH: boolean;
 	diskSizeGb?: number;
 }
 
-export interface ParsedCrwpWorker extends ParsedWorkerCommon {
+export interface ParsedCRWPWorker extends ParsedWorkerCommon {
 	kind: 'crwp';
 }
 
-export type ParsedWorker = ParsedMigWorker | ParsedCrwpWorker;
+export type ParsedWorker = ParsedMIGWorker | ParsedCRWPWorker;
 
 type BuildArgs = NonNullable<CloudRunServiceArgs['image']['build']>;
 type RemoteArgs = NonNullable<BuildArgs['remote']>;
@@ -312,7 +312,7 @@ function parseImage(args: CloudRunServiceArgs): ParsedImage {
 
 function parseWorkerCommon(worker: WorkerInput): ParsedWorkerCommon {
 	return({
-		instanceCount: worker.instanceCount,
+		instanceCount: worker.instanceCount ?? CLOUD_RUN_SERVICE_DEFAULTS.worker.instanceCount,
 		machineType: worker.machineType ?? CLOUD_RUN_SERVICE_DEFAULTS.worker.machineType,
 		tags: worker.tags,
 		egress: worker.egress ?? CLOUD_RUN_SERVICE_DEFAULTS.worker.egress,
@@ -328,7 +328,7 @@ function parseWorker(worker: WorkerInput): ParsedWorker {
 				kind: 'mig',
 				...parseWorkerCommon(worker),
 				cosImage: worker.cosImage,
-				enableSSH: worker.enableSSH === true,
+				enableSSH: worker.enableSSH ?? CLOUD_RUN_SERVICE_DEFAULTS.worker.enableSSH,
 				diskSizeGb: worker.diskSizeGb
 			});
 		case 'crwp':
@@ -354,7 +354,7 @@ function parseWorker(worker: WorkerInput): ParsedWorker {
  * The legacy `mig` is a worker written the old way. This reads it as the
  * `worker` that it stands for, or as no worker when it is disabled.
  */
-function workerOfLegacy(mig: LegacyMigArgs): WorkerInput | undefined {
+function workerOfLegacy(mig: LegacyMIGArgs): WorkerInput | undefined {
 	const { enabled, workerKind, ...rest } = mig;
 	if (!enabled) {
 		return(undefined);
@@ -396,8 +396,8 @@ function parseDatabase(database: DatabaseArgs): ParsedDatabase {
 	return({
 		...database,
 		tier: database.tier ?? POSTGRES_DEFAULTS.tier,
-		deletionProtection: database.deletionProtection ?? false,
-		queryInsights: database.queryInsights ?? false,
+		deletionProtection: database.deletionProtection ?? POSTGRES_DEFAULTS.deletionProtection,
+		queryInsights: database.queryInsights ?? POSTGRES_DEFAULTS.queryInsights,
 		queryStringLength: database.queryStringLength ?? POSTGRES_DEFAULTS.queryStringLength,
 		flags: {
 			max_connections: POSTGRES_DEFAULTS.maxConnections,
@@ -539,7 +539,14 @@ function assertConnectionsFit(args: CloudRunServiceArgs, worker: ParsedWorker | 
 		return;
 	}
 
-	assertWithinBudget(connectionBudget({ maxConnections: database.flags.max_connections }), consumers);
+	const budget = connectionBudget({ maxConnections: resolveMaxConnections({ flags: database.flags, tier: database.tier }) });
+	assertWithinBudget(budget, consumers);
+
+	/* The migration job opens its pool while the old revision still serves with full pools, so its connections come out of the reserve */
+	const poolSize = args.database?.poolSize;
+	if (args.migration?.enabled && poolSize !== undefined && poolSize > budget.reserve) {
+		void pulumi.log.warn(`CloudRunService: database.poolSize ${poolSize} is more than the ${budget.reserve} connections kept in reserve, and the migration job opens a pool of that size while the old revision still serves: it may be refused connections. Lower database.poolSize, or give migration.environmentOverrides a smaller MC_PSQL_DB_POOL_SIZE`);
+	}
 }
 
 
@@ -561,6 +568,31 @@ function profileMaxConnections(database: NonNullable<CloudRunServiceArgs['databa
 	}
 
 	return(tierDefaultMaxConnections(shape));
+}
+
+type BackupsArgs = NonNullable<NonNullable<CloudRunServiceArgs['database']>['backups']>;
+
+/**
+ * The backups of the caller over those of the profile, field by field (a
+ * caller who sets only `startTime` keeps the retention and the point-in-time
+ * recovery of the profile). Without a profile value the caller's are kept
+ * as they are.
+ */
+function mergeBackups(explicit: BackupsArgs | undefined, profileValue: BackupsArgs | undefined): BackupsArgs | undefined {
+	if (profileValue === undefined) {
+		return(explicit);
+	}
+
+	return({
+		...profileValue,
+		...explicit,
+		pointInTimeRecovery: explicit?.pointInTimeRecovery ?? profileValue.pointInTimeRecovery,
+		startTime: explicit?.startTime ?? profileValue.startTime,
+		retentionSettings: {
+			retainCount: explicit?.retentionSettings?.retainCount ?? profileValue.retentionSettings?.retainCount,
+			transactionLogRetentionDays: explicit?.retentionSettings?.transactionLogRetentionDays ?? profileValue.retentionSettings?.transactionLogRetentionDays
+		}
+	});
 }
 
 /**
@@ -591,7 +623,7 @@ function applyProfile(args: CloudRunServiceArgs): CloudRunServiceArgs {
 			poolSize: database.poolSize ?? values.database.poolSize,
 			deletionProtection: database.deletionProtection ?? values.database.deletionProtection,
 			queryInsights: database.queryInsights ?? values.database.queryInsights,
-			backups: database.backups ?? values.database.backups,
+			backups: mergeBackups(database.backups, values.database.backups),
 			flags: { max_connections: profileMaxConnections(database, values.database.flags.max_connections), ...database.flags }
 		};
 
@@ -674,7 +706,7 @@ export function parseCloudRunServiceArgs(input: CloudRunServiceArgs): ParsedClou
 		}
 
 		if (args.vpc?.network !== undefined) {
-			void pulumi.log.warn('CloudRunService: vpc.network builds a network of its own around the VPC. Services that share a VPC need one private service access connection between them: build one AppNetwork (new AppNetwork(name, { network, ... })) and pass it to each of them as `network`');
+			void pulumi.log.warn('CloudRunService: vpc.network builds a network of its own around the VPC. Services that share a VPC need one private service access connection between them: build one AppNetwork (new AppNetwork(name, { region, network })) and pass it to each of them as `network`. Moving a service that has its own network to a shared AppNetwork is not a state move: its subnet, connector and private service access connection are recreated');
 		}
 
 		if (args.database) {

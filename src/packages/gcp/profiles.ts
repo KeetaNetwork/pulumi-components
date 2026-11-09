@@ -54,14 +54,14 @@ export function resolveProfile(profile: DeploymentProfile): ProfileValues {
 		database: {
 			tier: size.tier,
 			flags: { max_connections: size.maxConnections },
-			poolSize: size.servicePoolSize,
+			poolSize: size.service.poolSize,
 			deletionProtection: environment.deletionProtection,
 			queryInsights: environment.queryInsights
 		},
-		service: { maxInstances: size.maxInstances },
-		worker: { poolSize: size.workerPoolSize },
+		service: { maxInstances: size.service.maxInstances },
+		worker: { poolSize: size.worker.poolSize },
 		vpc: { connector: { ...size.connector }},
-		kvMemorySizeGb: size.redisMemorySizeGb
+		kvMemorySizeGb: size.kv.memorySizeGb
 	};
 
 	if (environment.backups !== undefined) {

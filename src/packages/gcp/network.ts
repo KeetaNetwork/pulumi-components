@@ -4,6 +4,7 @@ import type { GCPRegion } from './constants';
 import { legacyUrn, movedFrom } from './aliases';
 import type { OldParent } from './aliases';
 import { generateName } from '../../utils';
+import { CLOUD_RUN_SERVICE_DEFAULTS } from './defaults';
 
 const NETWORK_TYPE = 'gcp:compute/network:Network';
 const SUBNETWORK_TYPE = 'gcp:compute/subnetwork:Subnetwork';
@@ -21,15 +22,23 @@ export interface AppNetworkArgs {
 	 */
 	network?: gcp.compute.Network;
 
-	subnetCIDR: string;
-	connectorCIDR: string;
-	connector: {
-		minInstances: number;
-		maxInstances: number;
+	/** @default CLOUD_RUN_SERVICE_DEFAULTS.network.subnetCIDR */
+	subnetCIDR?: string;
+
+	/** @default CLOUD_RUN_SERVICE_DEFAULTS.network.connectorCIDR */
+	connectorCIDR?: string;
+
+	/** @default CLOUD_RUN_SERVICE_DEFAULTS.network.connector */
+	connector?: {
+		minInstances?: number;
+		maxInstances?: number;
 	};
 
-	/** Prefix length of the private service access range that a database is reached through */
-	psaPrefixLength: number;
+	/**
+	 * Prefix length of the private service access range that a database is reached through
+	 * @default CLOUD_RUN_SERVICE_DEFAULTS.network.psaPrefixLength
+	 */
+	psaPrefixLength?: number;
 
 	/**
 	 * Deletion policy for the service networking connection.
@@ -42,11 +51,21 @@ export interface AppNetworkArgs {
 	 * (`CloudRunService` passes its own for the network that it builds for
 	 * itself). They answer to the URN they had then (they were children of
 	 * the app, or of the VPC of the caller), and `name` is the name of the
-	 * app. To adopt a shared network without replacing anything, build the
-	 * `AppNetwork` with the name of the app whose own network it takes over
-	 * and pass that app's old URN here.
+	 * app.
+	 *
+	 * @internal Set by `CloudRunService`.
 	 */
 	movedFrom?: pulumi.Input<pulumi.URN>;
+}
+
+export interface KvFirewallArgs {
+	/** The port and address of the key-value store that the connector reaches */
+	port: pulumi.Input<number>;
+	host: pulumi.Input<string>;
+	priority: number;
+
+	/** Anything else the caller wants on the firewall (`GCPCommonOptions.firewallConfig`) */
+	extra?: Partial<gcp.compute.FirewallArgs>;
 }
 
 export interface IapSshFirewallArgs {
@@ -125,15 +144,15 @@ export class AppNetwork extends pulumi.ComponentResource {
 			description: `[${name}] Subnet`,
 			network: this.network.selfLink,
 			region: args.region,
-			ipCidrRange: args.subnetCIDR,
+			ipCidrRange: args.subnetCIDR ?? CLOUD_RUN_SERVICE_DEFAULTS.network.subnetCIDR,
 			privateIpGoogleAccess: true
 		}, { parent: this, aliases: subnetAliases });
 
 		this.connector = new gcp.vpcaccess.Connector(`${name}-vpc-connector`, {
 			name: generateName(name, 'vpc', 25),
-			ipCidrRange: args.connectorCIDR,
-			minInstances: args.connector.minInstances,
-			maxInstances: args.connector.maxInstances,
+			ipCidrRange: args.connectorCIDR ?? CLOUD_RUN_SERVICE_DEFAULTS.network.connectorCIDR,
+			minInstances: args.connector?.minInstances ?? CLOUD_RUN_SERVICE_DEFAULTS.network.connector.minInstances,
+			maxInstances: args.connector?.maxInstances ?? CLOUD_RUN_SERVICE_DEFAULTS.network.connector.maxInstances,
 			network: this.network.selfLink,
 			region: args.region
 		}, { parent: this, aliases: connectorAliases });
@@ -182,7 +201,7 @@ export class AppNetwork extends pulumi.ComponentResource {
 		const privateIpAlloc = new gcp.compute.GlobalAddress(`${name}-private-ip-alloc`, {
 			purpose: 'VPC_PEERING',
 			addressType: 'INTERNAL',
-			prefixLength: this.#args.psaPrefixLength,
+			prefixLength: this.#args.psaPrefixLength ?? CLOUD_RUN_SERVICE_DEFAULTS.network.psaPrefixLength,
 			network: this.network.selfLink
 		}, { parent: this, aliases: allocAliases });
 
@@ -194,6 +213,42 @@ export class AppNetwork extends pulumi.ComponentResource {
 		}, { parent: this, aliases: connectionAliases });
 
 		return(this.#privateServiceAccess);
+	}
+
+	/**
+	 * The egress rule that lets the VPC connector reach the key-value store of
+	 * the app, named `${appName}-kv-firewall`. Its priority is
+	 * `CLOUD_RUN_SERVICE_DEFAULTS.kv.firewallPriority` unless the caller says
+	 * otherwise, so it wins over an egress deny of the caller that is weaker.
+	 */
+	allowKvEgress(appName: string, args: KvFirewallArgs): gcp.compute.Firewall {
+		const firewallName = `${appName}-kv-firewall`;
+		let aliases: pulumi.Output<pulumi.URN>[] | undefined;
+		if (this.#oldNetwork !== undefined && appName === this.#name) {
+			aliases = movedFrom(firewallName, FIREWALL_TYPE, this.#oldNetwork);
+		}
+
+		return(new gcp.compute.Firewall(firewallName, {
+			description: `Allow VPC connector for to access KV (Redis)`,
+			network: this.network.id,
+			direction: 'EGRESS',
+			allows: [{
+				protocol: 'tcp',
+				ports: [ pulumi.interpolate`${args.port}` ]
+			}],
+			sourceRanges: [
+				this.connector.ipCidrRange.apply(function(cidr) {
+					if (!cidr) {
+						throw(new Error('VPC connector does not have a CIDR range'));
+					}
+
+					return(cidr);
+				})
+			],
+			destinationRanges: [ pulumi.interpolate`${args.host}/32` ],
+			priority: args.priority,
+			...args.extra
+		}, { parent: this, aliases }));
 	}
 
 	/**

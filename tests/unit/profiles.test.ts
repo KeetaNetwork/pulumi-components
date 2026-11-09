@@ -6,6 +6,7 @@ import type * as budget from '../../src/packages/gcp/connection-budget';
 import type * as index from '../../src/packages/gcp/index';
 import type * as profileModule from '../../src/packages/gcp/profiles';
 import { requireSource } from './harness/load-sources';
+import { optionalRecord } from '../helpers/narrow';
 import { captureTree, describeTree, ofType, useIsolatedHome } from './harness/pulumi-tree';
 import type { TreeSnapshot } from './harness/pulumi-tree';
 import { annotationsOf, captureService, databaseInput, environmentOf, flagsOf } from './harness/service-builder';
@@ -295,28 +296,74 @@ describe('a service with a profile', function() {
 	});
 });
 
-describe('a FullStackApp with a profile', function() {
+describe('the Redis and the connector of a service with a profile', function() {
 	useIsolatedHome();
 
-	function tierOf(extra: Partial<ConstructorParameters<typeof FullStackApp>[1]>, backend: Partial<ServiceArgs>) {
+	const REDIS = 'gcp:redis/instance:Instance';
+	const CONNECTOR = 'gcp:vpcaccess/connector:Connector';
+	const production = { environment: 'production', size: 'large' } as const;
+	const values = resolveProfile(production);
+
+	function inputOf(tree: TreeSnapshot, type: string, field: string) {
+		return(optionalRecord(ofType(tree, type)[0]?.inputs)?.[field]);
+	}
+
+	it('gives the Redis of the app the memory of the profile when kv names none', async function() {
+		const tree = await profiled('kv-profile', { profile: production, kv: { type: 'redis' }});
+
+		expect(inputOf(tree, REDIS, 'memorySizeGb')).toBe(values.kvMemorySizeGb);
+	});
+
+	it('keeps the memory of the caller for the Redis, whatever the profile says', async function() {
+		const tree = await profiled('kv-explicit', { profile: production, kv: { type: 'redis', memorySizeGb: values.kvMemorySizeGb + 1 }});
+
+		expect(inputOf(tree, REDIS, 'memorySizeGb')).toBe(values.kvMemorySizeGb + 1);
+	});
+
+	it('rejects a Redis without memory when no profile gives it', async function() {
+		const result = profiled('kv-none', { kv: { type: 'redis' }});
+
+		await expect(result).rejects.toBeInstanceOf(CloudRunServiceArgsError);
+		await expect(result).rejects.toThrow(/kv\.memorySizeGb is required unless a profile gives it/);
+	});
+
+	it('sizes the connector of the app from the profile', async function() {
+		const tree = await profiled('connector-profile', { profile: production });
+
+		expect(inputOf(tree, CONNECTOR, 'minInstances')).toBe(values.vpc.connector.minInstances);
+		expect(inputOf(tree, CONNECTOR, 'maxInstances')).toBe(values.vpc.connector.maxInstances);
+	});
+
+	it('keeps the connector sizes of the caller, one at a time', async function() {
+		const tree = await profiled('connector-explicit', { profile: production, vpc: { connector: { minInstances: 4 }}});
+
+		expect(inputOf(tree, CONNECTOR, 'minInstances')).toBe(4);
+		expect(inputOf(tree, CONNECTOR, 'maxInstances')).toBe(values.vpc.connector.maxInstances);
+	});
+});
+
+describe('a FullStackApp whose backend has a profile', function() {
+	useIsolatedHome();
+
+	function tierOf(backend: Partial<ServiceArgs>) {
 		return(captureTree(function() {
 			return(new FullStackApp('profile-full-stack', {
 				loadBalancer: { domain: 'app.example.com', ssl: { domains: [ 'app.example.com' ] }},
 				frontend: null,
-				backend: { gcp: { project: 'project-id' }, region: 'us-central1', image: { uri: 'us-central1-docker.pkg.dev/project-id/keeta/app:1' }, database: {}, ...backend },
-				...extra
+				backend: { gcp: { project: 'project-id' }, region: 'us-central1', image: { uri: 'us-central1-docker.pkg.dev/project-id/keeta/app:1' }, database: {}, ...backend }
 			}));
 		}));
 	}
 
-	const rows = [
-		{ title: 'passes its profile to the backend', extra: { profile: { environment: 'test', size: 'small' }}, backend: {}, tier: 'db-g1-small', scale: '12' },
-		{ title: 'lets an argument of the backend beat it', extra: { profile: { environment: 'test', size: 'small' }}, backend: { database: { tier: 'db-custom-2-7680' }}, tier: 'db-custom-2-7680', scale: '12' },
-		{ title: 'leaves the backend as it was with no profile', extra: {}, backend: {}, tier: 'db-f1-micro', scale: undefined }
-	] as const;
+	const small = { environment: 'test', size: 'small' } as const;
+	const rows: { title: string; backend: Partial<ServiceArgs>; tier: string; scale: string | undefined }[] = [
+		{ title: 'sizes the backend from the profile', backend: { profile: small }, tier: 'db-g1-small', scale: '12' },
+		{ title: 'lets an argument of the backend beat the profile', backend: { profile: small, database: { tier: 'db-custom-2-7680' }}, tier: 'db-custom-2-7680', scale: '12' },
+		{ title: 'leaves the backend as it was with no profile', backend: {}, tier: 'db-f1-micro', scale: undefined }
+	];
 
 	it.each(rows)('$title', async function(row) {
-		const tree = await tierOf(row.extra, row.backend);
+		const tree = await tierOf(row.backend);
 
 		expect(databaseInput(tree, [ 'settings', 'tier' ])).toBe(row.tier);
 		expect(annotationsOf(tree)[MAX_SCALE]).toBe(row.scale);

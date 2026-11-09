@@ -31,9 +31,9 @@ const MACHINE_SCOPES = [
 ];
 
 /*
- * The values are those of 1.0.95. The P2 snapshot proves that the components
- * still use them; these tests prove that the module holds them, in the
- * object the Design gives each one, and that nobody can change them.
+ * The values are those of 1.0.95. The component tree snapshot proves that the
+ * components still use them; these tests prove that the module holds them,
+ * in the object that owns each one, and that nobody can change them.
  */
 describe('defaults module', function() {
 	const names = Object.keys(exported);
@@ -91,7 +91,7 @@ describe('defaults module', function() {
 		expect(matches.length).toBeGreaterThanOrEqual(count);
 	});
 
-	/* Where the Design does not say which object holds the value, any of them may */
+	/* Where no one object owns the value, any of them may hold it */
 	const heldAnywhere: [ string, unknown ][] = [
 		[ 'the subnet range', '10.97.35.0/24' ],
 		[ 'the connector range', '10.97.36.0/28' ],
