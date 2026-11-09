@@ -68,8 +68,27 @@ interface StackLock {
 	lockedAt: number;
 }
 
+/**
+ * Absolute path of the gcloud CLI, so the cleanup runs the binary the job
+ * installed and never one found later through PATH
+ */
+const GCLOUD = (function() {
+	for (const dir of (process.env.PATH ?? '').split(path.delimiter)) {
+		const candidate = path.join(dir, 'gcloud');
+		if (path.isAbsolute(dir) && fs.existsSync(candidate)) {
+			return(candidate);
+		}
+	}
+
+	return(undefined);
+})();
+
 function gcloudStorage(args: string[]): string {
-	return(execFileSync('gcloud', ['storage', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
+	if (GCLOUD === undefined) {
+		throw(new Error('The gcloud CLI is not on PATH'));
+	}
+
+	return(execFileSync(GCLOUD, ['storage', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
 }
 
 /**
