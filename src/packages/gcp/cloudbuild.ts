@@ -318,12 +318,12 @@ interface CloudBuildInputsArg {
 }
 
 export class CloudBuild extends pulumi.dynamic.Resource implements PulumiBuildOutput {
-	public readonly status!: pulumi.Output<BuildOutput['status']>;
-	public readonly results!: pulumi.Output<BuildOutput['results']>;
-	public readonly logUrl!: pulumi.Output<BuildOutput['logUrl']>;
-	public readonly statusDetail!: pulumi.Output<BuildOutput['statusDetail']>;
-	public readonly build!: pulumi.Output<BuildOutput['build']>;
-	public readonly projectId!: pulumi.Output<BuildOutput['projectId']>;
+	declare public readonly status: pulumi.Output<BuildOutput['status']>;
+	declare public readonly results: pulumi.Output<BuildOutput['results']>;
+	declare public readonly logUrl: pulumi.Output<BuildOutput['logUrl']>;
+	declare public readonly statusDetail: pulumi.Output<BuildOutput['statusDetail']>;
+	declare public readonly build: pulumi.Output<BuildOutput['build']>;
+	declare public readonly projectId: pulumi.Output<BuildOutput['projectId']>;
 
 	static HashType = HashType;
 
