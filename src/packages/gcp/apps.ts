@@ -5,7 +5,8 @@ import type { GCPCommonOptions, CertificateManagerCert, ComputeManagedSslCert } 
 import type { GCPRegion } from './constants';
 import type { EnvironmentVariables } from './cloudrun';
 import { GoogleCloudFolderWithArgs } from './bucket';
-import { EnvManager } from './cloudrun';
+import { EnvManager, EnvView } from './cloudrun';
+import type { ReplacedEnvironment } from './cloudrun';
 import { PostgresCloudSQL } from './sql';
 import type { ContainerGeneric } from './container';
 import { ContainerMIG, ContainerCloudRun } from './container';
@@ -1072,40 +1073,33 @@ export class CloudRunService extends pulumi.ComponentResource {
 
 		let serviceDependsOn: pulumi.Input<pulumi.Resource[]> | undefined = pulumi.all(identity.grants);
 
-		// Create migration job if enabled and database is configured
-		let migration: MigrationJob | undefined;
+		/*
+		 * The one environment of the app: the service, the migration job and the
+		 * worker read views of it. The worker and the migration job each had a
+		 * manager of their own in 1.0.95; a binding of theirs for a secret that
+		 * the caller owns stays, retained (see `ReplacedEnvironment`).
+		 */
+		const parsedWorker = parsedVpc?.worker;
+		const replaces: ReplacedEnvironment[] = [];
+		if (parsedWorker && vpc && subnet) {
+			replaces.push({
+				name: `${name}-mig-env`,
+				oldParent: { kind: 'resource', urn: this.urn },
+				except: Object.keys(parsedWorker.environmentOverrides ?? {})
+			});
+		}
+
 		const parsedMigration = parsedVpc?.data?.migration;
 		if (parsedMigration && db) {
-			let vpcConfig: { connector: gcp.vpcaccess.Connector } | undefined;
-			if (vpcConnector) {
-				vpcConfig = { connector: vpcConnector };
-			}
-
-			migration = new MigrationJob(`${name}-migration`, {
-				gcp: parsed.gcp,
-				region: parsed.region,
-				database: { instance: db },
-				image: imageUri,
-				container: parsedMigration.container,
-				vpc: vpcConfig,
-				serviceAccount: serviceAccount,
-				identity,
-				cpuLimit: parsedMigration.cpuLimit,
-				memoryLimit: parsedMigration.memoryLimit,
-				taskTimeout: parsedMigration.taskTimeout,
-				environment: { ...parsed.environment, ...parsedMigration.environmentOverrides },
-				trigger: imageUri // Re-run migration when image changes
-			}, { parent: this });
-
-			// Make Cloud Run service depend on migration completing
-			const migrationDep = migration;
-			serviceDependsOn = pulumi.output(serviceDependsOn ?? []).apply(function(deps) {
-				return([...deps, migrationDep]);
+			replaces.push({
+				name: `${name}-migration-env`,
+				oldParent: { kind: 'resource', urn: pulumi.createUrn(`${name}-migration`, 'Keeta:GCP:MigrationJob', this.urn) },
+				except: Object.keys(parsedMigration.environmentOverrides ?? {})
 			});
 		}
 
 		let envManager: EnvManager | undefined;
-		// Create environment manager if we have environment variables OR a database (for auto-injected DB vars)
+		// Create environment manager if we have environment variables OR a database (for auto-injected DB vars) OR Redis
 		if (parsed.environment || db || kv) {
 			const variables: EnvironmentVariables = {};
 
@@ -1138,8 +1132,40 @@ export class CloudRunService extends pulumi.ComponentResource {
 			envManager = new EnvManager(`${name}-env`, {
 				serviceAccount: pulumi.interpolate`serviceAccount:${serviceAccount.email}`,
 				secretRegionName: parsed.region,
-				variables
+				variables,
+				replaces
 			}, { parent: this });
+		}
+
+		// Create migration job if enabled and database is configured
+		let migration: MigrationJob | undefined;
+		if (parsedMigration && db) {
+			let vpcConfig: { connector: gcp.vpcaccess.Connector } | undefined;
+			if (vpcConnector) {
+				vpcConfig = { connector: vpcConnector };
+			}
+
+			migration = new MigrationJob(`${name}-migration`, {
+				gcp: parsed.gcp,
+				region: parsed.region,
+				database: { instance: db },
+				image: imageUri,
+				container: parsedMigration.container,
+				vpc: vpcConfig,
+				serviceAccount: serviceAccount,
+				identity,
+				cpuLimit: parsedMigration.cpuLimit,
+				memoryLimit: parsedMigration.memoryLimit,
+				taskTimeout: parsedMigration.taskTimeout,
+				env: envManager?.view(parsedMigration.environmentOverrides),
+				trigger: imageUri // Re-run migration when image changes
+			}, { parent: this });
+
+			// Make Cloud Run service depend on migration completing
+			const migrationDep = migration;
+			serviceDependsOn = pulumi.output(serviceDependsOn ?? []).apply(function(deps) {
+				return([...deps, migrationDep]);
+			});
 		}
 
 		const annotations: { [key: string]: pulumi.Input<string> } = {
@@ -1157,7 +1183,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 					serviceAccountName: serviceAccount.email,
 					containers: [{
 						image: imageUri,
-						envs: envManager?.variableOutput,
+						envs: envManager?.view().cloudRun,
 						resources: {
 							limits: {
 								cpu: String(parsed.service.cpuLimit),
@@ -1232,33 +1258,9 @@ export class CloudRunService extends pulumi.ComponentResource {
 				}, { parent: vpc });
 			}
 
-			// Build MIG environment variables through EnvManager (resolves secrets at deploy time)
-			const migVariables: { [key: string]: pulumi.Input<string> | { value: pulumi.Input<string>; secret: boolean }} = {};
-
-			if (db) {
-				const hostInfo = db.getHost(parsed.region);
-				const dbVars = buildDatabaseEnvVars({
-					host: hostInfo.host,
-					username: db.username,
-					password: db.password,
-					databaseName: db.databaseName,
-					caCertificate: hostInfo.caCertificate
-				});
-				Object.assign(migVariables, dbVars);
-			}
-
-			if (parsed.environment) {
-				Object.assign(migVariables, parsed.environment);
-			}
-			if (worker.environmentOverrides) {
-				Object.assign(migVariables, worker.environmentOverrides);
-			}
-
-			const migEnvManager = new EnvManager(`${name}-mig-env`, {
-				serviceAccount: pulumi.interpolate`serviceAccount:${serviceAccount.email}`,
-				secretRegionName: parsed.region,
-				variables: migVariables
-			}, { parent: this });
+			// The worker reads the environment of the app, with its own overrides
+			// (an app without variables has no manager, and the view holds the overrides alone)
+			const workerEnv = envManager?.view(worker.environmentOverrides) ?? new EnvView({}, [], worker.environmentOverrides ?? {});
 
 			if (worker.kind === 'mig') {
 				// Create external IP if requested
@@ -1295,7 +1297,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 							image: imageUri,
 							name: `${name}-worker`,
 							restartPolicy: 'Always',
-							env: migEnvManager.resolvedVariableOutput
+							env: workerEnv.resolvedForVm
 						}]
 					}
 				}, { parent: this });
@@ -1317,7 +1319,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 							image: imageUri,
 							name: `${name}-worker`,
 							restartPolicy: 'Always',
-							env: migEnvManager.cloudRunJobVariableOutput
+							env: workerEnv.cloudRunJob
 						}]
 					}
 				}, {

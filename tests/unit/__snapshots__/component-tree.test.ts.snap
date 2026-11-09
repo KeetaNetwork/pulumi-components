@@ -6,21 +6,12 @@ exports[`component tree > provider propagation > gives the passed provider to th
     "service-providers-env-mc-psql-db-password",
     "service-providers-env-mc-psql-db-url",
     "service-providers-env-secret",
-    "service-providers-mig-env-mc-psql-db-password",
-    "service-providers-mig-env-mc-psql-db-url",
-    "service-providers-mig-env-secret",
     "service-providers-env-mc-psql-db-password-iam-binding",
     "service-providers-env-mc-psql-db-url-iam-binding",
     "service-providers-env-secret-iam-binding",
-    "service-providers-mig-env-mc-psql-db-password-iam-binding",
-    "service-providers-mig-env-mc-psql-db-url-iam-binding",
-    "service-providers-mig-env-secret-iam-binding",
     "service-providers-env-mc-psql-db-password-version",
     "service-providers-env-mc-psql-db-url-version",
     "service-providers-env-secret-version",
-    "service-providers-mig-env-mc-psql-db-password-version",
-    "service-providers-mig-env-mc-psql-db-url-version",
-    "service-providers-mig-env-secret-version",
     "service-providers-mig-ar-1-iam",
     "service-providers-mig-mig-template",
     "service-providers-mig-mig",
@@ -30,15 +21,6 @@ exports[`component tree > provider propagation > gives the passed provider to th
     "service-providers-image-iam-logs",
     "service-providers-image-iam-serviceAgent",
     "service-providers-image-iam-bucket",
-    "service-providers-migration-env-mc-psql-db-password",
-    "service-providers-migration-env-mc-psql-db-url",
-    "service-providers-migration-env-secret",
-    "service-providers-migration-env-mc-psql-db-password-iam-binding",
-    "service-providers-migration-env-mc-psql-db-url-iam-binding",
-    "service-providers-migration-env-secret-iam-binding",
-    "service-providers-migration-env-mc-psql-db-password-version",
-    "service-providers-migration-env-mc-psql-db-url-version",
-    "service-providers-migration-env-secret-version",
     "service-providers-migration-job",
     "service-providers-migration-cloudsql-client",
     "service-providers-db-db",
@@ -1878,14 +1860,6 @@ exports[`component tree > snapshot > service-crwp keeps its resources, parents, 
 [
   {
     "aliases": [],
-    "custom": false,
-    "name": "service-crwp-mig-env",
-    "parent": "Keeta:GCP:CloudRunService::service-crwp",
-    "type": "Keeta:GCP:CloudRunEnvManager",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::service-crwp-mig-env",
-  },
-  {
-    "aliases": [],
     "custom": true,
     "inputs": {
       "member": "serviceAccount:service-crwp-sa@mock.iam.gserviceaccount.com",
@@ -2322,118 +2296,6 @@ exports[`component tree > snapshot > service-database keeps its resources, paren
     "aliases": [],
     "custom": true,
     "inputs": {
-      "replication": {
-        "userManaged": {
-          "replicas": [
-            {
-              "location": "us-central1",
-            },
-          ],
-        },
-      },
-      "secretId": "service-database-migration-env-mc-psql-db-password",
-    },
-    "name": "service-database-migration-env-mc-psql-db-password",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager::service-database-migration-env",
-    "type": "gcp:secretmanager/secret:Secret",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-database-migration-env-mc-psql-db-password",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "replication": {
-        "userManaged": {
-          "replicas": [
-            {
-              "location": "us-central1",
-            },
-          ],
-        },
-      },
-      "secretId": "service-database-migration-env-mc-psql-db-url",
-    },
-    "name": "service-database-migration-env-mc-psql-db-url",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager::service-database-migration-env",
-    "type": "gcp:secretmanager/secret:Secret",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-database-migration-env-mc-psql-db-url",
-  },
-  {
-    "aliases": [
-      "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretIamMember:SecretIamMember::service-database-migration-env-mc-psql-db-password-iam-binding",
-    ],
-    "custom": true,
-    "deletedWith": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-database-migration-env-mc-psql-db-password",
-    "inputs": {
-      "member": "serviceAccount:service-database-sa@mock.iam.gserviceaccount.com",
-      "role": "roles/secretmanager.secretAccessor",
-      "secretId": "service-database-migration-env-mc-psql-db-password",
-    },
-    "name": "service-database-migration-env-mc-psql-db-password-iam-binding",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager::service-database-migration-env",
-    "type": "gcp:secretmanager/secretIamMember:SecretIamMember",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secretIamMember:SecretIamMember::service-database-migration-env-mc-psql-db-password-iam-binding",
-  },
-  {
-    "aliases": [
-      "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretIamMember:SecretIamMember::service-database-migration-env-mc-psql-db-url-iam-binding",
-    ],
-    "custom": true,
-    "deletedWith": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-database-migration-env-mc-psql-db-url",
-    "inputs": {
-      "member": "serviceAccount:service-database-sa@mock.iam.gserviceaccount.com",
-      "role": "roles/secretmanager.secretAccessor",
-      "secretId": "service-database-migration-env-mc-psql-db-url",
-    },
-    "name": "service-database-migration-env-mc-psql-db-url-iam-binding",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager::service-database-migration-env",
-    "type": "gcp:secretmanager/secretIamMember:SecretIamMember",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secretIamMember:SecretIamMember::service-database-migration-env-mc-psql-db-url-iam-binding",
-  },
-  {
-    "aliases": [
-      "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::service-database-migration-env-mc-psql-db-password-version",
-    ],
-    "custom": true,
-    "deletedWith": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-database-migration-env-mc-psql-db-password",
-    "inputs": {
-      "deletionPolicy": "DISABLE",
-      "secret": "service-database-migration-env-mc-psql-db-password-id",
-      "secretData": "<secret>",
-    },
-    "name": "service-database-migration-env-mc-psql-db-password-version",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager::service-database-migration-env",
-    "type": "gcp:secretmanager/secretVersion:SecretVersion",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secretVersion:SecretVersion::service-database-migration-env-mc-psql-db-password-version",
-  },
-  {
-    "aliases": [
-      "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::service-database-migration-env-mc-psql-db-url-version",
-    ],
-    "custom": true,
-    "deletedWith": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-database-migration-env-mc-psql-db-url",
-    "inputs": {
-      "deletionPolicy": "DISABLE",
-      "secret": "service-database-migration-env-mc-psql-db-url-id",
-      "secretData": "<secret>",
-    },
-    "name": "service-database-migration-env-mc-psql-db-url-version",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager::service-database-migration-env",
-    "type": "gcp:secretmanager/secretVersion:SecretVersion",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secretVersion:SecretVersion::service-database-migration-env-mc-psql-db-url-version",
-  },
-  {
-    "aliases": [],
-    "custom": false,
-    "name": "service-database-migration-env",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob::service-database-migration",
-    "type": "Keeta:GCP:CloudRunEnvManager",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager::service-database-migration-env",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
       "deletionProtection": false,
       "location": "us-central1",
       "template": {
@@ -2449,7 +2311,7 @@ exports[`component tree > snapshot > service-database keeps its resources, paren
                   "name": "MC_PSQL_DB_PASSWORD",
                   "valueSource": {
                     "secretKeyRef": {
-                      "secret": "service-database-migration-env-mc-psql-db-password",
+                      "secret": "service-database-env-mc-psql-db-password",
                       "version": "1",
                     },
                   },
@@ -2478,7 +2340,7 @@ exports[`component tree > snapshot > service-database keeps its resources, paren
                   "name": "MC_PSQL_DB_URL",
                   "valueSource": {
                     "secretKeyRef": {
-                      "secret": "service-database-migration-env-mc-psql-db-url",
+                      "secret": "service-database-env-mc-psql-db-url",
                       "version": "1",
                     },
                   },
@@ -3448,14 +3310,6 @@ exports[`component tree > snapshot > service-mig keeps its resources, parents, a
   },
   {
     "aliases": [],
-    "custom": false,
-    "name": "service-mig-mig-env",
-    "parent": "Keeta:GCP:CloudRunService::service-mig",
-    "type": "Keeta:GCP:CloudRunEnvManager",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::service-mig-mig-env",
-  },
-  {
-    "aliases": [],
     "custom": true,
     "inputs": {
       "member": "serviceAccount:service-mig-sa@mock.iam.gserviceaccount.com",
@@ -4018,69 +3872,6 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-providers-env-secret",
   },
   {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "replication": {
-        "userManaged": {
-          "replicas": [
-            {
-              "location": "us-central1",
-            },
-          ],
-        },
-      },
-      "secretId": "service-providers-mig-env-mc-psql-db-password",
-    },
-    "name": "service-providers-mig-env-mc-psql-db-password",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::service-providers-mig-env",
-    "provider": "pulumi:providers:gcp::caller-provider",
-    "type": "gcp:secretmanager/secret:Secret",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-providers-mig-env-mc-psql-db-password",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "replication": {
-        "userManaged": {
-          "replicas": [
-            {
-              "location": "us-central1",
-            },
-          ],
-        },
-      },
-      "secretId": "service-providers-mig-env-mc-psql-db-url",
-    },
-    "name": "service-providers-mig-env-mc-psql-db-url",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::service-providers-mig-env",
-    "provider": "pulumi:providers:gcp::caller-provider",
-    "type": "gcp:secretmanager/secret:Secret",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-providers-mig-env-mc-psql-db-url",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "replication": {
-        "userManaged": {
-          "replicas": [
-            {
-              "location": "us-central1",
-            },
-          ],
-        },
-      },
-      "secretId": "service-providers-mig-env-secret",
-    },
-    "name": "service-providers-mig-env-secret",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::service-providers-mig-env",
-    "provider": "pulumi:providers:gcp::caller-provider",
-    "type": "gcp:secretmanager/secret:Secret",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-providers-mig-env-secret",
-  },
-  {
     "aliases": [
       "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretIamMember:SecretIamMember::service-providers-env-mc-psql-db-password-iam-binding",
     ],
@@ -4130,57 +3921,6 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
     "provider": "pulumi:providers:gcp::caller-provider",
     "type": "gcp:secretmanager/secretIamMember:SecretIamMember",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secretIamMember:SecretIamMember::service-providers-env-secret-iam-binding",
-  },
-  {
-    "aliases": [
-      "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretIamMember:SecretIamMember::service-providers-mig-env-mc-psql-db-password-iam-binding",
-    ],
-    "custom": true,
-    "deletedWith": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-providers-mig-env-mc-psql-db-password",
-    "inputs": {
-      "member": "serviceAccount:service-providers-sa@mock.iam.gserviceaccount.com",
-      "role": "roles/secretmanager.secretAccessor",
-      "secretId": "service-providers-mig-env-mc-psql-db-password",
-    },
-    "name": "service-providers-mig-env-mc-psql-db-password-iam-binding",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::service-providers-mig-env",
-    "provider": "pulumi:providers:gcp::caller-provider",
-    "type": "gcp:secretmanager/secretIamMember:SecretIamMember",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secretIamMember:SecretIamMember::service-providers-mig-env-mc-psql-db-password-iam-binding",
-  },
-  {
-    "aliases": [
-      "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretIamMember:SecretIamMember::service-providers-mig-env-mc-psql-db-url-iam-binding",
-    ],
-    "custom": true,
-    "deletedWith": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-providers-mig-env-mc-psql-db-url",
-    "inputs": {
-      "member": "serviceAccount:service-providers-sa@mock.iam.gserviceaccount.com",
-      "role": "roles/secretmanager.secretAccessor",
-      "secretId": "service-providers-mig-env-mc-psql-db-url",
-    },
-    "name": "service-providers-mig-env-mc-psql-db-url-iam-binding",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::service-providers-mig-env",
-    "provider": "pulumi:providers:gcp::caller-provider",
-    "type": "gcp:secretmanager/secretIamMember:SecretIamMember",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secretIamMember:SecretIamMember::service-providers-mig-env-mc-psql-db-url-iam-binding",
-  },
-  {
-    "aliases": [
-      "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretIamMember:SecretIamMember::service-providers-mig-env-secret-iam-binding",
-    ],
-    "custom": true,
-    "deletedWith": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-providers-mig-env-secret",
-    "inputs": {
-      "member": "serviceAccount:service-providers-sa@mock.iam.gserviceaccount.com",
-      "role": "roles/secretmanager.secretAccessor",
-      "secretId": "service-providers-mig-env-secret",
-    },
-    "name": "service-providers-mig-env-secret-iam-binding",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::service-providers-mig-env",
-    "provider": "pulumi:providers:gcp::caller-provider",
-    "type": "gcp:secretmanager/secretIamMember:SecretIamMember",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secretIamMember:SecretIamMember::service-providers-mig-env-secret-iam-binding",
   },
   {
     "aliases": [
@@ -4234,71 +3974,12 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secretVersion:SecretVersion::service-providers-env-secret-version",
   },
   {
-    "aliases": [
-      "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::service-providers-mig-env-mc-psql-db-password-version",
-    ],
-    "custom": true,
-    "deletedWith": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-providers-mig-env-mc-psql-db-password",
-    "inputs": {
-      "deletionPolicy": "DISABLE",
-      "secret": "service-providers-mig-env-mc-psql-db-password-id",
-      "secretData": "<secret>",
-    },
-    "name": "service-providers-mig-env-mc-psql-db-password-version",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::service-providers-mig-env",
-    "provider": "pulumi:providers:gcp::caller-provider",
-    "type": "gcp:secretmanager/secretVersion:SecretVersion",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secretVersion:SecretVersion::service-providers-mig-env-mc-psql-db-password-version",
-  },
-  {
-    "aliases": [
-      "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::service-providers-mig-env-mc-psql-db-url-version",
-    ],
-    "custom": true,
-    "deletedWith": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-providers-mig-env-mc-psql-db-url",
-    "inputs": {
-      "deletionPolicy": "DISABLE",
-      "secret": "service-providers-mig-env-mc-psql-db-url-id",
-      "secretData": "<secret>",
-    },
-    "name": "service-providers-mig-env-mc-psql-db-url-version",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::service-providers-mig-env",
-    "provider": "pulumi:providers:gcp::caller-provider",
-    "type": "gcp:secretmanager/secretVersion:SecretVersion",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secretVersion:SecretVersion::service-providers-mig-env-mc-psql-db-url-version",
-  },
-  {
-    "aliases": [
-      "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::service-providers-mig-env-secret-version",
-    ],
-    "custom": true,
-    "deletedWith": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-providers-mig-env-secret",
-    "inputs": {
-      "deletionPolicy": "DISABLE",
-      "secret": "service-providers-mig-env-secret-id",
-      "secretData": "<secret>",
-    },
-    "name": "service-providers-mig-env-secret-version",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::service-providers-mig-env",
-    "provider": "pulumi:providers:gcp::caller-provider",
-    "type": "gcp:secretmanager/secretVersion:SecretVersion",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secretVersion:SecretVersion::service-providers-mig-env-secret-version",
-  },
-  {
     "aliases": [],
     "custom": false,
     "name": "service-providers-env",
     "parent": "Keeta:GCP:CloudRunService::service-providers",
     "type": "Keeta:GCP:CloudRunEnvManager",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::service-providers-env",
-  },
-  {
-    "aliases": [],
-    "custom": false,
-    "name": "service-providers-mig-env",
-    "parent": "Keeta:GCP:CloudRunService::service-providers",
-    "type": "Keeta:GCP:CloudRunEnvManager",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::service-providers-mig-env",
   },
   {
     "aliases": [],
@@ -4557,179 +4238,6 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
     "aliases": [],
     "custom": true,
     "inputs": {
-      "replication": {
-        "userManaged": {
-          "replicas": [
-            {
-              "location": "us-central1",
-            },
-          ],
-        },
-      },
-      "secretId": "service-providers-migration-env-mc-psql-db-password",
-    },
-    "name": "service-providers-migration-env-mc-psql-db-password",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager::service-providers-migration-env",
-    "provider": "pulumi:providers:gcp::caller-provider",
-    "type": "gcp:secretmanager/secret:Secret",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-providers-migration-env-mc-psql-db-password",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "replication": {
-        "userManaged": {
-          "replicas": [
-            {
-              "location": "us-central1",
-            },
-          ],
-        },
-      },
-      "secretId": "service-providers-migration-env-mc-psql-db-url",
-    },
-    "name": "service-providers-migration-env-mc-psql-db-url",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager::service-providers-migration-env",
-    "provider": "pulumi:providers:gcp::caller-provider",
-    "type": "gcp:secretmanager/secret:Secret",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-providers-migration-env-mc-psql-db-url",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "replication": {
-        "userManaged": {
-          "replicas": [
-            {
-              "location": "us-central1",
-            },
-          ],
-        },
-      },
-      "secretId": "service-providers-migration-env-secret",
-    },
-    "name": "service-providers-migration-env-secret",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager::service-providers-migration-env",
-    "provider": "pulumi:providers:gcp::caller-provider",
-    "type": "gcp:secretmanager/secret:Secret",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-providers-migration-env-secret",
-  },
-  {
-    "aliases": [
-      "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretIamMember:SecretIamMember::service-providers-migration-env-mc-psql-db-password-iam-binding",
-    ],
-    "custom": true,
-    "deletedWith": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-providers-migration-env-mc-psql-db-password",
-    "inputs": {
-      "member": "serviceAccount:service-providers-sa@mock.iam.gserviceaccount.com",
-      "role": "roles/secretmanager.secretAccessor",
-      "secretId": "service-providers-migration-env-mc-psql-db-password",
-    },
-    "name": "service-providers-migration-env-mc-psql-db-password-iam-binding",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager::service-providers-migration-env",
-    "provider": "pulumi:providers:gcp::caller-provider",
-    "type": "gcp:secretmanager/secretIamMember:SecretIamMember",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secretIamMember:SecretIamMember::service-providers-migration-env-mc-psql-db-password-iam-binding",
-  },
-  {
-    "aliases": [
-      "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretIamMember:SecretIamMember::service-providers-migration-env-mc-psql-db-url-iam-binding",
-    ],
-    "custom": true,
-    "deletedWith": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-providers-migration-env-mc-psql-db-url",
-    "inputs": {
-      "member": "serviceAccount:service-providers-sa@mock.iam.gserviceaccount.com",
-      "role": "roles/secretmanager.secretAccessor",
-      "secretId": "service-providers-migration-env-mc-psql-db-url",
-    },
-    "name": "service-providers-migration-env-mc-psql-db-url-iam-binding",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager::service-providers-migration-env",
-    "provider": "pulumi:providers:gcp::caller-provider",
-    "type": "gcp:secretmanager/secretIamMember:SecretIamMember",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secretIamMember:SecretIamMember::service-providers-migration-env-mc-psql-db-url-iam-binding",
-  },
-  {
-    "aliases": [
-      "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretIamMember:SecretIamMember::service-providers-migration-env-secret-iam-binding",
-    ],
-    "custom": true,
-    "deletedWith": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-providers-migration-env-secret",
-    "inputs": {
-      "member": "serviceAccount:service-providers-sa@mock.iam.gserviceaccount.com",
-      "role": "roles/secretmanager.secretAccessor",
-      "secretId": "service-providers-migration-env-secret",
-    },
-    "name": "service-providers-migration-env-secret-iam-binding",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager::service-providers-migration-env",
-    "provider": "pulumi:providers:gcp::caller-provider",
-    "type": "gcp:secretmanager/secretIamMember:SecretIamMember",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secretIamMember:SecretIamMember::service-providers-migration-env-secret-iam-binding",
-  },
-  {
-    "aliases": [
-      "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::service-providers-migration-env-mc-psql-db-password-version",
-    ],
-    "custom": true,
-    "deletedWith": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-providers-migration-env-mc-psql-db-password",
-    "inputs": {
-      "deletionPolicy": "DISABLE",
-      "secret": "service-providers-migration-env-mc-psql-db-password-id",
-      "secretData": "<secret>",
-    },
-    "name": "service-providers-migration-env-mc-psql-db-password-version",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager::service-providers-migration-env",
-    "provider": "pulumi:providers:gcp::caller-provider",
-    "type": "gcp:secretmanager/secretVersion:SecretVersion",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secretVersion:SecretVersion::service-providers-migration-env-mc-psql-db-password-version",
-  },
-  {
-    "aliases": [
-      "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::service-providers-migration-env-mc-psql-db-url-version",
-    ],
-    "custom": true,
-    "deletedWith": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-providers-migration-env-mc-psql-db-url",
-    "inputs": {
-      "deletionPolicy": "DISABLE",
-      "secret": "service-providers-migration-env-mc-psql-db-url-id",
-      "secretData": "<secret>",
-    },
-    "name": "service-providers-migration-env-mc-psql-db-url-version",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager::service-providers-migration-env",
-    "provider": "pulumi:providers:gcp::caller-provider",
-    "type": "gcp:secretmanager/secretVersion:SecretVersion",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secretVersion:SecretVersion::service-providers-migration-env-mc-psql-db-url-version",
-  },
-  {
-    "aliases": [
-      "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::service-providers-migration-env-secret-version",
-    ],
-    "custom": true,
-    "deletedWith": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-providers-migration-env-secret",
-    "inputs": {
-      "deletionPolicy": "DISABLE",
-      "secret": "service-providers-migration-env-secret-id",
-      "secretData": "<secret>",
-    },
-    "name": "service-providers-migration-env-secret-version",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager::service-providers-migration-env",
-    "provider": "pulumi:providers:gcp::caller-provider",
-    "type": "gcp:secretmanager/secretVersion:SecretVersion",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secretVersion:SecretVersion::service-providers-migration-env-secret-version",
-  },
-  {
-    "aliases": [],
-    "custom": false,
-    "name": "service-providers-migration-env",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob::service-providers-migration",
-    "type": "Keeta:GCP:CloudRunEnvManager",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager::service-providers-migration-env",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
       "deletionProtection": false,
       "location": "us-central1",
       "template": {
@@ -4745,7 +4253,7 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
                   "name": "MC_PSQL_DB_PASSWORD",
                   "valueSource": {
                     "secretKeyRef": {
-                      "secret": "service-providers-migration-env-mc-psql-db-password",
+                      "secret": "service-providers-env-mc-psql-db-password",
                       "version": "1",
                     },
                   },
@@ -4774,7 +4282,7 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
                   "name": "MC_PSQL_DB_URL",
                   "valueSource": {
                     "secretKeyRef": {
-                      "secret": "service-providers-migration-env-mc-psql-db-url",
+                      "secret": "service-providers-env-mc-psql-db-url",
                       "version": "1",
                     },
                   },
@@ -4783,7 +4291,7 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
                   "name": "SECRET",
                   "valueSource": {
                     "secretKeyRef": {
-                      "secret": "service-providers-migration-env-secret",
+                      "secret": "service-providers-env-secret",
                       "version": "1",
                     },
                   },
