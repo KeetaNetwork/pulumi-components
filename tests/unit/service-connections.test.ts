@@ -7,6 +7,7 @@ import { requireSource } from './harness/load-sources';
 import { ofType, useIsolatedHome } from './harness/pulumi-tree';
 import type { TreeSnapshot } from './harness/pulumi-tree';
 import { captureService, environmentOf } from './harness/service-builder';
+import { captureWarningsAsync } from './harness/warnings';
 
 const { ConnectionBudgetExceededError } = requireSource<typeof budget>('src/packages/gcp/connection-budget.ts');
 const { CloudRunServiceArgsError } = requireSource<typeof apps>('src/packages/gcp/apps.ts');
@@ -175,6 +176,39 @@ describe('the connection budget of a service', function() {
 
 	it('rejects a service whose instances alone are over the budget', async function() {
 		await expect(captureService('budget-service-over', budgeted({ service: { maxInstances: 19 }}))).rejects.toBeInstanceOf(ConnectionBudgetExceededError);
+	});
+
+	it('counts a service without maxInstances as the 100 instances that Cloud Run may start, and says so', async function() {
+		const result = captureService('budget-no-max-instances', budgeted({ service: {}, database: { flags: { max_connections: 100 }, poolSize: 1 }}));
+
+		await expect(result).rejects.toBeInstanceOf(ConnectionBudgetExceededError);
+		await expect(result).rejects.toThrow(/no maxInstances.*100/);
+	});
+
+	/* max_connections is 100: 10 are kept in reserve, and the migration job opens a pool while the old revision still serves */
+	const migrationPools = [
+		{ title: 'warns when the pool of the migration job is larger than the reserve', migration: { enabled: true }, poolSize: 11, warnings: 1 },
+		{ title: 'does not warn when the pool is exactly the reserve', migration: { enabled: true }, poolSize: 10, warnings: 0 },
+		{ title: 'does not warn when the migration job is not enabled', migration: { enabled: false }, poolSize: 11, warnings: 0 }
+	];
+
+	it.each(migrationPools)('$title', async function(testCase) {
+		const { warnings } = await captureWarningsAsync(function() {
+			return(captureService('budget-migration-reserve', budgeted({ migration: testCase.migration, database: { flags: { max_connections: 100 }, poolSize: testCase.poolSize }, service: { maxInstances: 1 }})));
+		});
+		const reserve = warnings.filter(function(message) {
+			return(message.includes('connections kept in reserve'));
+		});
+
+		expect(reserve).toHaveLength(testCase.warnings);
+	});
+
+	it('names the pool size and the reserve in the warning about the migration job', async function() {
+		const { warnings } = await captureWarningsAsync(function() {
+			return(captureService('budget-migration-reserve-text', budgeted({ database: { flags: { max_connections: 100 }, poolSize: 11 }, service: { maxInstances: 1 }})));
+		});
+
+		expect(warnings).toContainEqual(expect.stringMatching(/database\.poolSize 11 is more than the 10 connections kept in reserve.*MC_PSQL_DB_POOL_SIZE/));
 	});
 
 	it('does not run the check when no pool size is given, however many instances there are', async function() {

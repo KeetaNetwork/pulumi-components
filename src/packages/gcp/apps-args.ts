@@ -5,7 +5,7 @@ import type { EnvironmentVariables } from './cloudrun';
 import type { GCPCommonOptions } from './common';
 import type { GCPRegion } from './constants';
 import type { AppNetwork } from './network';
-import { assertWithinBudget, connectionBudget } from './connection-budget';
+import { assertWithinBudget, connectionBudget, resolveMaxConnections } from './connection-budget';
 import type { ConnectionConsumer } from './connection-budget';
 import { DATABASE_POOL_SIZE_VARIABLE } from './database-env';
 import { BUILD_DEFAULTS, CLOUD_RUN_SERVICE_DEFAULTS, MIGRATION_DEFAULTS, POSTGRES_DEFAULTS } from './defaults';
@@ -516,7 +516,14 @@ function assertConnectionsFit(args: CloudRunServiceArgs, worker: ParsedWorker | 
 		return;
 	}
 
-	assertWithinBudget(connectionBudget({ maxConnections: database.flags.max_connections }), consumers);
+	const budget = connectionBudget({ maxConnections: resolveMaxConnections({ flags: database.flags, tier: database.tier }) });
+	assertWithinBudget(budget, consumers);
+
+	/* The migration job opens its pool while the old revision still serves with full pools, so its connections come out of the reserve */
+	const poolSize = args.database?.poolSize;
+	if (args.migration?.enabled && poolSize !== undefined && poolSize > budget.reserve) {
+		void pulumi.log.warn(`CloudRunService: database.poolSize ${poolSize} is more than the ${budget.reserve} connections kept in reserve, and the migration job opens a pool of that size while the old revision still serves: it may be refused connections. Lower database.poolSize, or give migration.environmentOverrides a smaller MC_PSQL_DB_POOL_SIZE`);
+	}
 }
 
 /**
