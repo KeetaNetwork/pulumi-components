@@ -55,7 +55,7 @@ jobs:
 
       - name: Run Integration Tests
         # Leaves the cleanup step time to run inside the job's timeout
-        timeout-minutes: 85
+        timeout-minutes: 80
         run: make test-integration
         env:
           GOOGLE_PROJECT: ${{ vars.GOOGLE_PROJECT }}
@@ -67,11 +67,14 @@ jobs:
 
       # Destroys this run's stacks whatever the tests did (failed, cancelled,
       # timed out), and any stale test stack an earlier run left behind. It
-      # fails the job if a stack cannot be destroyed.
+      # fails the job if a stack cannot be destroyed. An aborted test step
+      # leaves its processes running until the job ends, holding their stack
+      # locks, so they are stopped first. The stale locks are deleted with
+      # the gcloud CLI from the "setup-gcloud" step.
       - name: Clean Up Integration Test Stacks
         if: ${{ always() && steps.pulumi_login.outcome == 'success' }}
-        timeout-minutes: 30
-        run: make cleanup-integration
+        timeout-minutes: 35
+        run: make ci-stop-test-processes cleanup-integration
         env:
           GOOGLE_PROJECT: ${{ vars.GOOGLE_PROJECT }}
           PULUMI_EXPERIMENTAL: "true"
