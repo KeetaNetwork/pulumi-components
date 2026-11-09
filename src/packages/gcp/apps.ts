@@ -941,8 +941,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 			 * if there is one). It owns the VPC, the subnet, the connector and the
 			 * one private service access connection.
 			 */
-			appNetwork = parsedVpc.appNetwork;
-			if (appNetwork === undefined) {
+			if (parsedVpc.appNetwork === undefined) {
 				const own = parsedVpc.network;
 				appNetwork = new AppNetwork(name, {
 					region: parsed.region,
@@ -952,8 +951,10 @@ export class CloudRunService extends pulumi.ComponentResource {
 					connector: own.connector,
 					psaPrefixLength: own.psaPrefixLength,
 					servicePeeringDeletionPolicy: own.servicePeeringDeletionPolicy,
-					movedFrom: this
+					movedFrom: this.urn
 				}, { parent: this });
+			} else {
+				appNetwork = parsedVpc.appNetwork;
 			}
 
 			vpc = appNetwork.network;
@@ -1220,7 +1221,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 
 		let mig: ContainerGeneric | undefined;
 		const worker = parsedVpc?.worker;
-		if (worker && vpc && subnet && appNetwork) {
+		if (worker && appNetwork) {
 			// Enable SSH firewall if requested
 			if (worker.kind === 'mig' && worker.enableSSH) {
 				appNetwork.allowIapSsh(name, {
@@ -1249,7 +1250,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 					description: `[${name}] MIG worker for background tasks`,
 					serviceAccount: serviceAccount.email,
 					identity,
-					subnetwork: subnet,
+					subnetwork: appNetwork.subnet,
 					machineType: worker.machineType,
 					cosImage: worker.cosImage,
 					tags: worker.tags,
@@ -1278,7 +1279,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 					description: `[${name}] Worker for background tasks`,
 					serviceAccount: serviceAccount.email,
 					identity,
-					subnetwork: subnet,
+					subnetwork: appNetwork.subnet,
 					machineType: worker.machineType,
 					tags: worker.tags,
 					count: worker.instanceCount,
