@@ -384,7 +384,12 @@ function parseWorkerArgs(args: CloudRunServiceArgs): ParsedWorker | undefined {
 		return(undefined);
 	}
 
-	return(parseWorker(worker));
+	const parsed = parseWorker(worker);
+	if (parsed.kind === 'mig' && parsed.egress === 'vpc+direct') {
+		void pulumi.log.warn('CloudRunService: worker.egress \'vpc+direct\' on a mig worker used to be ignored, and now gives every VM an external IP address. Set egress \'vpc\' if you did not mean that');
+	}
+
+	return(parsed);
 }
 
 function parseDatabase(database: DatabaseArgs): ParsedDatabase {
@@ -574,10 +579,6 @@ export function parseCloudRunServiceArgs(args: CloudRunServiceArgs): ParsedCloud
 			if (args.migration?.enabled) {
 				vpc.data.migration = parseMigration(args.migration);
 			}
-		}
-
-		if (worker?.egress === 'vpc+nat' && args.network !== undefined && !args.network.claimNatWorker()) {
-			throw(new CloudRunServiceArgsError('worker.egress \'vpc+nat\' is already used by another worker on this AppNetwork: a network has one Cloud NAT worker, so give the second worker egress \'vpc\' or its own AppNetwork'));
 		}
 
 		parsed.vpc = vpc;

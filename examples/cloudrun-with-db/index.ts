@@ -17,6 +17,7 @@ const region: gcpComponents.constants.GCPRegion = 'us-central1';
  */
 const stackId = createHash('sha256').update(pulumi.getStack()).digest('hex').substring(0, 8);
 const name = `db-test-${stackId}`;
+const config = new pulumi.Config();
 
 // Artifact Registry for the test app image
 const registry = new gcp.artifactregistry.Repository(`${name}-repo`, {
@@ -53,6 +54,11 @@ export const backend = new gcpComponents.apps.CloudRunService(name, {
 		servicePeeringDeletionPolicy: 'ABANDON'
 	},
 
+	// A secret variable whose value the test changes, to roll the service onto a new secret version
+	environment: {
+		API_TOKEN: { value: config.get('apiToken') ?? 'initial', secret: true }
+	},
+
 	service: {
 		cpuLimit: 1,
 		memoryLimit: 512
@@ -69,3 +75,21 @@ export const backend = new gcpComponents.apps.CloudRunService(name, {
 
 // Explicit output for test access
 export const serviceUrl = backend.service.statuses.apply(function(s) { return(s[0]?.url); });
+
+// The secret and the version that the service reads API_TOKEN from, for the test that changes the token
+export const apiTokenReference = backend.service.template.apply(function(template) {
+	const environment = template?.spec.containers[0]?.envs ?? [];
+	const entry = environment.find(function(candidate) {
+		return(candidate.name === 'API_TOKEN');
+	});
+
+	return(entry?.valueFrom?.secretKeyRef);
+});
+
+// The image that the service runs, pinned by the digest of the local build
+export const deployedImage = backend.service.template.apply(function(template) {
+	return(template?.spec.containers[0]?.image);
+});
+
+// The status of the migration run, as the dynamic resource of the run reported it
+export const migrationStatus = backend.migration?.status;

@@ -60,11 +60,9 @@ export interface CaptureOptions {
 	stack?: string;
 	/** How long to wait for the program to finish registering (default 60 seconds) */
 	settleTimeoutMs?: number;
-	/** Computed outputs for a type of resource, in place of the table of known outputs (for tests that need the outputs to vary) */
-	outputs?: { [type: string]: OutputsOf };
 }
 
-export type OutputsOf = (name: string, inputs: UnknownRecord) => UnknownRecord;
+type OutputsOf = (name: string, inputs: UnknownRecord) => UnknownRecord;
 
 /*
  * Outputs that the components read from a resource after it is created
@@ -138,31 +136,29 @@ function defaultOutputs(name: string, inputs: UnknownRecord): UnknownRecord {
 	});
 }
 
-function createMocks(overrides: { [type: string]: OutputsOf }): pulumi.runtime.Mocks {
-	return({
-		newResource: function(args) {
-			const inputs = optionalRecord(args.inputs) ?? {};
-			if (!args.custom) {
-				return({ id: undefined, state: inputs });
-			}
-
-			const known = (overrides[args.type] ?? KNOWN_OUTPUTS[args.type])?.(args.name, inputs);
-
-			return({
-				id: `${args.name}-id`,
-				state: { ...defaultOutputs(args.name, inputs), ...inputs, ...known }
-			});
-		},
-		call: function(args) {
-			const call = MOCKED_CALLS[args.token];
-			if (call === undefined) {
-				throw(new Error(`Unexpected invoke of ${args.token}: add it to MOCKED_CALLS only if the test must make it`));
-			}
-
-			return(call(optionalRecord(args.inputs) ?? {}));
+const mocks: pulumi.runtime.Mocks = {
+	newResource: function(args) {
+		const inputs = optionalRecord(args.inputs) ?? {};
+		if (!args.custom) {
+			return({ id: undefined, state: inputs });
 		}
-	});
-}
+
+		const known = KNOWN_OUTPUTS[args.type]?.(args.name, inputs);
+
+		return({
+			id: `${args.name}-id`,
+			state: { ...defaultOutputs(args.name, inputs), ...inputs, ...known }
+		});
+	},
+	call: function(args) {
+		const call = MOCKED_CALLS[args.token];
+		if (call === undefined) {
+			throw(new Error(`Unexpected invoke of ${args.token}: add it to MOCKED_CALLS only if the test must make it`));
+		}
+
+		return(call(optionalRecord(args.inputs) ?? {}));
+	}
+};
 
 /** Calls a method of an object whose type the SDK does not publish */
 function callMethod(target: object, method: unknown, args: unknown[]): void {
@@ -493,7 +489,7 @@ export async function captureTree(build: () => unknown, options: CaptureOptions 
 			failures: []
 		};
 
-		await pulumi.runtime.setMocks(createMocks(options.outputs ?? {}), state.project, state.stack, false);
+		await pulumi.runtime.setMocks(mocks, state.project, state.stack, false);
 		instrumentMonitor(state);
 
 		try {
