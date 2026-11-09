@@ -42,6 +42,8 @@ export interface TreeResource {
 	dependsOn?: string[];
 	protect?: boolean;
 	retainOnDelete?: boolean;
+	/** The input paths the resource keeps from its old state (only when the request names some) */
+	ignoreChanges?: string[];
 	/** Normalized inputs of a custom resource (components only echo their arguments, so none are kept) */
 	inputs?: unknown;
 	/** The same inputs with every secret unwrapped, for a test that must read what a secret holds (not part of a snapshot) */
@@ -346,6 +348,11 @@ async function recordRegistration(request: resourceProto.RegisterResourceRequest
 
 	if (request.hasRetainondelete()) {
 		resource.retainOnDelete = request.getRetainondelete();
+	}
+
+	const ignoreChanges = request.getIgnorechangesList();
+	if (ignoreChanges.length > 0) {
+		resource.ignoreChanges = [ ...ignoreChanges ];
 	}
 
 	const object = request.getObject()?.toJavaScript();

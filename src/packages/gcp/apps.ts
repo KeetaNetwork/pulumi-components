@@ -494,7 +494,7 @@ export interface CloudRunServiceArgs {
 
 		/**
 		 * Database engine version
-		 * @default POSTGRES_DEFAULTS.version
+		 * @default POSTGRES_DEFAULTS.version for a new database; a database that exists keeps its version (see `PostgresCloudSQLArgs.databaseVersion`)
 		 */
 		version?: string;
 

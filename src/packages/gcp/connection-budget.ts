@@ -1,6 +1,7 @@
 import { CLOUD_SQL_CONNECTION_DEFAULTS } from './defaults';
 
 const CUSTOM_TIER = /^db-custom-(\d+)-(\d+)$/;
+const PERF_OPTIMIZED_TIER = /^db-perf-optimized-N-\d+$/;
 
 /** A Cloud SQL tier, read once: what its name says about how many connections it allows */
 export type TierShape = {
@@ -10,6 +11,10 @@ export type TierShape = {
 	kind: 'custom';
 	cpus: number;
 	memoryMb: number;
+} | {
+	/** A tier of the Enterprise Plus edition (`db-perf-optimized-N-<cpus>`): the library has no table of connections for it */
+	kind: 'perf-optimized';
+	tier: string;
 } | {
 	/** A tier that this library has no table for (the budget of it needs an explicit `max_connections`) */
 	kind: 'unknown';
@@ -57,6 +62,10 @@ export function parseCloudSqlTier(tier: string): TierShape {
 		return({ kind: 'custom', cpus: Number(custom[1]), memoryMb: Number(custom[2]) });
 	}
 
+	if (PERF_OPTIMIZED_TIER.test(tier)) {
+		return({ kind: 'perf-optimized', tier });
+	}
+
 	return({ kind: 'unknown', tier });
 }
 
@@ -66,7 +75,7 @@ export function parseCloudSqlTier(tier: string): TierShape {
  * @throws Error naming the tier when the tier is not one that this library knows
  */
 export function tierDefaultMaxConnections(shape: TierShape): number {
-	if (shape.kind === 'unknown') {
+	if (shape.kind === 'unknown' || shape.kind === 'perf-optimized') {
 		throw(new Error(`The default max_connections of the Cloud SQL tier '${shape.tier}' is not known: set max_connections (flags.max_connections or maxConnections) to give the connection budget a value`));
 	}
 

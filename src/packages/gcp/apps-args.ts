@@ -188,7 +188,6 @@ export type ParsedImage = {
 
 export interface ParsedDatabase extends DatabaseArgs {
 	tier: string;
-	version: string;
 	deletionProtection: boolean;
 	queryInsights: boolean;
 	queryStringLength: number;
@@ -383,7 +382,6 @@ function parseDatabase(database: DatabaseArgs): ParsedDatabase {
 	return({
 		...database,
 		tier: database.tier ?? POSTGRES_DEFAULTS.tier,
-		version: database.version ?? POSTGRES_DEFAULTS.version,
 		deletionProtection: database.deletionProtection ?? false,
 		queryInsights: database.queryInsights ?? false,
 		queryStringLength: database.queryStringLength ?? POSTGRES_DEFAULTS.queryStringLength,
@@ -544,7 +542,7 @@ function profileMaxConnections(database: NonNullable<CloudRunServiceArgs['databa
 	}
 
 	const shape = parseCloudSqlTier(database.tier);
-	if (shape.kind === 'unknown') {
+	if (shape.kind === 'unknown' || shape.kind === 'perf-optimized') {
 		throw(new CloudRunServiceArgsError(`database.tier '${database.tier}' is not a tier that the profile knows the max_connections of: give database.flags.max_connections`));
 	}
 

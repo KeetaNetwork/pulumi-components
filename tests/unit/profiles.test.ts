@@ -201,12 +201,12 @@ describe('a service with a profile', function() {
 
 	it('rejects a tier the profile does not know unless the caller gives max_connections', async function() {
 		const profile = { environment: 'test', size: 'small' } as const;
-		const built = profiled('tier-unknown', { profile, database: { tier: 'db-perf-optimized-N-8' }});
+		const built = profiled('tier-unknown', { profile, database: { tier: 'db-mystery-8' }});
 
 		await expect(built).rejects.toBeInstanceOf(CloudRunServiceArgsError);
 		await expect(built).rejects.toThrow(/database\.tier.*max_connections/);
 
-		const tree = await profiled('tier-unknown-flag', { profile, database: { tier: 'db-perf-optimized-N-8', flags: { max_connections: 300 }}});
+		const tree = await profiled('tier-unknown-flag', { profile, database: { tier: 'db-mystery-8', flags: { max_connections: 300 }}});
 
 		expect(flagsOf(tree).max_connections).toBe('300');
 	});

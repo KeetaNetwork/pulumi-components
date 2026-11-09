@@ -108,8 +108,13 @@ export interface PostgresCloudSQLArgs {
 	tier: string;
 
 	/**
-	 * The database engine version (for example 'POSTGRES_15')
-	 * @default POSTGRES_DEFAULTS.version
+	 * The database engine version (for example 'POSTGRES_15').
+	 *
+	 * Left out, a new instance is created with POSTGRES_DEFAULTS.version and
+	 * the version of an instance that exists is never changed (the property is
+	 * ignored on update, so a plain `pulumi up` neither upgrades nor replaces
+	 * it). A replica takes the version of its master. Giving a version sets
+	 * it, and a higher one upgrades the instance in place.
 	 */
 	databaseVersion?: string;
 
@@ -419,6 +424,36 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 	}
 
 	/**
+	 * The engine version of an instance: the caller's, else the one of its
+	 * master (a replica must match it), else the default of the library
+	 */
+	#databaseVersion(masterInstance?: gcp.sql.DatabaseInstance): pulumi.Input<string> {
+		if (this.#options.databaseVersion !== undefined) {
+			return(this.#options.databaseVersion);
+		}
+
+		return(masterInstance?.databaseVersion ?? POSTGRES_DEFAULTS.version);
+	}
+
+	/**
+	 * The edition that the tier belongs to. Since PostgreSQL 16 the API
+	 * defaults to Enterprise Plus, which accepts only the `db-perf-optimized`
+	 * tiers, so the shared-core and custom tiers say theirs. A tier that the
+	 * library does not know gets none: the API default applies.
+	 */
+	#edition(): 'ENTERPRISE' | 'ENTERPRISE_PLUS' | undefined {
+		switch (parseCloudSqlTier(this.#options.tier).kind) {
+			case 'shared':
+			case 'custom':
+				return('ENTERPRISE');
+			case 'perf-optimized':
+				return('ENTERPRISE_PLUS');
+			default:
+				return(undefined);
+		}
+	}
+
+	/**
 	 * Create a random string to be used as the postgres password
 	 */
 	#makePostgresPassword() {
@@ -499,14 +534,21 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 
 		const deletionProtection = this.#options.deletionProtection;
 
+		/* No version from the caller: an instance that exists keeps the one it has */
+		let ignoreChanges: string[] | undefined;
+		if (this.#options.databaseVersion === undefined) {
+			ignoreChanges = [ 'databaseVersion' ];
+		}
+
 		const instance = new gcp.sql.DatabaseInstance(name, {
 			region: region,
-			databaseVersion: this.#options.databaseVersion ?? POSTGRES_DEFAULTS.version,
+			databaseVersion: this.#databaseVersion(masterInstance),
 			deletionProtection: deletionProtection,
 			masterInstanceName: masterInstance?.name,
 			settings: {
 				availabilityType: availabilityType,
 				tier: this.#options.tier,
+				edition: this.#edition(),
 				ipConfiguration: {
 					ipv4Enabled: false,
 					privateNetwork: this.#vpcNetwork.id,
@@ -522,7 +564,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 					recordClientAddress: false
 				}
 			}
-		}, { protect: deletionProtection, ...options });
+		}, { protect: deletionProtection, ignoreChanges, ...options });
 
 		this.hosts[region] = {
 			host: instance.firstIpAddress,

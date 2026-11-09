@@ -482,8 +482,11 @@ exports[`a service with a profile > keeps its resources, parents and key inputs 
   {
     "aliases": [],
     "custom": true,
+    "ignoreChanges": [
+      "databaseVersion",
+    ],
     "inputs": {
-      "databaseVersion": "POSTGRES_14",
+      "databaseVersion": "POSTGRES_18",
       "deletionProtection": true,
       "region": "us-central1",
       "settings": {
@@ -502,6 +505,7 @@ exports[`a service with a profile > keeps its resources, parents and key inputs 
             "value": "850",
           },
         ],
+        "edition": "ENTERPRISE",
         "insightsConfig": {
           "queryInsightsEnabled": true,
           "queryStringLength": 4500,
@@ -1251,8 +1255,11 @@ exports[`a service with a profile > keeps its resources, parents and key inputs 
   {
     "aliases": [],
     "custom": true,
+    "ignoreChanges": [
+      "databaseVersion",
+    ],
     "inputs": {
-      "databaseVersion": "POSTGRES_14",
+      "databaseVersion": "POSTGRES_18",
       "deletionProtection": false,
       "region": "us-central1",
       "settings": {
@@ -1270,6 +1277,7 @@ exports[`a service with a profile > keeps its resources, parents and key inputs 
             "value": "75",
           },
         ],
+        "edition": "ENTERPRISE",
         "insightsConfig": {
           "queryInsightsEnabled": true,
           "queryStringLength": 4500,
