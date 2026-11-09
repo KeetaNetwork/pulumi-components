@@ -9,7 +9,7 @@ function isRecord(value: unknown): value is UnknownRecord {
 /** Narrows a parsed JSON or Pulumi output value, naming it in the error when it does not fit */
 export function expectRecord(value: unknown, description: string): UnknownRecord {
 	if (!isRecord(value)) {
-		throw(new Error(`Expected ${description} to be an object`));
+		throw(new TypeError(`Expected ${description} to be an object`));
 	}
 
 	return(value);
@@ -17,7 +17,7 @@ export function expectRecord(value: unknown, description: string): UnknownRecord
 
 export function expectArray(value: unknown, description: string): unknown[] {
 	if (!Array.isArray(value)) {
-		throw(new Error(`Expected ${description} to be an array`));
+		throw(new TypeError(`Expected ${description} to be an array`));
 	}
 
 	return(value);
@@ -25,7 +25,7 @@ export function expectArray(value: unknown, description: string): unknown[] {
 
 export function expectString(value: unknown, description: string): string {
 	if (typeof value !== 'string') {
-		throw(new Error(`Expected ${description} to be a string`));
+		throw(new TypeError(`Expected ${description} to be a string`));
 	}
 
 	return(value);
@@ -33,7 +33,7 @@ export function expectString(value: unknown, description: string): string {
 
 export function expectBoolean(value: unknown, description: string): boolean {
 	if (typeof value !== 'boolean') {
-		throw(new Error(`Expected ${description} to be a boolean`));
+		throw(new TypeError(`Expected ${description} to be a boolean`));
 	}
 
 	return(value);

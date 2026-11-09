@@ -318,6 +318,202 @@ export interface HttpsFrontEndResources {
 	certMapEntry?: gcp.certificatemanager.CertificateMapEntry;
 }
 
+type ManagedCert = Extract<ParsedFrontEnd['cert'], { kind: 'managed' }>;
+type CertificateManagerCert = Extract<ParsedFrontEnd['cert'], { kind: 'certificate-manager' }>;
+type Aliases = pulumi.Output<pulumi.URN>[] | undefined;
+
+/**
+ * The names, descriptions and forms of the inputs of one variant, worked out
+ * once. The front end itself has one path and reads them from here, so the
+ * two callers are not two front ends interleaved.
+ */
+interface VariantShape {
+	managedCertificate(cert: ManagedCert, parent: pulumi.Resource): pulumi.Output<string>;
+	certMap: { name: string; description: string; aliases: Aliases };
+	entry: { name: string; aliases: Aliases; host(cert: CertificateManagerCert): { hostname?: pulumi.Input<string>; matcher?: string }};
+	proxy: {
+		name: string;
+		description?: string;
+		urlMap: pulumi.Input<string>;
+		options: Pick<pulumi.CustomResourceOptions, 'aliases' | 'replaceOnChanges'>;
+	};
+	rule(ipConfig: IpChoice, target: pulumi.Input<string>): {
+		name: string;
+		args: gcp.compute.GlobalForwardingRuleArgs;
+		options: Pick<pulumi.CustomResourceOptions, 'aliases' | 'deleteBeforeReplace'>;
+	};
+
+	/** Whether the front end creates the DNS records of its domain */
+	dns: boolean;
+
+	/** The URN that the redirect resources answer to */
+	redirectOldParent: pulumi.Input<pulumi.URN>;
+}
+
+function appShape(name: string, urlMap: gcp.compute.URLMap): VariantShape {
+	return({
+		managedCertificate: function(cert, parent) {
+			/*
+			 * If a sslCertificateVersion is provided, use that as the
+			 * name of the resource so that it can be replaced when
+			 * the version changes
+			 */
+			let addToCertName = '';
+			if (cert.version !== undefined) {
+				addToCertName = `-${cert.version}`;
+			}
+
+			return(new gcp.compute.ManagedSslCertificate(`${name}-cert${addToCertName}`, {
+				managed: { domains: cert.domains }
+			}, { parent, protect: cert.protect }).id);
+		},
+		certMap: { name: `${name}-cert-map`, description: `[${name}] Certificate map for load balancer`, aliases: undefined },
+		// An app has one map for each load balancer, so its entry matches everything
+		entry: { name: `${name}-cert-map-entry`, aliases: undefined, host: function() {
+			return({ matcher: 'PRIMARY' });
+		} },
+		proxy: {
+			name: `${name}-https-proxy`,
+			urlMap: urlMap.id,
+
+			/* It seems like we need to replace the proxy when the kind of certificate changes, or GCP gets confused */
+			options: { replaceOnChanges: [ 'certificateMap', 'sslCertificates' ] }
+		},
+		rule: function(ipConfig, target) {
+			return({
+				name: `${name}-fr-${ipConfig.kind}`.replace(/-$/, ''),
+				args: { ipAddress: ipConfig.ip, target, portRange: '443', loadBalancingScheme: 'EXTERNAL_MANAGED', ipProtocol: 'TCP' },
+				options: { deleteBeforeReplace: true }
+			});
+		},
+		dns: true,
+		redirectOldParent: urlMap.urn
+	});
+}
+
+function externalShape(name: string, urlMap: gcp.compute.URLMap, variant: Extract<FrontEndVariant, { kind: 'external' }>): VariantShape {
+	/** The old URN of a resource that was a child of the URL map */
+	function movedFromUrlMap(resourceName: string, type: string): Aliases {
+		return(movedFrom(resourceName, type, { kind: 'resource', urn: variant.legacyUrlMap }));
+	}
+
+	const certMapName = `${name}-ext-cert-map`;
+	const entryName = `${name}-ext-cert-map-entry`;
+	const proxyName = `${name}-ext-target`;
+
+	return({
+		managedCertificate: function(cert, parent) {
+			return(new gcp.compute.ManagedSslCertificate(`${name}-ext-cert`, {
+				description: `SSL Certificate for the ${variant.description}`,
+				managed: { domains: cert.domains }
+			}, { parent, dependsOn: variant.certDependsOn }).id);
+		},
+		certMap: { name: certMapName, description: `Certificate map for the ${variant.description}`, aliases: movedFromUrlMap(certMapName, CERTIFICATE_MAP_TYPE) },
+		// The entry was a child of the certificate map, which was a child of the URL map: both levels moved
+		entry: {
+			name: entryName,
+			aliases: movedFrom(entryName, CERTIFICATE_MAP_ENTRY_TYPE, {
+				kind: 'resource',
+				urn: legacyUrn(certMapName, CERTIFICATE_MAP_TYPE, { kind: 'resource', urn: variant.legacyUrlMap })
+			}),
+			// It matches the host of its domain when it has one
+			host: function(cert) {
+				if (cert.hostname === undefined) {
+					return({ matcher: 'PRIMARY' });
+				}
+
+				return({ hostname: cert.hostname });
+			}
+		},
+		proxy: {
+			name: proxyName,
+			description: `Target HTTPS Proxy for the ${variant.description}`,
+			urlMap: urlMap.name,
+			options: { aliases: movedFromUrlMap(proxyName, HTTPS_PROXY_TYPE) }
+		},
+		rule: function(ipConfig, target) {
+			const ruleName = `${name}-lb`;
+
+			return({
+				name: ruleName,
+				args: {
+					description: `External Load Balancer for the ${variant.description}`,
+					target,
+					loadBalancingScheme: 'EXTERNAL_MANAGED',
+					ipAddress: ipConfig.ip,
+					portRange: '443'
+				},
+				options: { aliases: movedFromUrlMap(ruleName, FORWARDING_RULE_TYPE) }
+			});
+		},
+		dns: false,
+		redirectOldParent: variant.legacyUrlMap
+	});
+}
+
+function shapeOf(name: string, front: HttpsFrontEnd): VariantShape {
+	if (front.variant.kind === 'external') {
+		return(externalShape(name, front.urlMap, front.variant));
+	}
+
+	return(appShape(name, front.urlMap));
+}
+
+/** The SSL policy of the proxy: made here, the caller's, or none */
+function resolveSslPolicy(name: string, choice: SslPolicyChoice, parent: pulumi.Resource) {
+	if (choice.kind === 'create') {
+		const policy = new gcp.compute.SSLPolicy(`${name}-ssl-policy`, {
+			profile: choice.profile,
+			minTlsVersion: choice.minTlsVersion
+		}, { parent });
+
+		return({ policy, id: policy.id });
+	}
+
+	if (choice.kind === 'existing') {
+		return({ policy: undefined, id: choice.id });
+	}
+
+	return({ policy: undefined, id: undefined });
+}
+
+/** The certificate map and its entry (certificate manager certificates only) */
+function createCertificateMap(shape: VariantShape, cert: CertificateManagerCert, certificateID: pulumi.Output<string>, parent: pulumi.Resource) {
+	const certMap = new gcp.certificatemanager.CertificateMap(shape.certMap.name, {
+		description: shape.certMap.description
+	}, { parent, aliases: shape.certMap.aliases });
+
+	const entry = new gcp.certificatemanager.CertificateMapEntry(shape.entry.name, {
+		map: certMap.name,
+		certificates: [certificateID],
+		...shape.entry.host(cert)
+	}, { parent, aliases: shape.entry.aliases });
+
+	return({ entry, mapId: pulumi.interpolate`//certificatemanager.googleapis.com/${certMap.id}` });
+}
+
+/** The DNS records of a domain in a zone, one for the kind of address */
+function createDnsRecord(name: string, ipConfig: IpChoice, dns: NonNullable<HttpsFrontEnd['dns']>, parent: pulumi.Resource) {
+	let recordType = 'AAAA';
+	if (ipConfig.kind === 'ipv4') {
+		recordType = 'A';
+	}
+
+	new gcp.dns.RecordSet(`${name}-dns-${ipConfig.kind}`, {
+		name: pulumi.output(dns.domain).apply(function(domain) {
+			if (domain.endsWith('.')) {
+				return(domain);
+			}
+
+			return(`${domain}.`);
+		}),
+		type: recordType,
+		ttl: 300,
+		managedZone: dns.zoneId,
+		rrdatas: [ipConfig.ip]
+	}, { parent });
+}
+
 /**
  * The HTTPS front end of an app or of an `ExternalLoadBalancer`: the
  * certificate (when it is managed), the certificate map and its entry, the SSL
@@ -331,216 +527,54 @@ export function createHttpsFrontEnd(
 	front: HttpsFrontEnd,
 	opts: { parent: pulumi.Resource }
 ): HttpsFrontEndResources {
-	const { variant, urlMap } = front;
 	const { cert } = parsed;
-	const external = variant.kind === 'external';
-
-	// The old URN of a resource that was a child of the URL map (the external variant only)
-	function movedFromUrlMap(resourceName: string, type: string): pulumi.Output<pulumi.URN>[] | undefined {
-		if (variant.kind !== 'external') {
-			return(undefined);
-		}
-
-		return(movedFrom(resourceName, type, { kind: 'resource', urn: variant.legacyUrlMap }));
-	}
+	const { parent } = opts;
+	const shape = shapeOf(name, front);
 
 	// Create or use existing SSL certificate
 	let certificateID: pulumi.Output<string>;
 	if (cert.kind === 'managed') {
-		if (variant.kind === 'external') {
-			certificateID = new gcp.compute.ManagedSslCertificate(`${name}-ext-cert`, {
-				description: `SSL Certificate for the ${variant.description}`,
-				managed: {
-					domains: cert.domains
-				}
-			}, {
-				parent: opts.parent,
-				dependsOn: variant.certDependsOn
-			}).id;
-		} else {
-			/*
-			 * If a sslCertificateVersion is provided, use that as the
-			 * name of the resource so that it can be replaced when
-			 * the version changes
-			 */
-			let addToCertName = '';
-			if (cert.version !== undefined) {
-				addToCertName = `-${cert.version}`;
-			}
-
-			certificateID = new gcp.compute.ManagedSslCertificate(`${name}-cert${addToCertName}`, {
-				managed: {
-					domains: cert.domains
-				}
-			}, {
-				parent: opts.parent,
-				protect: cert.protect
-			}).id;
-		}
+		certificateID = shape.managedCertificate(cert, parent);
 	} else {
 		certificateID = cert.id;
 	}
 
-	// The SSL policy of the proxy: made here, the caller's, or none
-	let sslPolicy: gcp.compute.SSLPolicy | undefined;
-	let sslPolicyID: pulumi.Output<string> | undefined;
-	if (parsed.sslPolicy.kind === 'create') {
-		sslPolicy = new gcp.compute.SSLPolicy(`${name}-ssl-policy`, {
-			profile: parsed.sslPolicy.profile,
-			minTlsVersion: parsed.sslPolicy.minTlsVersion
-		}, {
-			parent: opts.parent
-		});
-		sslPolicyID = sslPolicy.id;
-	} else if (parsed.sslPolicy.kind === 'existing') {
-		sslPolicyID = parsed.sslPolicy.id;
-	}
-
+	const { policy: sslPolicy, id: sslPolicyID } = resolveSslPolicy(name, parsed.sslPolicy, parent);
 	let policyArgs: { sslPolicy?: pulumi.Output<string> } = {};
 	if (sslPolicyID !== undefined) {
 		policyArgs = { sslPolicy: sslPolicyID };
 	}
 
-	// Create HTTPS proxy
+	// The proxy must wait for the entry, so that the certificate is associated before the proxy is created, or it fails
 	let certMapEntry: gcp.certificatemanager.CertificateMapEntry | undefined;
-	let proxyCertArgs: { certificateMap: pulumi.Output<string> } | { sslCertificates: pulumi.Output<string>[] };
-	if (cert.kind === 'certificate-manager') {
-		const certMapName = external ? `${name}-ext-cert-map` : `${name}-cert-map`;
-		let certMapDescription = `[${name}] Certificate map for load balancer`;
-		if (variant.kind === 'external') {
-			certMapDescription = `Certificate map for the ${variant.description}`;
-		}
-
-		const certMap = new gcp.certificatemanager.CertificateMap(certMapName, {
-			description: certMapDescription
-		}, {
-			parent: opts.parent,
-			aliases: movedFromUrlMap(certMapName, CERTIFICATE_MAP_TYPE)
-		});
-
-		/*
-		 * The proxy must wait for the entry, to ensure the certificate is
-		 * properly associated before the proxy is created, or it will fail.
-		 * An app has one map for each load balancer, so its entry matches
-		 * everything (PRIMARY); an external load balancer matches the host
-		 * of its domain when it has one.
-		 */
-		const entryName = `${name}${external ? '-ext' : ''}-cert-map-entry`;
-		let entryHostArgs: { hostname?: pulumi.Input<string>; matcher?: string } = { matcher: 'PRIMARY' };
-		if (variant.kind === 'external' && cert.hostname !== undefined) {
-			entryHostArgs = { hostname: cert.hostname };
-		}
-
-		let entryAliases: pulumi.Output<pulumi.URN>[] | undefined;
-		if (variant.kind === 'external') {
-			entryAliases = movedFrom(entryName, CERTIFICATE_MAP_ENTRY_TYPE, {
-				kind: 'resource',
-				urn: legacyUrn(certMapName, CERTIFICATE_MAP_TYPE, { kind: 'resource', urn: variant.legacyUrlMap })
-			});
-		}
-
-		certMapEntry = new gcp.certificatemanager.CertificateMapEntry(entryName, {
-			map: certMap.name,
-			certificates: [certificateID],
-			...entryHostArgs
-		}, {
-			parent: opts.parent,
-			aliases: entryAliases
-		});
-
-		proxyCertArgs = {
-			certificateMap: pulumi.interpolate`//certificatemanager.googleapis.com/${certMap.id}`
-		};
-	} else {
-		proxyCertArgs = {
-			sslCertificates: [certificateID]
-		};
-	}
-
-	let httpsProxy: gcp.compute.TargetHttpsProxy;
+	let proxyCertArgs: { certificateMap: pulumi.Output<string> } | { sslCertificates: pulumi.Output<string>[] } = { sslCertificates: [certificateID] };
 	const dependsOn: pulumi.Resource[] = [];
-	if (certMapEntry) {
-		dependsOn.push(certMapEntry);
+	if (cert.kind === 'certificate-manager') {
+		const map = createCertificateMap(shape, cert, certificateID, parent);
+		certMapEntry = map.entry;
+		proxyCertArgs = { certificateMap: map.mapId };
+		dependsOn.push(map.entry);
 	}
 
-	if (variant.kind === 'external') {
-		const proxyName = `${name}-ext-target`;
-		httpsProxy = new gcp.compute.TargetHttpsProxy(proxyName, {
-			description: `Target HTTPS Proxy for the ${variant.description}`,
-			urlMap: urlMap.name,
-			...proxyCertArgs,
-			...policyArgs
-		}, {
-			parent: opts.parent,
-			dependsOn,
-			aliases: movedFromUrlMap(proxyName, HTTPS_PROXY_TYPE)
-		});
-	} else {
-		httpsProxy = new gcp.compute.TargetHttpsProxy(`${name}-https-proxy`, {
-			urlMap: urlMap.id,
-			...proxyCertArgs,
-			...policyArgs
-		}, {
-			parent: opts.parent,
-			dependsOn,
-			/*
-			 * It seems like we need to replace the proxy when the kind
-			 * of certificate changes, or GCP gets confused
-			 */
-			replaceOnChanges: ['certificateMap', 'sslCertificates']
-		});
-	}
+	const httpsProxy = new gcp.compute.TargetHttpsProxy(shape.proxy.name, {
+		description: shape.proxy.description,
+		urlMap: shape.proxy.urlMap,
+		...proxyCertArgs,
+		...policyArgs
+	}, { parent, dependsOn, ...shape.proxy.options });
 
 	// Create forwarding rules and DNS records
 	const forwardingRules: gcp.compute.GlobalForwardingRule[] = [];
 	for (const ipConfig of front.ips) {
-		if (variant.kind === 'external') {
-			const ruleName = `${name}-lb`;
-			forwardingRules.push(new gcp.compute.GlobalForwardingRule(ruleName, {
-				description: `External Load Balancer for the ${variant.description}`,
-				target: httpsProxy.id,
-				loadBalancingScheme: 'EXTERNAL_MANAGED',
-				ipAddress: ipConfig.ip,
-				portRange: '443'
-			}, {
-				parent: opts.parent,
-				aliases: movedFromUrlMap(ruleName, FORWARDING_RULE_TYPE)
-			}));
+		const rule = shape.rule(ipConfig, httpsProxy.id);
+		forwardingRules.push(new gcp.compute.GlobalForwardingRule(rule.name, rule.args, { parent, ...rule.options }));
 
-			continue;
-		}
-
-		const ruleName = `${name}-fr-${ipConfig.kind}`.replace(/-$/, '');
-		forwardingRules.push(new gcp.compute.GlobalForwardingRule(ruleName, {
-			ipAddress: ipConfig.ip,
-			target: httpsProxy.id,
-			portRange: '443',
-			loadBalancingScheme: 'EXTERNAL_MANAGED',
-			ipProtocol: 'TCP'
-		}, {
-			parent: opts.parent,
-			deleteBeforeReplace: true
-		}));
-
-		// Create DNS records if zone ID provided
-		if (front.dns && ipConfig.kind !== '') {
-			new gcp.dns.RecordSet(`${name}-dns-${ipConfig.kind}`, {
-				name: pulumi.output(front.dns.domain).apply(function(d) { return(d.endsWith('.') ? d : `${d}.`); }),
-				type: ipConfig.kind === 'ipv4' ? 'A' : 'AAAA',
-				ttl: 300,
-				managedZone: front.dns.zoneId,
-				rrdatas: [ipConfig.ip]
-			}, {
-				parent: opts.parent
-			});
+		if (shape.dns && front.dns && ipConfig.kind !== '') {
+			createDnsRecord(name, ipConfig, front.dns, parent);
 		}
 	}
 
-	if (variant.kind === 'external') {
-		createHttpRedirect(name, front.ips, { parent: opts.parent, oldParent: variant.legacyUrlMap });
-	} else {
-		createHttpRedirect(name, front.ips, { parent: opts.parent, oldParent: urlMap.urn });
-	}
+	createHttpRedirect(name, front.ips, { parent, oldParent: shape.redirectOldParent });
 
 	return({
 		httpsProxy,

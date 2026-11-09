@@ -5,6 +5,10 @@ on:
   # No branch filter: stacked PRs whose base is not "main" are checked too.
   pull_request:
 
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   lint:
     runs-on: ubuntu-latest
