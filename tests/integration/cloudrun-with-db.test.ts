@@ -1,10 +1,10 @@
 import { describe, it, expect, afterAll } from 'vitest';
-import { deployStack, destroyStack, type StackOutputs } from '../helpers/pulumi';
+import { deployStack, destroyStack, testStackName, type StackOutputs } from '../helpers/pulumi';
 import { expectString } from '../helpers/narrow';
 import { expectHealthyDatabaseService, expectMigrationsApplied } from '../helpers/service-checks';
 
 describe('CloudRunService with Database', function() {
-	const stackName = `test-${Date.now()}`;
+	const stackName = testStackName('db');
 	let outputs: StackOutputs | undefined;
 
 	it('deploys and connects to database', async function() {
