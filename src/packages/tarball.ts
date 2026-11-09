@@ -42,6 +42,47 @@ function tarCommand(): string {
 	throw(new Error(`tar was not found in ${TAR_DIRECTORIES.join(', ')}`));
 }
 
+/**
+ * Write the tarball of the build context in `runDir`, check it, and move
+ * it to `tarballPath`. The rename is atomic, so a reader sees no tarball
+ * or a complete one.
+ */
+function writeTarball(context: BuildContext, runDir: string, tarballPath: string) {
+	const tarballTmpPath = path.join(runDir, 'tarball.tar.gz');
+	const fileListPath = path.join(runDir, 'files.list');
+
+	/**
+	 * Create the tarball from the list of files, which is NUL separated
+	 * so that no file name is read as an option
+	 * --no-xattrs will remove macOS added extended attributes
+	 */
+	fs.writeFileSync(fileListPath, context.files.map(function(file) {
+		return(`${file}\0`);
+	}).join(''));
+
+	const createResults = child_process.spawnSync(tarCommand(), [
+		'-C', context.root,
+		'--no-xattrs',
+		'--null',
+		'-T', fileListPath,
+		'-zcf',
+		tarballTmpPath
+	], { env: tarEnvironment() });
+	if (createResults.status !== 0) {
+		throw(new Error(`tar failed: ${createResults.stderr.toString()}`));
+	}
+
+	/**
+	 * Verify that the created tarball is valid
+	 */
+	const checkResults = child_process.spawnSync(tarCommand(), [ '-ztf', tarballTmpPath ], { env: tarEnvironment() });
+	if (checkResults.status !== 0) {
+		throw(new Error(`tar failed: ${checkResults.stderr.toString()}`));
+	}
+
+	fs.renameSync(tarballTmpPath, tarballPath);
+}
+
 function createTarballFromDir(directory: string, cacheID?: string, excludePatterns: string[] = [], dockerfilePath?: string): { file: string, uniqueID: string, shouldClean: boolean } {
 	const context = loadBuildContext(directory, { excludePatterns, dockerfilePath });
 
@@ -88,47 +129,6 @@ function createTarballFromDir(directory: string, cacheID?: string, excludePatter
 		file: tarballPath,
 		shouldClean: shouldClean
 	});
-}
-
-/**
- * Write the tarball of the build context in `runDir`, check it, and move
- * it to `tarballPath`. The rename is atomic, so a reader sees no tarball
- * or a complete one.
- */
-function writeTarball(context: BuildContext, runDir: string, tarballPath: string) {
-	const tarballTmpPath = path.join(runDir, 'tarball.tar.gz');
-	const fileListPath = path.join(runDir, 'files.list');
-
-	/**
-	 * Create the tarball from the list of files, which is NUL separated
-	 * so that no file name is read as an option
-	 * --no-xattrs will remove macOS added extended attributes
-	 */
-	fs.writeFileSync(fileListPath, context.files.map(function(file) {
-		return(`${file}\0`);
-	}).join(''));
-
-	const createResults = child_process.spawnSync(tarCommand(), [
-		'-C', context.root,
-		'--no-xattrs',
-		'--null',
-		'-T', fileListPath,
-		'-zcf',
-		tarballTmpPath
-	], { env: tarEnvironment() });
-	if (createResults.status !== 0) {
-		throw(new Error(`tar failed: ${createResults.stderr.toString()}`));
-	}
-
-	/**
-	 * Verify that the created tarball is valid
-	 */
-	const checkResults = child_process.spawnSync(tarCommand(), [ '-ztf', tarballTmpPath ], { env: tarEnvironment() });
-	if (checkResults.status !== 0) {
-		throw(new Error(`tar failed: ${checkResults.stderr.toString()}`));
-	}
-
-	fs.renameSync(tarballTmpPath, tarballPath);
 }
 
 /**
