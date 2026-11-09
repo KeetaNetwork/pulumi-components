@@ -22,6 +22,7 @@ help:
 	@echo "  test             - Runs the unit and integration tests"
 	@echo "  test-unit        - Runs the unit tests (no cloud access)"
 	@echo "  test-integration - Runs the integration tests (deploys to GCP)"
+	@echo "  cleanup-integration - Destroys this run's and stale integration test stacks"
 	@echo "  clean            - Removes build artifacts"
 	@echo "  distclean        - Removes all build artifacts and dependencies"
 	@echo "  do-npm-pack      - Creates a distributable package for this project"
@@ -58,6 +59,14 @@ test-unit: node_modules
 test-integration: node_modules
 	npm run vitest -- run tests/integration
 
+# Destroys the stacks the integration tests leave behind: every stack of
+# this GitHub Actions run (GITHUB_RUN_ID), and every test stack untouched
+# for longer than the threshold. The examples install "dist", so it is
+# built first. Pass CLEANUP_ARGS="--dry-run" to only list the stacks, or
+# CLEANUP_ARGS="--max-age-minutes=<n>" to change the threshold.
+cleanup-integration: dist
+	node tests/helpers/cleanup-integration.ts $(CLEANUP_ARGS)
+
 # This is a synthetic target that runs this test suite.
 test: test-unit test-integration
 
@@ -91,4 +100,4 @@ clean:
 distclean: clean
 	rm -rf node_modules
 
-.PHONY: all help test test-unit test-integration typecheck clean distclean do-lint do-npm-pack
+.PHONY: all help test test-unit test-integration cleanup-integration typecheck clean distclean do-lint do-npm-pack

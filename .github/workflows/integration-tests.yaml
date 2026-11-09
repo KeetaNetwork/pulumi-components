@@ -7,14 +7,18 @@ on:
   # No branch filter: stacked PRs whose base is not "main" run too.
   pull_request:
 
-# A newer push to a pull request supersedes that PR's older run. Every commit
-# on main has its own group, so a run that gates a publish is never cancelled.
+# One run at a time per pull request; every commit on main has its own group.
+# A running job is never cancelled: a cancelled job skips the tests' teardown
+# and leaves its GCP resources behind. A newer push queues behind the
+# running job instead.
 concurrency:
   group: integration-tests-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
 jobs:
   test:
+    # Fork pull requests get no secrets, so the GCP login cannot succeed.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 120
     permissions:
@@ -41,6 +45,7 @@ jobs:
       - uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6.6.1
 
       - name: Login to Pulumi State Backend
+        id: pulumi_login
         run: pulumi login gs://pulumi-liftoffs-truest-561598453/
 
       - name: Build
@@ -49,6 +54,8 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run Integration Tests
+        # Leaves the cleanup step time to run inside the job's timeout
+        timeout-minutes: 85
         run: make test-integration
         env:
           GOOGLE_PROJECT: ${{ vars.GOOGLE_PROJECT }}
@@ -57,7 +64,18 @@ jobs:
           TEST_DOMAIN_PREFIX: r${{ github.run_id }}
           TEST_DNS_ZONE_ID: ${{ vars.TEST_DNS_ZONE_ID }}
           PULUMI_EXPERIMENTAL: "true"
-          PULUMI_SKIP_CHECKPOINTS: "true"
+
+      # Destroys this run's stacks whatever the tests did (failed, cancelled,
+      # timed out), and any stale test stack an earlier run left behind. It
+      # fails the job if a stack cannot be destroyed.
+      - name: Clean Up Integration Test Stacks
+        if: ${{ always() && steps.pulumi_login.outcome == 'success' }}
+        timeout-minutes: 30
+        run: make cleanup-integration
+        env:
+          GOOGLE_PROJECT: ${{ vars.GOOGLE_PROJECT }}
+          PULUMI_EXPERIMENTAL: "true"
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # Publishes only after the integration tests passed on the same commit,
   # and never from a pull request.
@@ -87,6 +105,12 @@ jobs:
 
       - name: Lint
         run: make do-lint
+
+      - name: Type-check
+        run: make typecheck
+
+      - name: Unit Tests
+        run: make test-unit
 
       - name: Build
         run: make dist
