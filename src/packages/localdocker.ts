@@ -16,6 +16,45 @@ interface LocalBuildInputs {
 	tags?: string[];
 }
 
+/**
+ * The repository of an image URI in the form `docker image inspect` lists it:
+ * the URI without its tag (a colon only starts a tag when no "/" follows it,
+ * otherwise it separates a registry port), and for Docker Hub without
+ * "docker.io/" and "library/".
+ */
+function imageRepository(imageURI: string) {
+	const colon = imageURI.lastIndexOf(':');
+	let repository = imageURI;
+	if (colon !== -1 && !imageURI.slice(colon).includes('/')) {
+		repository = imageURI.slice(0, colon);
+	}
+
+	/* "docker image inspect" lists Docker Hub images in their short form: "user/image", and "image" for "library/image" */
+	return(repository.replace(/^docker\.io\//, '').replace(/^library\//, ''));
+}
+
+/**
+ * Choose the digest of the image that was built from the `RepoDigests`
+ * of `docker image inspect`, which lists one entry per repository the image
+ * is known in. It is the entry of the repository in the image's own URI.
+ */
+function pickRepoDigest(repoDigests: string[], imageURI: string) {
+	const repository = imageRepository(imageURI);
+	const found = repoDigests.find(function(entry) {
+		return(entry.split('@')[0] === repository);
+	});
+
+	if (found === undefined) {
+		throw(new Error(`Failed to get image digest, none of ${repoDigests.length} RepoDigests entries belongs to ${repository}`));
+	}
+
+	return(found);
+}
+
+export const _Testing = {
+	pickRepoDigest
+};
+
 async function createBuild(inputs: LocalBuildInputs) {
 	const toClean = [];
 
@@ -60,7 +99,7 @@ async function createBuild(inputs: LocalBuildInputs) {
 
 			const secretsFilePath = path.join(secretsDir, 'secrets');
 
-			fs.writeFileSync(secretsFilePath, inputs.secretContents, { mode: 0o700 });
+			fs.writeFileSync(secretsFilePath, inputs.secretContents, { mode: 0o600 });
 
 			toClean.push(secretsDir);
 
@@ -98,13 +137,11 @@ async function createBuild(inputs: LocalBuildInputs) {
 		const imageInfoJSON = await promisifyExec('docker', [ 'image', 'inspect', inputs.imageURI ]);
 		// eslint-disable-next-line @typescript-eslint/consistent-type-assertions
 		const imageInfo = JSON.parse(imageInfoJSON.stdout.join('\n')) as { RepoDigests: unknown[] }[];
-		const imageDigest = imageInfo[0]?.RepoDigests?.[0];
+		const repoDigests = (imageInfo[0]?.RepoDigests ?? []).filter(function(entry): entry is string {
+			return(typeof entry === 'string');
+		});
 
-		if (typeof imageDigest !== 'string') {
-			throw(new TypeError('Failed to get image digest, it is not a string'));
-		}
-
-		return({ digest: imageDigest });
+		return({ digest: pickRepoDigest(repoDigests, inputs.imageURI) });
 	} catch (buildError) {
 		console.log(`Failed to build local Docker image ${inputs.imageURI}:`, buildError);
 

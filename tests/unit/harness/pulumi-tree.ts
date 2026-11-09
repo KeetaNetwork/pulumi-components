@@ -478,8 +478,12 @@ export async function captureTree(build: () => unknown, options: CaptureOptions 
 		await pulumi.runtime.setMocks(mocks, state.project, state.stack, false);
 		instrumentMonitor(state);
 
-		await build();
-		await settle(state, options.settleTimeoutMs ?? 60_000);
+		try {
+			await build();
+		} finally {
+			/* A program that throws has already started registrations; they must land in this capture */
+			await settle(state, options.settleTimeoutMs ?? 60_000);
+		}
 
 		const [ failure ] = state.failures;
 		if (failure !== undefined) {
