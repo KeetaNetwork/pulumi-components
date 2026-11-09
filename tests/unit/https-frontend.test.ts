@@ -182,7 +182,7 @@ describe('parseFrontEndConfig', function() {
 		const settledPolicy = await settled(parsed.sslPolicy);
 
 		expect(settledPolicy).toMatchObject(testCase.choice);
-		expect(Object.keys(expectRecord(settledPolicy, 'the policy choice')).length).toBe(Object.keys(testCase.choice).length);
+		expect(Object.keys(expectRecord(settledPolicy, 'the policy choice'))).toHaveLength(Object.keys(testCase.choice).length);
 	});
 });
 
