@@ -77,42 +77,47 @@ function egressOf(tree: TreeSnapshot) {
 describe('egress of a container VM worker', function() {
 	useIsolatedHome();
 
-	/* [ egress, instances, access configs of a VM, whether the worker has a NAT and the address that it uses ] */
-	const rows: [ Egress, number, unknown[], boolean ][] = [
-		[ 'vpc', 1, [], false ],
-		[ 'vpc', 3, [], false ],
-		[ 'vpc+direct', 1, [ {} ], false ],
-		[ 'vpc+direct', 3, [ {} ], false ],
-		[ 'vpc+nat', 1, [], true ],
-		[ 'vpc+nat', 3, [], true ]
-	];
-
-	it.each(rows)('with egress %s and %s instance(s): the access config of a VM, the NAT and the wait', async function(egress, instanceCount, accessConfigs, hasNat) {
-		const app = `egress-${egress.replace('+', '-')}-${instanceCount}`;
-		const facts = egressOf(await workerTree(app, { kind: 'mig', egress, instanceCount }));
-		let expected: { [key: string]: unknown } = {
+	/** What a worker has, whatever its egress: a template without an external address, nothing of a NAT */
+	function facts(instanceCount: number, accessConfigs: unknown[]) {
+		return({
 			accessConfigs,
 			natIpOnTemplate: false,
 			targetSize: instanceCount,
 			addresses: [],
 			routers: 0,
 			nats: 0
-		};
-		if (hasNat) {
-			expected = {
-				...expected,
-				waitForInstances: true,
-				waitForInstancesStatus: 'UPDATED',
-				addresses: [ `${app}-mig-ext-ip` ],
-				routers: 1,
-				nats: 1,
-				allocation: 'MANUAL_ONLY',
-				natIps: [ `self-link.${app}-mig-ext-ip` ],
-				natWaitsForGroup: true
-			};
-		}
+		});
+	}
 
-		expect(facts).toEqual(expected);
+	/* [ egress, instances, access configs of a VM ]: no NAT, so no address and no wait */
+	const withoutNat: [ Egress, number, unknown[] ][] = [
+		[ 'vpc', 1, [] ],
+		[ 'vpc', 3, [] ],
+		[ 'vpc+direct', 1, [ {} ] ],
+		[ 'vpc+direct', 3, [ {} ] ]
+	];
+
+	it.each(withoutNat)('with egress %s and %s instance(s): the access config of a VM and no NAT', async function(egress, instanceCount, accessConfigs) {
+		const app = `egress-${egress.replace('+', '-')}-${instanceCount}`;
+
+		expect(egressOf(await workerTree(app, { kind: 'mig', egress, instanceCount }))).toEqual(facts(instanceCount, accessConfigs));
+	});
+
+	/* The VMs have no access config; the reserved address is on one NAT that the group waits for */
+	it.each([ 1, 3 ])('with egress vpc+nat and %s instance(s): the NAT on the reserved address, and the wait for the rollout', async function(instanceCount) {
+		const app = `egress-vpc-nat-${instanceCount}`;
+
+		expect(egressOf(await workerTree(app, { kind: 'mig', egress: 'vpc+nat', instanceCount }))).toEqual({
+			...facts(instanceCount, []),
+			waitForInstances: true,
+			waitForInstancesStatus: 'UPDATED',
+			addresses: [ `${app}-mig-ext-ip` ],
+			routers: 1,
+			nats: 1,
+			allocation: 'MANUAL_ONLY',
+			natIps: [ `self-link.${app}-mig-ext-ip` ],
+			natWaitsForGroup: true
+		});
 	});
 
 	it('keeps the reserved address at its URN, with its inputs, so its IP does not change', async function() {
@@ -225,33 +230,39 @@ describe('workers with a NAT on a shared AppNetwork', function() {
 
 	type Worker = [ 'mig' | 'crwp', Egress, 0 | 1 ];
 
-	/* [ description, the workers (kind, egress, the AppNetwork that the service is given), whether the second service is refused ] */
-	const rows: [ string, Worker[], boolean ][] = [
-		[ 'one MIG with vpc+nat', [ [ 'mig', 'vpc+nat', 0 ] ], false ],
-		[ 'one worker pool with vpc+nat', [ [ 'crwp', 'vpc+nat', 0 ] ], false ],
-		[ 'two MIGs with vpc+nat', [ [ 'mig', 'vpc+nat', 0 ], [ 'mig', 'vpc+nat', 0 ] ], true ],
-		[ 'two worker pools with vpc+nat', [ [ 'crwp', 'vpc+nat', 0 ], [ 'crwp', 'vpc+nat', 0 ] ], true ],
-		[ 'a MIG and a worker pool with vpc+nat', [ [ 'mig', 'vpc+nat', 0 ], [ 'crwp', 'vpc+nat', 0 ] ], true ],
-		[ 'a MIG with vpc+nat and a MIG with vpc', [ [ 'mig', 'vpc+nat', 0 ], [ 'mig', 'vpc', 0 ] ], false ],
-		[ 'a MIG with vpc+nat and a MIG with vpc+direct', [ [ 'mig', 'vpc+nat', 0 ], [ 'mig', 'vpc+direct', 0 ] ], false ],
-		[ 'two workers with vpc+nat on different AppNetworks', [ [ 'mig', 'vpc+nat', 0 ], [ 'mig', 'vpc+nat', 1 ] ], false ]
+	/* [ description, the workers (kind, egress, the AppNetwork that the service is given) ] */
+	const accepted: [ string, Worker[] ][] = [
+		[ 'one MIG with vpc+nat', [ [ 'mig', 'vpc+nat', 0 ] ] ],
+		[ 'one worker pool with vpc+nat', [ [ 'crwp', 'vpc+nat', 0 ] ] ],
+		[ 'a MIG with vpc+nat and a MIG with vpc', [ [ 'mig', 'vpc+nat', 0 ], [ 'mig', 'vpc', 0 ] ] ],
+		[ 'a MIG with vpc+nat and a MIG with vpc+direct', [ [ 'mig', 'vpc+nat', 0 ], [ 'mig', 'vpc+direct', 0 ] ] ],
+		[ 'two workers with vpc+nat on different AppNetworks', [ [ 'mig', 'vpc+nat', 0 ], [ 'mig', 'vpc+nat', 1 ] ] ]
 	];
 
-	it.each(rows)('with %s', async function(description, workers, refused) {
+	const refused: [ string, Worker[] ][] = [
+		[ 'two MIGs with vpc+nat', [ [ 'mig', 'vpc+nat', 0 ], [ 'mig', 'vpc+nat', 0 ] ] ],
+		[ 'two worker pools with vpc+nat', [ [ 'crwp', 'vpc+nat', 0 ], [ 'crwp', 'vpc+nat', 0 ] ] ],
+		[ 'a MIG and a worker pool with vpc+nat', [ [ 'mig', 'vpc+nat', 0 ], [ 'crwp', 'vpc+nat', 0 ] ] ]
+	];
+
+	function buildWorkers(description: string, workers: Worker[]) {
 		const label = description.replace(/[^a-z]+/gi, '-').toLowerCase();
-		const built = captureTree(function() {
+
+		return(captureTree(function() {
 			const networks = [ new AppNetwork(`${label}-one`, appNetworkArgs()), new AppNetwork(`${label}-two`, appNetworkArgs()) ] as const;
 
 			workers.forEach(function([ kind, egress, which ], index) {
 				buildService(`${label}-${index}`, { network: networks[which], worker: { kind, egress }});
 			});
-		});
+		}));
+	}
 
-		if (refused) {
-			await expect(built).rejects.toBeInstanceOf(CloudRunServiceArgsError);
-		} else {
-			await expect(built).resolves.toBeDefined();
-		}
+	it.each(accepted)('accepts %s', async function(description, workers) {
+		await expect(buildWorkers(description, workers)).resolves.toBeDefined();
+	});
+
+	it.each(refused)('refuses %s', async function(description, workers) {
+		await expect(buildWorkers(description, workers)).rejects.toBeInstanceOf(CloudRunServiceArgsError);
 	});
 });
 

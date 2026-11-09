@@ -19,6 +19,8 @@ const { PostgresCloudSQL } = requireSource<typeof sql>('src/packages/gcp/sql.ts'
 
 type ServiceArgs = ConstructorParameters<typeof CloudRunService>[1];
 type MigOptions = ConstructorParameters<typeof ContainerMIG>[1];
+/** Optional MIG settings; the egress pair stays one of its allowed shapes */
+type MigExtra = Partial<Omit<MigOptions, 'egress' | 'natIps'>> & container.ContainerMIGEgressOptions;
 type PostgresOptions = ConstructorParameters<typeof PostgresCloudSQL>[1];
 
 const APP_DIRECTORY = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../fixtures/app');
@@ -50,7 +52,7 @@ function service(base: Partial<ServiceArgs>, changed: Partial<ServiceArgs>) {
 	});
 }
 
-function buildMig(name: string, extra: Partial<MigOptions>) {
+function buildMig(name: string, extra: MigExtra) {
 	return(new ContainerMIG(name, {
 		serviceAccount: 'worker@project-id.iam.gserviceaccount.com',
 		subnetwork: workerSubnetwork(name),
@@ -226,7 +228,7 @@ describe('ContainerMIG zone', function() {
 	const REGIONAL = 'gcp:compute/regionInstanceGroupManager:RegionInstanceGroupManager';
 
 	/* [ description, options, resource type of the group, warnings ] */
-	const rows: [ string, Partial<MigOptions>, string, number ][] = [
+	const rows: [ string, MigExtra, string, number ][] = [
 		[ 'regional when zone is absent', {}, REGIONAL, 0 ],
 		[ 'zonal when zone is given', { zone: 'us-central1-a' }, ZONAL, 0 ],
 		[ 'zonal, with one warning, when zone is undefined', { zone: undefined }, ZONAL, 1 ]
