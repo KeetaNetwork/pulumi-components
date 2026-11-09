@@ -16,7 +16,6 @@ import { IMAGE, captureService } from './harness/service-builder';
 
 const { ContainerCloudRun, ContainerMIG } = requireSource<typeof container>('src/packages/gcp/container.ts');
 const { MigrationJob } = requireSource<typeof migration>('src/packages/gcp/migration.ts');
-const { ServiceIdentity } = requireSource<typeof identityModule>('src/packages/gcp/identity.ts');
 
 type ServiceArgs = ConstructorParameters<typeof apps.CloudRunService>[1];
 type PolicyHook = GCPCommonOptions['changeProjectIAMPolicy'];
