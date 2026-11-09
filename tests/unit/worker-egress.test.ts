@@ -269,9 +269,9 @@ describe('workers with a NAT on a shared AppNetwork', function() {
 /* The egress of a worker is typed with the three ways, for both kinds, and for no other string */
 describe('the type of worker.egress', function() {
 	it('is the three ways for the container VM worker and for the worker pool, and no other string', function() {
-		expectTypeOf<appsArgs.MigWorkerArgs['egress']>().toEqualTypeOf<Egress | undefined>();
-		expectTypeOf<appsArgs.CrwpWorkerArgs['egress']>().toEqualTypeOf<Egress | undefined>();
-		expectTypeOf<'bogus'>().not.toExtend<appsArgs.MigWorkerArgs['egress']>();
-		expectTypeOf<'bogus'>().not.toExtend<appsArgs.CrwpWorkerArgs['egress']>();
+		expectTypeOf<appsArgs.MIGWorkerArgs['egress']>().toEqualTypeOf<Egress | undefined>();
+		expectTypeOf<appsArgs.CRWPWorkerArgs['egress']>().toEqualTypeOf<Egress | undefined>();
+		expectTypeOf<'bogus'>().not.toExtend<appsArgs.MIGWorkerArgs['egress']>();
+		expectTypeOf<'bogus'>().not.toExtend<appsArgs.CRWPWorkerArgs['egress']>();
 	});
 });

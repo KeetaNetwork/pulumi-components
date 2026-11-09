@@ -236,14 +236,6 @@ function getFileVersion(fromFile: string, buildDirectory: GCPDockerImageInput['b
 	return(fingerprintBuildContext(loadBuildContext(fromFile, { excludePatterns, dockerfilePath })));
 }
 
-function authOf(provider: ClientAuthProvider | undefined) {
-	if (provider === undefined) {
-		return(undefined);
-	}
-
-	return(clientAuthInputs(provider));
-}
-
 abstract class BaseDockerImage extends pulumi.ComponentResource {
 	private static AwaitingOutput: { [rawUrl: string]: pulumi.Output<string> } = {};
 
@@ -472,7 +464,7 @@ export class LocalDockerImage extends BaseDockerImage {
 			imageCache: this.imageCache,
 			tags: this.getDockerBuildTags(input),
 			cleanBuildDirectory: false,
-			auth: authOf(input.provider)
+			auth: clientAuthInputs(input.provider)
 		}, {
 			parent: this
 		});

@@ -8,6 +8,7 @@ import * as crypto from 'crypto';
 
 import * as utils from '../utils';
 import { fingerprintBuildContext, loadBuildContext } from './build-context';
+import type { BuildContext } from './build-context';
 
 /**
  * Create a tarball of the build context of a directory, caching it in the
@@ -63,8 +64,6 @@ function createTarballFromDir(directory: string, cacheID?: string, excludePatter
 	const uniqueID = `${dirHash}-${cacheKey}`;
 
 	const tarballPath = path.join(tarballDir, `${uniqueID}.tar.gz`);
-	const tarballTmpPath = `${tarballPath}.new`;
-	const fileListPath = `${tarballPath}.list`;
 
 	if (fs.existsSync(tarballPath)) {
 		return({
@@ -76,6 +75,30 @@ function createTarballFromDir(directory: string, cacheID?: string, excludePatter
 		});
 	}
 
+	/* Each run writes its file list and tarball in a directory of its own, so concurrent deploys of one directory do not share them */
+	const runDir = fs.mkdtempSync(path.join(tarballDir, 'run-'));
+	try {
+		writeTarball(context, runDir, tarballPath);
+	} finally {
+		fs.rmSync(runDir, { recursive: true, force: true });
+	}
+
+	return({
+		uniqueID: uniqueID,
+		file: tarballPath,
+		shouldClean: shouldClean
+	});
+}
+
+/**
+ * Write the tarball of the build context in `runDir`, check it, and move
+ * it to `tarballPath`. The rename is atomic, so a reader sees no tarball
+ * or a complete one.
+ */
+function writeTarball(context: BuildContext, runDir: string, tarballPath: string) {
+	const tarballTmpPath = path.join(runDir, 'tarball.tar.gz');
+	const fileListPath = path.join(runDir, 'files.list');
+
 	/**
 	 * Create the tarball from the list of files, which is NUL separated
 	 * so that no file name is read as an option
@@ -85,20 +108,16 @@ function createTarballFromDir(directory: string, cacheID?: string, excludePatter
 		return(`${file}\0`);
 	}).join(''));
 
-	try {
-		const createResults = child_process.spawnSync(tarCommand(), [
-			'-C', context.root,
-			'--no-xattrs',
-			'--null',
-			'-T', fileListPath,
-			'-zcf',
-			tarballTmpPath
-		], { env: tarEnvironment() });
-		if (createResults.status !== 0) {
-			throw(new Error(`tar failed: ${createResults.stderr.toString()}`));
-		}
-	} finally {
-		fs.rmSync(fileListPath, { force: true });
+	const createResults = child_process.spawnSync(tarCommand(), [
+		'-C', context.root,
+		'--no-xattrs',
+		'--null',
+		'-T', fileListPath,
+		'-zcf',
+		tarballTmpPath
+	], { env: tarEnvironment() });
+	if (createResults.status !== 0) {
+		throw(new Error(`tar failed: ${createResults.stderr.toString()}`));
 	}
 
 	/**
@@ -110,12 +129,6 @@ function createTarballFromDir(directory: string, cacheID?: string, excludePatter
 	}
 
 	fs.renameSync(tarballTmpPath, tarballPath);
-
-	return({
-		uniqueID: uniqueID,
-		file: tarballPath,
-		shouldClean: shouldClean
-	});
 }
 
 /**

@@ -146,9 +146,12 @@ describe('CloudRunService with arguments the parser rejects', function() {
 	it.each(RULE_ROWS)('is rejected by the parser when %s', async function(rule, row) {
 		const name = `rejected-${rule.replace(/ /g, '-')}`;
 
-		await expect(captureTree(function() {
+		const result = captureTree(function() {
 			return(new CloudRunService(name, callerArgs(row.outside)));
-		})).rejects.toThrow(CloudRunServiceArgsError);
+		});
+
+		await expect(result).rejects.toThrow(CloudRunServiceArgsError);
+		await expect(result).rejects.toThrow(row.message);
 	});
 });
 
