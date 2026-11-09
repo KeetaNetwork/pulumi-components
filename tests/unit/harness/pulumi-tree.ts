@@ -625,6 +625,24 @@ export async function matchLegacyUrns(tree: TreeSnapshot, legacyUrns: string[]):
 	return(result);
 }
 
+/** The resources of a tree that have a type */
+export function ofType(tree: TreeSnapshot, type: string) {
+	return(tree.resources.filter(function(resource) {
+		return(resource.type === type);
+	}));
+}
+
+/*
+ * The aliases that move a resource: those that keep its type. The provider
+ * SDK adds aliases of its own that change the type (for example for
+ * serviceaccount.Account), which are not moves.
+ */
+export function moveAliases(resource: TreeResource) {
+	return(resource.aliases.filter(function(alias) {
+		return(alias.split('::')[2]?.split('$').pop() === resource.type);
+	}));
+}
+
 /** The URNs of a tree, sorted: what a baseline file holds */
 export function urnsOf(tree: TreeSnapshot): string[] {
 	return(tree.resources.map(function(resource) {

@@ -3,6 +3,11 @@
 exports[`component tree > provider propagation > gives the passed provider to the descendants of the component only 1`] = `
 {
   "withProvider": [
+    "service-providers-private-ip-alloc",
+    "service-providers-vpc",
+    "service-providers-subnet",
+    "service-providers-svc-networking",
+    "service-providers-vpc-connector",
     "service-providers-env-mc-psql-db-password",
     "service-providers-env-mc-psql-db-url",
     "service-providers-env-secret",
@@ -33,11 +38,6 @@ exports[`component tree > provider propagation > gives the passed provider to th
     "service-providers-invoker",
     "service-providers-api",
     "service-providers-backend",
-    "service-providers-svc-networking",
-    "service-providers-private-ip-alloc",
-    "service-providers-vpc-connector",
-    "service-providers-subnet",
-    "service-providers-vpc",
     "service-providers-neg",
     "service-providers-build-sa",
     "service-providers-docker",
@@ -1428,6 +1428,82 @@ exports[`component tree > snapshot > service-build-remote keeps its resources, p
 exports[`component tree > snapshot > service-caller-resources keeps its resources, parents, aliases and key inputs 1`] = `
 [
   {
+    "aliases": [
+      "gcp:compute/network:Network$gcp:compute/globalAddress:GlobalAddress::service-caller-resources-private-ip-alloc",
+    ],
+    "custom": true,
+    "inputs": {
+      "addressType": "INTERNAL",
+      "network": "self-link.caller-network",
+      "prefixLength": 16,
+      "purpose": "VPC_PEERING",
+    },
+    "name": "service-caller-resources-private-ip-alloc",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-caller-resources-network",
+    "type": "gcp:compute/globalAddress:GlobalAddress",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:compute/globalAddress:GlobalAddress::service-caller-resources-private-ip-alloc",
+  },
+  {
+    "aliases": [
+      "gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork::service-caller-resources-subnet",
+    ],
+    "custom": true,
+    "inputs": {
+      "description": "[service-caller-resources] Subnet",
+      "ipCidrRange": "10.97.35.0/24",
+      "network": "self-link.caller-network",
+      "privateIpGoogleAccess": true,
+      "region": "us-central1",
+    },
+    "name": "service-caller-resources-subnet",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-caller-resources-network",
+    "type": "gcp:compute/subnetwork:Subnetwork",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:compute/subnetwork:Subnetwork::service-caller-resources-subnet",
+  },
+  {
+    "aliases": [
+      "gcp:compute/network:Network$gcp:compute/globalAddress:GlobalAddress$gcp:servicenetworking/connection:Connection::service-caller-resources-svc-networking",
+    ],
+    "custom": true,
+    "inputs": {
+      "network": "self-link.caller-network",
+      "reservedPeeringRanges": [
+        "service-caller-resources-private-ip-alloc",
+      ],
+      "service": "servicenetworking.googleapis.com",
+    },
+    "name": "service-caller-resources-svc-networking",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-caller-resources-network",
+    "type": "gcp:servicenetworking/connection:Connection",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:servicenetworking/connection:Connection::service-caller-resources-svc-networking",
+  },
+  {
+    "aliases": [
+      "gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork$gcp:vpcaccess/connector:Connector::service-caller-resources-vpc-connector",
+    ],
+    "custom": true,
+    "inputs": {
+      "ipCidrRange": "10.97.36.0/28",
+      "maxInstances": 3,
+      "minInstances": 2,
+      "name": "service-caller3b2fb4-vpc",
+      "network": "self-link.caller-network",
+      "region": "us-central1",
+    },
+    "name": "service-caller-resources-vpc-connector",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-caller-resources-network",
+    "type": "gcp:vpcaccess/connector:Connector",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:vpcaccess/connector:Connector::service-caller-resources-vpc-connector",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "service-caller-resources-network",
+    "parent": "Keeta:GCP:CloudRunService::service-caller-resources",
+    "type": "Keeta:GCP:AppNetwork",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-caller-resources-network",
+  },
+  {
     "aliases": [],
     "custom": true,
     "inputs": {
@@ -1775,66 +1851,6 @@ exports[`component tree > snapshot > service-caller-resources keeps its resource
     "aliases": [],
     "custom": true,
     "inputs": {
-      "network": "self-link.caller-network",
-      "reservedPeeringRanges": [
-        "service-caller-resources-private-ip-alloc",
-      ],
-      "service": "servicenetworking.googleapis.com",
-    },
-    "name": "service-caller-resources-svc-networking",
-    "parent": "gcp:compute/network:Network$gcp:compute/globalAddress:GlobalAddress::service-caller-resources-private-ip-alloc",
-    "type": "gcp:servicenetworking/connection:Connection",
-    "urn": "gcp:compute/network:Network$gcp:compute/globalAddress:GlobalAddress$gcp:servicenetworking/connection:Connection::service-caller-resources-svc-networking",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "addressType": "INTERNAL",
-      "network": "self-link.caller-network",
-      "prefixLength": 16,
-      "purpose": "VPC_PEERING",
-    },
-    "name": "service-caller-resources-private-ip-alloc",
-    "parent": "gcp:compute/network:Network::caller-network",
-    "type": "gcp:compute/globalAddress:GlobalAddress",
-    "urn": "gcp:compute/network:Network$gcp:compute/globalAddress:GlobalAddress::service-caller-resources-private-ip-alloc",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "ipCidrRange": "10.97.36.0/28",
-      "maxInstances": 3,
-      "minInstances": 2,
-      "name": "service-caller3b2fb4-vpc",
-      "network": "self-link.caller-network",
-      "region": "us-central1",
-    },
-    "name": "service-caller-resources-vpc-connector",
-    "parent": "gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork::service-caller-resources-subnet",
-    "type": "gcp:vpcaccess/connector:Connector",
-    "urn": "gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork$gcp:vpcaccess/connector:Connector::service-caller-resources-vpc-connector",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "description": "[service-caller-resources] Subnet",
-      "ipCidrRange": "10.97.35.0/24",
-      "network": "self-link.caller-network",
-      "privateIpGoogleAccess": true,
-      "region": "us-central1",
-    },
-    "name": "service-caller-resources-subnet",
-    "parent": "gcp:compute/network:Network::caller-network",
-    "type": "gcp:compute/subnetwork:Subnetwork",
-    "urn": "gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork::service-caller-resources-subnet",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
       "autoCreateSubnetworks": false,
     },
     "name": "caller-network",
@@ -1858,6 +1874,63 @@ exports[`component tree > snapshot > service-caller-resources keeps its resource
 
 exports[`component tree > snapshot > service-crwp keeps its resources, parents, aliases and key inputs 1`] = `
 [
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network::service-crwp-vpc",
+    ],
+    "custom": true,
+    "inputs": {
+      "autoCreateSubnetworks": false,
+      "description": "[service-crwp] VPC network",
+    },
+    "name": "service-crwp-vpc",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-crwp-network",
+    "type": "gcp:compute/network:Network",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:compute/network:Network::service-crwp-vpc",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork::service-crwp-subnet",
+    ],
+    "custom": true,
+    "inputs": {
+      "description": "[service-crwp] Subnet",
+      "ipCidrRange": "10.97.35.0/24",
+      "network": "self-link.service-crwp-vpc",
+      "privateIpGoogleAccess": true,
+      "region": "us-central1",
+    },
+    "name": "service-crwp-subnet",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-crwp-network",
+    "type": "gcp:compute/subnetwork:Subnetwork",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:compute/subnetwork:Subnetwork::service-crwp-subnet",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork$gcp:vpcaccess/connector:Connector::service-crwp-vpc-connector",
+    ],
+    "custom": true,
+    "inputs": {
+      "ipCidrRange": "10.97.36.0/28",
+      "maxInstances": 3,
+      "minInstances": 2,
+      "name": "service-crwp-vpc",
+      "network": "self-link.service-crwp-vpc",
+      "region": "us-central1",
+    },
+    "name": "service-crwp-vpc-connector",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-crwp-network",
+    "type": "gcp:vpcaccess/connector:Connector",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:vpcaccess/connector:Connector::service-crwp-vpc-connector",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "service-crwp-network",
+    "parent": "Keeta:GCP:CloudRunService::service-crwp",
+    "type": "Keeta:GCP:AppNetwork",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-crwp-network",
+  },
   {
     "aliases": [],
     "custom": true,
@@ -1910,20 +1983,6 @@ exports[`component tree > snapshot > service-crwp keeps its resources, parents, 
     "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun::service-crwp-crwp",
     "type": "gcp:cloudrunv2/workerPool:WorkerPool",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun$gcp:cloudrunv2/workerPool:WorkerPool::service-crwp-crwp-pool",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "destRange": "0.0.0.0/0",
-      "network": "self-link.service-crwp-vpc",
-      "nextHopGateway": "default-internet-gateway",
-      "priority": 1000,
-    },
-    "name": "service-crwp-crwp-nat-default-route",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun::service-crwp-crwp",
-    "type": "gcp:compute/route:Route",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun$gcp:compute/route:Route::service-crwp-crwp-nat-default-route",
   },
   {
     "aliases": [],
@@ -2108,49 +2167,6 @@ exports[`component tree > snapshot > service-crwp keeps its resources, parents, 
     "urn": "Keeta:GCP:CloudRunService$gcp:compute/backendService:BackendService::service-crwp-backend",
   },
   {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "ipCidrRange": "10.97.36.0/28",
-      "maxInstances": 3,
-      "minInstances": 2,
-      "name": "service-crwp-vpc",
-      "network": "self-link.service-crwp-vpc",
-      "region": "us-central1",
-    },
-    "name": "service-crwp-vpc-connector",
-    "parent": "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork::service-crwp-subnet",
-    "type": "gcp:vpcaccess/connector:Connector",
-    "urn": "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork$gcp:vpcaccess/connector:Connector::service-crwp-vpc-connector",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "description": "[service-crwp] Subnet",
-      "ipCidrRange": "10.97.35.0/24",
-      "network": "self-link.service-crwp-vpc",
-      "privateIpGoogleAccess": true,
-      "region": "us-central1",
-    },
-    "name": "service-crwp-subnet",
-    "parent": "Keeta:GCP:CloudRunService$gcp:compute/network:Network::service-crwp-vpc",
-    "type": "gcp:compute/subnetwork:Subnetwork",
-    "urn": "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork::service-crwp-subnet",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "autoCreateSubnetworks": false,
-      "description": "[service-crwp] VPC network",
-    },
-    "name": "service-crwp-vpc",
-    "parent": "Keeta:GCP:CloudRunService::service-crwp",
-    "type": "gcp:compute/network:Network",
-    "urn": "Keeta:GCP:CloudRunService$gcp:compute/network:Network::service-crwp-vpc",
-  },
-  {
     "aliases": [
       "Keeta:GCP:CloudRunService$gcp:cloudrun/service:Service$gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup::service-crwp-neg",
     ],
@@ -2180,6 +2196,96 @@ exports[`component tree > snapshot > service-crwp keeps its resources, parents, 
 
 exports[`component tree > snapshot > service-database keeps its resources, parents, aliases and key inputs 1`] = `
 [
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/globalAddress:GlobalAddress::service-database-private-ip-alloc",
+    ],
+    "custom": true,
+    "inputs": {
+      "addressType": "INTERNAL",
+      "network": "self-link.service-database-vpc",
+      "prefixLength": 16,
+      "purpose": "VPC_PEERING",
+    },
+    "name": "service-database-private-ip-alloc",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-database-network",
+    "type": "gcp:compute/globalAddress:GlobalAddress",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:compute/globalAddress:GlobalAddress::service-database-private-ip-alloc",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network::service-database-vpc",
+    ],
+    "custom": true,
+    "inputs": {
+      "autoCreateSubnetworks": false,
+      "description": "[service-database] VPC network",
+    },
+    "name": "service-database-vpc",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-database-network",
+    "type": "gcp:compute/network:Network",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:compute/network:Network::service-database-vpc",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork::service-database-subnet",
+    ],
+    "custom": true,
+    "inputs": {
+      "description": "[service-database] Subnet",
+      "ipCidrRange": "10.97.35.0/24",
+      "network": "self-link.service-database-vpc",
+      "privateIpGoogleAccess": true,
+      "region": "us-central1",
+    },
+    "name": "service-database-subnet",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-database-network",
+    "type": "gcp:compute/subnetwork:Subnetwork",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:compute/subnetwork:Subnetwork::service-database-subnet",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/globalAddress:GlobalAddress$gcp:servicenetworking/connection:Connection::service-database-svc-networking",
+    ],
+    "custom": true,
+    "inputs": {
+      "network": "self-link.service-database-vpc",
+      "reservedPeeringRanges": [
+        "service-database-private-ip-alloc",
+      ],
+      "service": "servicenetworking.googleapis.com",
+    },
+    "name": "service-database-svc-networking",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-database-network",
+    "type": "gcp:servicenetworking/connection:Connection",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:servicenetworking/connection:Connection::service-database-svc-networking",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork$gcp:vpcaccess/connector:Connector::service-database-vpc-connector",
+    ],
+    "custom": true,
+    "inputs": {
+      "ipCidrRange": "10.97.36.0/28",
+      "maxInstances": 3,
+      "minInstances": 2,
+      "name": "service-database-vpc",
+      "network": "self-link.service-database-vpc",
+      "region": "us-central1",
+    },
+    "name": "service-database-vpc-connector",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-database-network",
+    "type": "gcp:vpcaccess/connector:Connector",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:vpcaccess/connector:Connector::service-database-vpc-connector",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "service-database-network",
+    "parent": "Keeta:GCP:CloudRunService::service-database",
+    "type": "Keeta:GCP:AppNetwork",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-database-network",
+  },
   {
     "aliases": [],
     "custom": true,
@@ -2672,78 +2778,6 @@ exports[`component tree > snapshot > service-database keeps its resources, paren
     "urn": "Keeta:GCP:CloudRunService$gcp:compute/backendService:BackendService::service-database-backend",
   },
   {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "network": "self-link.service-database-vpc",
-      "reservedPeeringRanges": [
-        "service-database-private-ip-alloc",
-      ],
-      "service": "servicenetworking.googleapis.com",
-    },
-    "name": "service-database-svc-networking",
-    "parent": "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/globalAddress:GlobalAddress::service-database-private-ip-alloc",
-    "type": "gcp:servicenetworking/connection:Connection",
-    "urn": "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/globalAddress:GlobalAddress$gcp:servicenetworking/connection:Connection::service-database-svc-networking",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "addressType": "INTERNAL",
-      "network": "self-link.service-database-vpc",
-      "prefixLength": 16,
-      "purpose": "VPC_PEERING",
-    },
-    "name": "service-database-private-ip-alloc",
-    "parent": "Keeta:GCP:CloudRunService$gcp:compute/network:Network::service-database-vpc",
-    "type": "gcp:compute/globalAddress:GlobalAddress",
-    "urn": "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/globalAddress:GlobalAddress::service-database-private-ip-alloc",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "ipCidrRange": "10.97.36.0/28",
-      "maxInstances": 3,
-      "minInstances": 2,
-      "name": "service-database-vpc",
-      "network": "self-link.service-database-vpc",
-      "region": "us-central1",
-    },
-    "name": "service-database-vpc-connector",
-    "parent": "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork::service-database-subnet",
-    "type": "gcp:vpcaccess/connector:Connector",
-    "urn": "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork$gcp:vpcaccess/connector:Connector::service-database-vpc-connector",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "description": "[service-database] Subnet",
-      "ipCidrRange": "10.97.35.0/24",
-      "network": "self-link.service-database-vpc",
-      "privateIpGoogleAccess": true,
-      "region": "us-central1",
-    },
-    "name": "service-database-subnet",
-    "parent": "Keeta:GCP:CloudRunService$gcp:compute/network:Network::service-database-vpc",
-    "type": "gcp:compute/subnetwork:Subnetwork",
-    "urn": "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork::service-database-subnet",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "autoCreateSubnetworks": false,
-      "description": "[service-database] VPC network",
-    },
-    "name": "service-database-vpc",
-    "parent": "Keeta:GCP:CloudRunService::service-database",
-    "type": "gcp:compute/network:Network",
-    "urn": "Keeta:GCP:CloudRunService$gcp:compute/network:Network::service-database-vpc",
-  },
-  {
     "aliases": [
       "Keeta:GCP:CloudRunService$gcp:cloudrun/service:Service$gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup::service-database-neg",
     ],
@@ -3005,6 +3039,63 @@ exports[`component tree > snapshot > service-environment keeps its resources, pa
 exports[`component tree > snapshot > service-kv keeps its resources, parents, aliases and key inputs 1`] = `
 [
   {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network::service-kv-vpc",
+    ],
+    "custom": true,
+    "inputs": {
+      "autoCreateSubnetworks": false,
+      "description": "[service-kv] VPC network",
+    },
+    "name": "service-kv-vpc",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-kv-network",
+    "type": "gcp:compute/network:Network",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:compute/network:Network::service-kv-vpc",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork::service-kv-subnet",
+    ],
+    "custom": true,
+    "inputs": {
+      "description": "[service-kv] Subnet",
+      "ipCidrRange": "10.97.35.0/24",
+      "network": "self-link.service-kv-vpc",
+      "privateIpGoogleAccess": true,
+      "region": "us-central1",
+    },
+    "name": "service-kv-subnet",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-kv-network",
+    "type": "gcp:compute/subnetwork:Subnetwork",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:compute/subnetwork:Subnetwork::service-kv-subnet",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork$gcp:vpcaccess/connector:Connector::service-kv-vpc-connector",
+    ],
+    "custom": true,
+    "inputs": {
+      "ipCidrRange": "10.97.36.0/28",
+      "maxInstances": 3,
+      "minInstances": 2,
+      "name": "service-kv-vpc",
+      "network": "self-link.service-kv-vpc",
+      "region": "us-central1",
+    },
+    "name": "service-kv-vpc-connector",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-kv-network",
+    "type": "gcp:vpcaccess/connector:Connector",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:vpcaccess/connector:Connector::service-kv-vpc-connector",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "service-kv-network",
+    "parent": "Keeta:GCP:CloudRunService::service-kv",
+    "type": "Keeta:GCP:AppNetwork",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-kv-network",
+  },
+  {
     "aliases": [],
     "custom": true,
     "inputs": {
@@ -3186,77 +3277,6 @@ exports[`component tree > snapshot > service-kv keeps its resources, parents, al
     "urn": "Keeta:GCP:CloudRunService$gcp:compute/backendService:BackendService::service-kv-backend",
   },
   {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "allows": [
-        {
-          "ports": [
-            "6379",
-          ],
-          "protocol": "tcp",
-        },
-      ],
-      "description": "Allow VPC connector for to access KV (Redis)",
-      "destinationRanges": [
-        "redis.service-kv-kv/32",
-      ],
-      "direction": "EGRESS",
-      "network": "service-kv-vpc-id",
-      "priority": 850,
-      "sourceRanges": [
-        "10.97.36.0/28",
-      ],
-    },
-    "name": "service-kv-kv-firewall",
-    "parent": "Keeta:GCP:CloudRunService$gcp:compute/network:Network::service-kv-vpc",
-    "type": "gcp:compute/firewall:Firewall",
-    "urn": "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/firewall:Firewall::service-kv-kv-firewall",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "ipCidrRange": "10.97.36.0/28",
-      "maxInstances": 3,
-      "minInstances": 2,
-      "name": "service-kv-vpc",
-      "network": "self-link.service-kv-vpc",
-      "region": "us-central1",
-    },
-    "name": "service-kv-vpc-connector",
-    "parent": "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork::service-kv-subnet",
-    "type": "gcp:vpcaccess/connector:Connector",
-    "urn": "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork$gcp:vpcaccess/connector:Connector::service-kv-vpc-connector",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "description": "[service-kv] Subnet",
-      "ipCidrRange": "10.97.35.0/24",
-      "network": "self-link.service-kv-vpc",
-      "privateIpGoogleAccess": true,
-      "region": "us-central1",
-    },
-    "name": "service-kv-subnet",
-    "parent": "Keeta:GCP:CloudRunService$gcp:compute/network:Network::service-kv-vpc",
-    "type": "gcp:compute/subnetwork:Subnetwork",
-    "urn": "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork::service-kv-subnet",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "autoCreateSubnetworks": false,
-      "description": "[service-kv] VPC network",
-    },
-    "name": "service-kv-vpc",
-    "parent": "Keeta:GCP:CloudRunService::service-kv",
-    "type": "gcp:compute/network:Network",
-    "urn": "Keeta:GCP:CloudRunService$gcp:compute/network:Network::service-kv-vpc",
-  },
-  {
     "aliases": [
       "Keeta:GCP:CloudRunService$gcp:cloudrun/service:Service$gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup::service-kv-neg",
     ],
@@ -3300,6 +3320,90 @@ exports[`component tree > snapshot > service-kv keeps its resources, parents, al
 
 exports[`component tree > snapshot > service-mig keeps its resources, parents, aliases and key inputs 1`] = `
 [
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/firewall:Firewall::service-mig-ssh-iap-firewall",
+    ],
+    "custom": true,
+    "inputs": {
+      "allows": [
+        {
+          "ports": [
+            "22",
+          ],
+          "protocol": "tcp",
+        },
+      ],
+      "description": "[service-mig] Allow SSH access to MIG instances via IAP",
+      "direction": "INGRESS",
+      "network": "service-mig-vpc-id",
+      "priority": 900,
+      "sourceRanges": [
+        "35.235.240.0/20",
+      ],
+    },
+    "name": "service-mig-ssh-iap-firewall",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-mig-network",
+    "type": "gcp:compute/firewall:Firewall",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:compute/firewall:Firewall::service-mig-ssh-iap-firewall",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network::service-mig-vpc",
+    ],
+    "custom": true,
+    "inputs": {
+      "autoCreateSubnetworks": false,
+      "description": "[service-mig] VPC network",
+    },
+    "name": "service-mig-vpc",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-mig-network",
+    "type": "gcp:compute/network:Network",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:compute/network:Network::service-mig-vpc",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork::service-mig-subnet",
+    ],
+    "custom": true,
+    "inputs": {
+      "description": "[service-mig] Subnet",
+      "ipCidrRange": "10.97.35.0/24",
+      "network": "self-link.service-mig-vpc",
+      "privateIpGoogleAccess": true,
+      "region": "us-central1",
+    },
+    "name": "service-mig-subnet",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-mig-network",
+    "type": "gcp:compute/subnetwork:Subnetwork",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:compute/subnetwork:Subnetwork::service-mig-subnet",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork$gcp:vpcaccess/connector:Connector::service-mig-vpc-connector",
+    ],
+    "custom": true,
+    "inputs": {
+      "ipCidrRange": "10.97.36.0/28",
+      "maxInstances": 3,
+      "minInstances": 2,
+      "name": "service-mig-vpc",
+      "network": "self-link.service-mig-vpc",
+      "region": "us-central1",
+    },
+    "name": "service-mig-vpc-connector",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-mig-network",
+    "type": "gcp:vpcaccess/connector:Connector",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:vpcaccess/connector:Connector::service-mig-vpc-connector",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "service-mig-network",
+    "parent": "Keeta:GCP:CloudRunService::service-mig",
+    "type": "Keeta:GCP:AppNetwork",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-mig-network",
+  },
   {
     "aliases": [],
     "custom": false,
@@ -3577,74 +3681,6 @@ exports[`component tree > snapshot > service-mig keeps its resources, parents, a
     "urn": "Keeta:GCP:CloudRunService$gcp:compute/backendService:BackendService::service-mig-backend",
   },
   {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "allows": [
-        {
-          "ports": [
-            "22",
-          ],
-          "protocol": "tcp",
-        },
-      ],
-      "description": "[service-mig] Allow SSH access to MIG instances via IAP",
-      "direction": "INGRESS",
-      "network": "service-mig-vpc-id",
-      "priority": 900,
-      "sourceRanges": [
-        "35.235.240.0/20",
-      ],
-    },
-    "name": "service-mig-ssh-iap-firewall",
-    "parent": "Keeta:GCP:CloudRunService$gcp:compute/network:Network::service-mig-vpc",
-    "type": "gcp:compute/firewall:Firewall",
-    "urn": "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/firewall:Firewall::service-mig-ssh-iap-firewall",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "ipCidrRange": "10.97.36.0/28",
-      "maxInstances": 3,
-      "minInstances": 2,
-      "name": "service-mig-vpc",
-      "network": "self-link.service-mig-vpc",
-      "region": "us-central1",
-    },
-    "name": "service-mig-vpc-connector",
-    "parent": "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork::service-mig-subnet",
-    "type": "gcp:vpcaccess/connector:Connector",
-    "urn": "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork$gcp:vpcaccess/connector:Connector::service-mig-vpc-connector",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "description": "[service-mig] Subnet",
-      "ipCidrRange": "10.97.35.0/24",
-      "network": "self-link.service-mig-vpc",
-      "privateIpGoogleAccess": true,
-      "region": "us-central1",
-    },
-    "name": "service-mig-subnet",
-    "parent": "Keeta:GCP:CloudRunService$gcp:compute/network:Network::service-mig-vpc",
-    "type": "gcp:compute/subnetwork:Subnetwork",
-    "urn": "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork::service-mig-subnet",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "autoCreateSubnetworks": false,
-      "description": "[service-mig] VPC network",
-    },
-    "name": "service-mig-vpc",
-    "parent": "Keeta:GCP:CloudRunService::service-mig",
-    "type": "gcp:compute/network:Network",
-    "urn": "Keeta:GCP:CloudRunService$gcp:compute/network:Network::service-mig-vpc",
-  },
-  {
     "aliases": [
       "Keeta:GCP:CloudRunService$gcp:cloudrun/service:Service$gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup::service-mig-neg",
     ],
@@ -3808,6 +3844,101 @@ exports[`component tree > snapshot > service-plain keeps its resources, parents,
 
 exports[`component tree > snapshot > service-providers keeps its resources, parents, aliases and key inputs 1`] = `
 [
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/globalAddress:GlobalAddress::service-providers-private-ip-alloc",
+    ],
+    "custom": true,
+    "inputs": {
+      "addressType": "INTERNAL",
+      "network": "self-link.service-providers-vpc",
+      "prefixLength": 16,
+      "purpose": "VPC_PEERING",
+    },
+    "name": "service-providers-private-ip-alloc",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-providers-network",
+    "provider": "pulumi:providers:gcp::caller-provider",
+    "type": "gcp:compute/globalAddress:GlobalAddress",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:compute/globalAddress:GlobalAddress::service-providers-private-ip-alloc",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network::service-providers-vpc",
+    ],
+    "custom": true,
+    "inputs": {
+      "autoCreateSubnetworks": false,
+      "description": "[service-providers] VPC network",
+    },
+    "name": "service-providers-vpc",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-providers-network",
+    "provider": "pulumi:providers:gcp::caller-provider",
+    "type": "gcp:compute/network:Network",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:compute/network:Network::service-providers-vpc",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork::service-providers-subnet",
+    ],
+    "custom": true,
+    "inputs": {
+      "description": "[service-providers] Subnet",
+      "ipCidrRange": "10.97.35.0/24",
+      "network": "self-link.service-providers-vpc",
+      "privateIpGoogleAccess": true,
+      "region": "us-central1",
+    },
+    "name": "service-providers-subnet",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-providers-network",
+    "provider": "pulumi:providers:gcp::caller-provider",
+    "type": "gcp:compute/subnetwork:Subnetwork",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:compute/subnetwork:Subnetwork::service-providers-subnet",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/globalAddress:GlobalAddress$gcp:servicenetworking/connection:Connection::service-providers-svc-networking",
+    ],
+    "custom": true,
+    "inputs": {
+      "network": "self-link.service-providers-vpc",
+      "reservedPeeringRanges": [
+        "service-providers-private-ip-alloc",
+      ],
+      "service": "servicenetworking.googleapis.com",
+    },
+    "name": "service-providers-svc-networking",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-providers-network",
+    "provider": "pulumi:providers:gcp::caller-provider",
+    "type": "gcp:servicenetworking/connection:Connection",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:servicenetworking/connection:Connection::service-providers-svc-networking",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork$gcp:vpcaccess/connector:Connector::service-providers-vpc-connector",
+    ],
+    "custom": true,
+    "inputs": {
+      "ipCidrRange": "10.97.36.0/28",
+      "maxInstances": 3,
+      "minInstances": 2,
+      "name": "service-providers-vpc",
+      "network": "self-link.service-providers-vpc",
+      "region": "us-central1",
+    },
+    "name": "service-providers-vpc-connector",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-providers-network",
+    "provider": "pulumi:providers:gcp::caller-provider",
+    "type": "gcp:vpcaccess/connector:Connector",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:vpcaccess/connector:Connector::service-providers-vpc-connector",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "service-providers-network",
+    "parent": "Keeta:GCP:CloudRunService::service-providers",
+    "type": "Keeta:GCP:AppNetwork",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-providers-network",
+  },
   {
     "aliases": [],
     "custom": true,
@@ -4649,83 +4780,6 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
     "urn": "Keeta:GCP:CloudRunService$gcp:compute/backendService:BackendService::service-providers-backend",
   },
   {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "network": "self-link.service-providers-vpc",
-      "reservedPeeringRanges": [
-        "service-providers-private-ip-alloc",
-      ],
-      "service": "servicenetworking.googleapis.com",
-    },
-    "name": "service-providers-svc-networking",
-    "parent": "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/globalAddress:GlobalAddress::service-providers-private-ip-alloc",
-    "provider": "pulumi:providers:gcp::caller-provider",
-    "type": "gcp:servicenetworking/connection:Connection",
-    "urn": "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/globalAddress:GlobalAddress$gcp:servicenetworking/connection:Connection::service-providers-svc-networking",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "addressType": "INTERNAL",
-      "network": "self-link.service-providers-vpc",
-      "prefixLength": 16,
-      "purpose": "VPC_PEERING",
-    },
-    "name": "service-providers-private-ip-alloc",
-    "parent": "Keeta:GCP:CloudRunService$gcp:compute/network:Network::service-providers-vpc",
-    "provider": "pulumi:providers:gcp::caller-provider",
-    "type": "gcp:compute/globalAddress:GlobalAddress",
-    "urn": "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/globalAddress:GlobalAddress::service-providers-private-ip-alloc",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "ipCidrRange": "10.97.36.0/28",
-      "maxInstances": 3,
-      "minInstances": 2,
-      "name": "service-providers-vpc",
-      "network": "self-link.service-providers-vpc",
-      "region": "us-central1",
-    },
-    "name": "service-providers-vpc-connector",
-    "parent": "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork::service-providers-subnet",
-    "provider": "pulumi:providers:gcp::caller-provider",
-    "type": "gcp:vpcaccess/connector:Connector",
-    "urn": "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork$gcp:vpcaccess/connector:Connector::service-providers-vpc-connector",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "description": "[service-providers] Subnet",
-      "ipCidrRange": "10.97.35.0/24",
-      "network": "self-link.service-providers-vpc",
-      "privateIpGoogleAccess": true,
-      "region": "us-central1",
-    },
-    "name": "service-providers-subnet",
-    "parent": "Keeta:GCP:CloudRunService$gcp:compute/network:Network::service-providers-vpc",
-    "provider": "pulumi:providers:gcp::caller-provider",
-    "type": "gcp:compute/subnetwork:Subnetwork",
-    "urn": "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork::service-providers-subnet",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "autoCreateSubnetworks": false,
-      "description": "[service-providers] VPC network",
-    },
-    "name": "service-providers-vpc",
-    "parent": "Keeta:GCP:CloudRunService::service-providers",
-    "provider": "pulumi:providers:gcp::caller-provider",
-    "type": "gcp:compute/network:Network",
-    "urn": "Keeta:GCP:CloudRunService$gcp:compute/network:Network::service-providers-vpc",
-  },
-  {
     "aliases": [
       "Keeta:GCP:CloudRunService$gcp:cloudrun/service:Service$gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup::service-providers-neg",
     ],
@@ -4794,6 +4848,96 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
 
 exports[`component tree > snapshot > service-replicas keeps its resources, parents, aliases and key inputs 1`] = `
 [
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/globalAddress:GlobalAddress::service-replicas-private-ip-alloc",
+    ],
+    "custom": true,
+    "inputs": {
+      "addressType": "INTERNAL",
+      "network": "self-link.service-replicas-vpc",
+      "prefixLength": 16,
+      "purpose": "VPC_PEERING",
+    },
+    "name": "service-replicas-private-ip-alloc",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-replicas-network",
+    "type": "gcp:compute/globalAddress:GlobalAddress",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:compute/globalAddress:GlobalAddress::service-replicas-private-ip-alloc",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network::service-replicas-vpc",
+    ],
+    "custom": true,
+    "inputs": {
+      "autoCreateSubnetworks": false,
+      "description": "[service-replicas] VPC network",
+    },
+    "name": "service-replicas-vpc",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-replicas-network",
+    "type": "gcp:compute/network:Network",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:compute/network:Network::service-replicas-vpc",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork::service-replicas-subnet",
+    ],
+    "custom": true,
+    "inputs": {
+      "description": "[service-replicas] Subnet",
+      "ipCidrRange": "10.97.35.0/24",
+      "network": "self-link.service-replicas-vpc",
+      "privateIpGoogleAccess": true,
+      "region": "us-central1",
+    },
+    "name": "service-replicas-subnet",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-replicas-network",
+    "type": "gcp:compute/subnetwork:Subnetwork",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:compute/subnetwork:Subnetwork::service-replicas-subnet",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/globalAddress:GlobalAddress$gcp:servicenetworking/connection:Connection::service-replicas-svc-networking",
+    ],
+    "custom": true,
+    "inputs": {
+      "network": "self-link.service-replicas-vpc",
+      "reservedPeeringRanges": [
+        "service-replicas-private-ip-alloc",
+      ],
+      "service": "servicenetworking.googleapis.com",
+    },
+    "name": "service-replicas-svc-networking",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-replicas-network",
+    "type": "gcp:servicenetworking/connection:Connection",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:servicenetworking/connection:Connection::service-replicas-svc-networking",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork$gcp:vpcaccess/connector:Connector::service-replicas-vpc-connector",
+    ],
+    "custom": true,
+    "inputs": {
+      "ipCidrRange": "10.97.36.0/28",
+      "maxInstances": 3,
+      "minInstances": 2,
+      "name": "service-replicas-vpc",
+      "network": "self-link.service-replicas-vpc",
+      "region": "us-central1",
+    },
+    "name": "service-replicas-vpc-connector",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-replicas-network",
+    "type": "gcp:vpcaccess/connector:Connector",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork$gcp:vpcaccess/connector:Connector::service-replicas-vpc-connector",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "service-replicas-network",
+    "parent": "Keeta:GCP:CloudRunService::service-replicas",
+    "type": "Keeta:GCP:AppNetwork",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:AppNetwork::service-replicas-network",
+  },
   {
     "aliases": [],
     "custom": true,
@@ -5197,78 +5341,6 @@ exports[`component tree > snapshot > service-replicas keeps its resources, paren
     "parent": "Keeta:GCP:CloudRunService::service-replicas",
     "type": "gcp:compute/backendService:BackendService",
     "urn": "Keeta:GCP:CloudRunService$gcp:compute/backendService:BackendService::service-replicas-backend",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "network": "self-link.service-replicas-vpc",
-      "reservedPeeringRanges": [
-        "service-replicas-private-ip-alloc",
-      ],
-      "service": "servicenetworking.googleapis.com",
-    },
-    "name": "service-replicas-svc-networking",
-    "parent": "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/globalAddress:GlobalAddress::service-replicas-private-ip-alloc",
-    "type": "gcp:servicenetworking/connection:Connection",
-    "urn": "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/globalAddress:GlobalAddress$gcp:servicenetworking/connection:Connection::service-replicas-svc-networking",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "addressType": "INTERNAL",
-      "network": "self-link.service-replicas-vpc",
-      "prefixLength": 16,
-      "purpose": "VPC_PEERING",
-    },
-    "name": "service-replicas-private-ip-alloc",
-    "parent": "Keeta:GCP:CloudRunService$gcp:compute/network:Network::service-replicas-vpc",
-    "type": "gcp:compute/globalAddress:GlobalAddress",
-    "urn": "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/globalAddress:GlobalAddress::service-replicas-private-ip-alloc",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "ipCidrRange": "10.97.36.0/28",
-      "maxInstances": 3,
-      "minInstances": 2,
-      "name": "service-replicas-vpc",
-      "network": "self-link.service-replicas-vpc",
-      "region": "us-central1",
-    },
-    "name": "service-replicas-vpc-connector",
-    "parent": "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork::service-replicas-subnet",
-    "type": "gcp:vpcaccess/connector:Connector",
-    "urn": "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork$gcp:vpcaccess/connector:Connector::service-replicas-vpc-connector",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "description": "[service-replicas] Subnet",
-      "ipCidrRange": "10.97.35.0/24",
-      "network": "self-link.service-replicas-vpc",
-      "privateIpGoogleAccess": true,
-      "region": "us-central1",
-    },
-    "name": "service-replicas-subnet",
-    "parent": "Keeta:GCP:CloudRunService$gcp:compute/network:Network::service-replicas-vpc",
-    "type": "gcp:compute/subnetwork:Subnetwork",
-    "urn": "Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/subnetwork:Subnetwork::service-replicas-subnet",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "autoCreateSubnetworks": false,
-      "description": "[service-replicas] VPC network",
-    },
-    "name": "service-replicas-vpc",
-    "parent": "Keeta:GCP:CloudRunService::service-replicas",
-    "type": "gcp:compute/network:Network",
-    "urn": "Keeta:GCP:CloudRunService$gcp:compute/network:Network::service-replicas-vpc",
   },
   {
     "aliases": [

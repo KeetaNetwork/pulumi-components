@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { expectDefined, expectRecord, optionalRecord } from '../helpers/narrow';
-import { captureTree, describeTree, matchLegacyUrns, readBaselineCase, urnsOf, useIsolatedHome } from './harness/pulumi-tree';
+import { captureTree, describeTree, matchLegacyUrns, moveAliases, readBaselineCase, urnsOf, useIsolatedHome } from './harness/pulumi-tree';
 import type { TreeResource, TreeSnapshot } from './harness/pulumi-tree';
 import { TREE_CASES } from './harness/tree-cases';
 
@@ -37,9 +37,9 @@ function baselineUrn(typeChain: string, name: string) {
  * - `expectedRemovals`: per case, URNs of the released version that this
  *   branch deliberately no longer answers to. An entry that is still matched
  *   fails the test, so entries cannot go stale.
- * - `deferredParents`: the ending of the name of a resource that still has a
- *   plain (non-component) resource as its parent, and the phase that removes
- *   it. An entry that no resource needs fails the test as well.
+ *
+ * P10 deleted the `deferredParents` table: the network chain has a component
+ * parent (AppNetwork), so no resource is excused from the parent check.
  */
 /**
  * The URNs that a duplicate environment had in the released version: its
@@ -65,7 +65,6 @@ const DATABASE_SECRETS = [ 'mc-psql-db-password', 'mc-psql-db-url' ];
 
 const PLANNED_EXCEPTIONS: {
 	expectedRemovals: { [caseName: string]: { [urn: string]: string }};
-	deferredParents: { [nameEnding: string]: string };
 } = {
 	expectedRemovals: {
 		'service-build-remote': {
@@ -78,15 +77,13 @@ const PLANNED_EXCEPTIONS: {
 		},
 		'service-database': duplicateEnvironment('Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob', 'service-database-migration-env', DATABASE_SECRETS),
 		'service-mig': duplicateEnvironment('Keeta:GCP:CloudRunService', 'service-mig-mig-env', []),
-		'service-crwp': duplicateEnvironment('Keeta:GCP:CloudRunService', 'service-crwp-mig-env', [])
-	},
-	deferredParents: {
-		'-subnet': 'P10: the network chain moves to AppNetwork',
-		'-vpc-connector': 'P10: the network chain moves to AppNetwork',
-		'-private-ip-alloc': 'P10: the network chain moves to AppNetwork',
-		'-svc-networking': 'P10: the network chain moves to AppNetwork',
-		'-kv-firewall': 'P10: the network chain moves to AppNetwork',
-		'-ssh-iap-firewall': 'P10: the network chain moves to AppNetwork'
+		'service-crwp': {
+			...duplicateEnvironment('Keeta:GCP:CloudRunService', 'service-crwp-mig-env', []),
+			[baselineUrn('Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun$gcp:compute/route:Route', 'service-crwp-crwp-nat-default-route')]: 'P10: duplicates the default route of the network'
+		},
+		'service-kv': {
+			[baselineUrn('Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/firewall:Firewall', 'service-kv-kv-firewall')]: 'P10: an egress allow, redundant with the implied allow-all egress'
+		}
 	}
 };
 
@@ -101,8 +98,7 @@ const CALLER_RESOURCES: { [caseName: string]: string[] } = {
 
 /*
  * The resources that P7 moves to the component that owns them (Design P7,
- * "Moves in P7"). The IAM grants (P8) and the network chain (P10) are not
- * here. A resource that matches a row must have a component of one of the
+ * "Moves in P7"), then the IAM grants (P8) and the network chain (P10). A resource that matches a row must have a component of one of the
  * `parents` types as its parent, named as the prefix of its own name, and
  * exactly one alias: its URN in the released version.
  */
@@ -122,6 +118,9 @@ const SERVICE = 'Keeta:GCP:CloudRunService';
 const DATABASE = 'Keeta:GCP:PostgresCloudSQL';
 const ENV_MANAGER = 'Keeta:GCP:CloudRunEnvManager';
 const IDENTITY = 'Keeta:GCP:ServiceIdentity';
+const APP_NETWORK = 'Keeta:GCP:AppNetwork';
+const NETWORK = 'gcp:compute/network:Network';
+const SUBNETWORK = 'gcp:compute/subnetwork:Subnetwork';
 
 const MOVES: Move[] = [
 	{ type: 'gcp:storage/bucket:Bucket', name: /-bucket$/, parents: [ STATIC_APP ] },
@@ -150,6 +149,19 @@ const MOVES: Move[] = [
 	{ type: 'gcp:serviceaccount/account:Account', name: /^(?!.*-build-sa$).*-sa$/, parents: [ IDENTITY ], oldParent: SERVICE, parentSuffix: '-identity' },
 	{ type: 'gcp:projects/iAMMember:IAMMember', name: /-log-writer$/, parents: [ IDENTITY ], oldParent: SERVICE, parentSuffix: '-identity' },
 	{ type: 'gcp:projects/iAMMember:IAMMember', name: /-cloudsql-client$/, parents: [ IDENTITY ], oldParent: DATABASE, parentSuffix: '-identity' },
+	/*
+	 * P10: the network chain moves to the AppNetwork of the app. The old
+	 * parent was the app's own network or the one the caller passed (the
+	 * subnet and the firewall), the subnet (the connector) or the address
+	 * (the peering), so each row names the type of the old parent. The
+	 * subnets that standalone components get from their caller had none.
+	 */
+	{ type: 'gcp:compute/network:Network', name: /-vpc$/, parents: [ APP_NETWORK ], oldParent: SERVICE, parentSuffix: '-network' },
+	{ type: 'gcp:compute/subnetwork:Subnetwork', name: /-subnet$/, parents: [ APP_NETWORK ], oldParent: NETWORK, parentSuffix: '-network' },
+	{ type: 'gcp:vpcaccess/connector:Connector', name: /-vpc-connector$/, parents: [ APP_NETWORK ], oldParent: SUBNETWORK, parentSuffix: '-network' },
+	{ type: 'gcp:compute/globalAddress:GlobalAddress', name: /-private-ip-alloc$/, parents: [ APP_NETWORK ], oldParent: NETWORK, parentSuffix: '-network' },
+	{ type: 'gcp:servicenetworking/connection:Connection', name: /-svc-networking$/, parents: [ APP_NETWORK ], oldParent: 'gcp:compute/globalAddress:GlobalAddress', parentSuffix: '-network' },
+	{ type: 'gcp:compute/firewall:Firewall', name: /-ssh-iap-firewall$/, parents: [ APP_NETWORK ], oldParent: NETWORK, parentSuffix: '-network' },
 	/* The binding of a secret the caller owns (`-non-managed-`) had the EnvManager as its parent in 1.0.95 and stays there */
 	{ type: 'gcp:secretmanager/secretIamMember:SecretIamMember', name: /^(?!.*-non-managed-).*-iam-binding$/, parents: [ ENV_MANAGER ] }
 ];
@@ -227,26 +239,9 @@ function byName(tree: TreeSnapshot, name: string, type?: string) {
 	}));
 }
 
-/*
- * The aliases that move a resource: those that keep its type. The provider
- * SDK adds aliases of its own that change the type (for example for
- * serviceaccount.Account), which are not moves.
- */
-function moveAliases(resource: TreeResource) {
-	return(resource.aliases.filter(function(alias) {
-		return(alias.split('::')[2]?.split('$').pop() === resource.type);
-	}));
-}
-
 /** The parent's name is the resource's prefix, once the ending that the parent adds to its owner's name is taken off */
 function isNamedAfter(parent: TreeResource, resource: TreeResource, suffix: string) {
 	return(parent.name.endsWith(suffix) && resource.name.startsWith(`${parent.name.slice(0, parent.name.length - suffix.length)}-`));
-}
-
-function isDeferred(resource: TreeResource) {
-	return(Object.keys(PLANNED_EXCEPTIONS.deferredParents).some(function(ending) {
-		return(resource.name.endsWith(ending));
-	}));
 }
 
 function hasPlainParent(tree: TreeSnapshot, resource: TreeResource) {
@@ -296,6 +291,20 @@ function ancestorTypes(tree: TreeSnapshot, resource: TreeResource) {
 	return(types);
 }
 
+/** The app (CloudRunService) that a resource is part of, if any */
+function appOf(tree: TreeSnapshot, resource: TreeResource) {
+	let current = parentOf(tree, resource);
+	while (current !== undefined) {
+		if (current.type === SERVICE) {
+			return(current);
+		}
+
+		current = parentOf(tree, current);
+	}
+
+	return(undefined);
+}
+
 const caseNames = TREE_CASES.map(function(treeCase) {
 	return(treeCase.name);
 });
@@ -342,6 +351,7 @@ describe('component tree', function() {
 			}
 
 			expect([ ...componentTypes ].sort()).toEqual([
+				'Keeta:GCP:AppNetwork',
 				'Keeta:GCP:CloudRunEnvManager',
 				'Keeta:GCP:CloudRunService',
 				'Keeta:GCP:ContainerCloudRun',
@@ -385,28 +395,15 @@ describe('component tree', function() {
 	 * plain resource: ordering goes in `dependsOn` and cleanup in `deletedWith`.
 	 */
 	describe('parenting', function() {
-		it.each(caseNames)('%s has no plain resource as a parent, except the deferred ones', function(caseName) {
+		it.each(caseNames)('%s has no plain resource as a parent', function(caseName) {
 			const tree = treeOf(caseName);
 			const offenders = tree.resources.filter(function(resource) {
-				return(hasPlainParent(tree, resource) && !isDeferred(resource));
+				return(hasPlainParent(tree, resource));
 			}).map(function(resource) {
 				return(`${resource.name} <- ${parentOf(tree, resource)?.name ?? 'none'}`);
 			});
 
 			expect(offenders).toEqual([]);
-		});
-
-		it.each(Object.entries(PLANNED_EXCEPTIONS.deferredParents))('keeps the deferred parent of *%s only while a resource needs it', function(ending, reason) {
-			const needed = caseNames.some(function(caseName) {
-				const tree = treeOf(caseName);
-
-				return(tree.resources.some(function(resource) {
-					return(resource.name.endsWith(ending) && hasPlainParent(tree, resource));
-				}));
-			});
-
-			expect(reason).toMatch(/^P\d+: /);
-			expect(needed).toBe(true);
 		});
 
 		it.each(caseNames)('%s puts every resource under its component, except what the caller passed in', function(caseName) {
@@ -727,19 +724,6 @@ describe('component tree', function() {
 		];
 		const RUNNERS = [ 'gcp:cloudrun/service:Service', 'gcp:cloudrunv2/job:Job', 'gcp:cloudrunv2/workerPool:WorkerPool' ];
 
-		function appOf(tree: TreeSnapshot, resource: TreeResource) {
-			let current = parentOf(tree, resource);
-			while (current !== undefined) {
-				if (current.type === SERVICE) {
-					return(current);
-				}
-
-				current = parentOf(tree, current);
-			}
-
-			return(undefined);
-		}
-
 		/** The names that the secret references in a value point at (`secretKeyRef.name` of a service, `.secret` of a job) */
 		function secretNamesOf(value: unknown): string[] {
 			if (Array.isArray(value)) {
@@ -834,6 +818,146 @@ describe('component tree', function() {
 			});
 
 			expect({ missing, removed }).toEqual({ missing: [], removed: [] });
+		});
+	});
+
+	/*
+	 * An app owns its network through an AppNetwork, `${name}-network` (Design
+	 * P10): the VPC it creates, the subnet, the connector, the peering and the
+	 * IAP firewall are its children, and a network that the caller passed is
+	 * never one of them. Two resources of the library leave: the EGRESS allow
+	 * of the Redis firewall and the default route that the Cloud NAT of a
+	 * worker pool added to the one every network has.
+	 */
+	describe('network ownership', function() {
+		const NETWORK_ENDINGS = [ '-vpc', '-subnet', '-vpc-connector', '-private-ip-alloc', '-svc-networking', '-ssh-iap-firewall' ];
+		const CONNECTION = 'gcp:servicenetworking/connection:Connection';
+
+		function hasNetwork(tree: TreeSnapshot, app: TreeResource) {
+			return(byName(tree, `${app.name}-subnet`, SUBNETWORK) !== undefined);
+		}
+
+		it.each(caseNames)('%s gives each app with a network one AppNetwork, named after it, under it, and the others none', function(caseName) {
+			const tree = treeOf(caseName);
+			const problems: string[] = [];
+			for (const app of appsOf(tree)) {
+				const networks = childrenOf(tree, app).filter(function(child) {
+					return(child.type === APP_NETWORK);
+				}).map(function(child) {
+					return(child.name);
+				});
+				const expected: string[] = [];
+				if (hasNetwork(tree, app)) {
+					expected.push(`${app.name}-network`);
+				}
+
+				if (JSON.stringify(networks) !== JSON.stringify(expected)) {
+					problems.push(`${app.name} has the networks ${JSON.stringify(networks)}, expected ${JSON.stringify(expected)}`);
+				}
+			}
+
+			expect(problems).toEqual([]);
+		});
+
+		it.each(caseNames)('%s keeps the network resources of the library under an AppNetwork, never under the app or another resource', function(caseName) {
+			const tree = treeOf(caseName);
+			const offenders = tree.resources.filter(function(resource) {
+				const owner = appOf(tree, resource);
+
+				return(owner !== undefined && resource.parent !== undefined && NETWORK_ENDINGS.some(function(ending) {
+					return(resource.name === `${owner.name}${ending}`);
+				}) && parentOf(tree, resource)?.type !== APP_NETWORK);
+			});
+
+			expect(offenders.map(function(resource) {
+				return(resource.name);
+			})).toEqual([]);
+		});
+
+		it.each(caseNames)('%s has one servicenetworking connection for each AppNetwork that has a database, and none for the others', function(caseName) {
+			const tree = treeOf(caseName);
+			const problems: string[] = [];
+			for (const network of tree.resources.filter(function(resource) {
+				return(resource.type === APP_NETWORK);
+			})) {
+				const connections = childrenOf(tree, network).filter(function(child) {
+					return(child.type === CONNECTION);
+				});
+				const wanted = childrenOf(tree, network).filter(function(child) {
+					return(child.name.endsWith('-private-ip-alloc'));
+				}).length;
+				if (connections.length !== wanted) {
+					problems.push(`${network.name} has ${connections.length} connections for ${wanted} reserved ranges`);
+				}
+			}
+
+			expect(problems).toEqual([]);
+		});
+
+		it('does not adopt the network that the caller passed', function() {
+			const tree = treeOf('service-caller-resources');
+			const owned = childrenOf(tree, expectDefined(byName(tree, 'service-caller-resources-network', APP_NETWORK), 'the AppNetwork'));
+
+			expect(owned.map(function(resource) {
+				return(resource.type);
+			})).not.toContain(NETWORK);
+			expect(owned.map(function(resource) {
+				return(resource.name);
+			}).sort()).toEqual([ 'service-caller-resources-private-ip-alloc', 'service-caller-resources-subnet', 'service-caller-resources-svc-networking', 'service-caller-resources-vpc-connector' ]);
+		});
+
+		/*
+		 * The route and the firewall that leave were redundant with what a
+		 * network has (the default route to the internet gateway, the implied
+		 * allow-all egress). The tree shows that nothing takes those away: no
+		 * network deletes its default routes on creation, no route of the
+		 * library replaces the default one, and no firewall of the library
+		 * denies egress. The default route itself is made by GCP, so it is not
+		 * a resource that a test can see.
+		 */
+		it.each(caseNames)('%s creates no route, no network without its default route and no egress deny', function(caseName) {
+			const tree = treeOf(caseName);
+			const offenders = tree.resources.filter(function(resource) {
+				const inputs = optionalRecord(resource.inputs);
+				const denies = inputs?.denies;
+				if (resource.type === 'gcp:compute/route:Route') {
+					return(true);
+				}
+
+				if (resource.type === NETWORK) {
+					return(inputs?.deleteDefaultRoutesOnCreate === true);
+				}
+
+				return(resource.type === 'gcp:compute/firewall:Firewall' && inputs?.direction === 'EGRESS' && Array.isArray(denies) && denies.length > 0);
+			});
+
+			expect(offenders.map(function(resource) {
+				return(resource.name);
+			})).toEqual([]);
+		});
+
+		it('keeps the router and the NAT of the Cloud Run worker pool, the egress path that the default route serves', function() {
+			const tree = treeOf('service-crwp');
+
+			expect(tree.resources.filter(function(resource) {
+				return(resource.type === 'gcp:compute/router:Router' || resource.type === 'gcp:compute/routerNat:RouterNat');
+			}).map(function(resource) {
+				return(resource.name);
+			}).sort()).toEqual([ 'service-crwp-crwp-cloudnat', 'service-crwp-crwp-cloudnat-router' ]);
+			expect(optionalRecord(byName(tree, 'service-crwp-vpc', NETWORK)?.inputs)?.autoCreateSubnetworks).toBe(false);
+		});
+
+		it.each([ 'service-kv', 'service-crwp' ])('%s creates neither the Redis firewall nor the NAT route, and keeps the rest of its network', function(caseName) {
+			const names = treeOf(caseName).resources.map(function(resource) {
+				return(resource.name);
+			});
+
+			expect(names.some(function(name) {
+				return(name.endsWith('-kv-firewall') || name.endsWith('-nat-default-route'));
+			})).toBe(false);
+			expect(names.filter(function(name) {
+				return(name.endsWith('-vpc') || name.endsWith('-subnet') || name.endsWith('-vpc-connector'));
+			}).length).toBeGreaterThanOrEqual(3);
 		});
 	});
 

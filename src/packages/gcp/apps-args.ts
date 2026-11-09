@@ -4,6 +4,7 @@ import type { CloudRunServiceArgs } from './apps';
 import type { EnvironmentVariables } from './cloudrun';
 import type { GCPCommonOptions } from './common';
 import type { GCPRegion } from './constants';
+import type { AppNetwork } from './network';
 import { BUILD_DEFAULTS, CLOUD_RUN_SERVICE_DEFAULTS, MIGRATION_DEFAULTS, POSTGRES_DEFAULTS } from './defaults';
 
 /**
@@ -220,7 +221,11 @@ export interface ParsedIdentity {
  * all inside the VPC, so none of them can exist without a network
  */
 export interface ParsedVpc {
+	/** The settings of the network that the service builds for itself (unused when `appNetwork` is given) */
 	network: ParsedNetwork;
+
+	/** The network of the caller's `AppNetwork`: the service creates no network resource */
+	appNetwork?: AppNetwork;
 	data?: {
 		database: ParsedDatabase;
 		migration?: ParsedMigration;
@@ -433,12 +438,21 @@ export function parseCloudRunServiceArgs(args: CloudRunServiceArgs): ParsedCloud
 		identity: parseIdentity(args.service)
 	};
 
-	if (args.database || args.kv || args.vpc || worker !== undefined) {
+	if (args.network !== undefined && args.vpc !== undefined) {
+		throw(new CloudRunServiceArgsError('network and vpc cannot both be provided: the AppNetwork owns the VPC, the subnet and the connector, give one of them'));
+	}
+
+	if (args.database || args.kv || args.vpc || args.network || worker !== undefined) {
 		const vpc: ParsedVpc = {
 			network: parseNetwork(args.vpc),
+			appNetwork: args.network,
 			kv: args.kv,
 			worker
 		};
+
+		if (args.vpc?.network !== undefined) {
+			void pulumi.log.warn('CloudRunService: vpc.network builds a network of its own around the VPC. Services that share a VPC need one private service access connection between them: build one AppNetwork (new AppNetwork(name, { network, ... })) and pass it to each of them as `network`');
+		}
 
 		if (args.database) {
 			vpc.data = { database: parseDatabase(args.database) };
