@@ -1,7 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import * as pulumi from '@pulumi/pulumi';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import type * as apps from '../../src/packages/gcp/apps';
 import type * as appsArgs from '../../src/packages/gcp/apps-args';
@@ -10,6 +9,7 @@ import { expectAt, optionalRecord, valueAt } from '../helpers/narrow';
 import { WORKER_FORMS } from '../helpers/worker-forms';
 import { requireSource } from './harness/load-sources';
 import { captureTree, useIsolatedHome } from './harness/pulumi-tree';
+import { captureWarnings } from './harness/warnings';
 
 const { CloudRunService } = requireSource<typeof apps>('src/packages/gcp/apps.ts');
 const { parseCloudRunServiceArgs, CloudRunServiceArgsError } = requireSource<typeof appsArgs>('src/packages/gcp/apps-args.ts');
@@ -43,10 +43,6 @@ function callerArgs(overrides: unknown) {
 function parse(overrides: unknown) {
 	return(parseCloudRunServiceArgs(callerArgs(overrides)));
 }
-
-afterEach(function() {
-	vi.restoreAllMocks();
-});
 
 interface Rule {
 	rule: string;
@@ -249,20 +245,19 @@ describe('parseCloudRunServiceArgs legacy mig', function() {
 	});
 
 	it.each(WORKER_ROWS)('warns once about %s', function(_description, form) {
-		const warn = vi.spyOn(pulumi.log, 'warn');
+		const { warnings } = captureWarnings(function() {
+			return(parse({ mig: form.legacy }));
+		});
 
-		parse({ mig: form.legacy });
-
-		expect(warn).toHaveBeenCalledTimes(1);
-		expect(warn).toHaveBeenCalledWith(expect.stringMatching(/\bmig\b.*\bworker\b/));
+		expect(warnings).toEqual([ expect.stringMatching(/\bmig\b.*\bworker\b/) ]);
 	});
 
 	it.each(WORKER_ROWS)('does not warn about %s given as a worker', function(_description, form) {
-		const warn = vi.spyOn(pulumi.log, 'warn');
+		const { warnings } = captureWarnings(function() {
+			return(parse({ worker: form.worker }));
+		});
 
-		parse({ worker: form.worker });
-
-		expect(warn).not.toHaveBeenCalled();
+		expect(warnings).toEqual([]);
 	});
 
 	it('parses a disabled mig as no worker at all', function() {

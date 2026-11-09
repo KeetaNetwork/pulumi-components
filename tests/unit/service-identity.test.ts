@@ -2,6 +2,7 @@ import * as gcp from '@pulumi/gcp';
 import * as pulumi from '@pulumi/pulumi';
 import { describe, expect, it } from 'vitest';
 
+import type * as packageIndex from '../../src/index';
 import type * as apps from '../../src/packages/gcp/apps';
 import type { GCPCommonOptions } from '../../src/packages/gcp/common';
 import type * as container from '../../src/packages/gcp/container';
@@ -16,6 +17,8 @@ import { workerSpec, workerSubnetwork } from './harness/tree-cases';
 const { CloudRunService } = requireSource<typeof apps>('src/packages/gcp/apps.ts');
 const { ContainerCloudRun, ContainerMIG } = requireSource<typeof container>('src/packages/gcp/container.ts');
 const { MigrationJob } = requireSource<typeof migration>('src/packages/gcp/migration.ts');
+const { gcp: gcpIndex } = requireSource<typeof packageIndex>('src/index.ts');
+const { ServiceIdentity } = requireSource<typeof identityModule>('src/packages/gcp/identity.ts');
 
 type ServiceArgs = ConstructorParameters<typeof CloudRunService>[1];
 type PolicyHook = GCPCommonOptions['changeProjectIAMPolicy'];
@@ -119,6 +122,37 @@ describe('project roles of an app', function() {
 		const tree = await buildApp(`roles-${description.replace(/[^a-z]+/gi, '-').toLowerCase()}`, overrides);
 
 		expect(liveRolesOf(tree.resources)).toEqual(roles);
+	});
+
+	/*
+	 * A retained grant keeps a URN of 1.0.95 and nothing else: GCP holds one
+	 * membership for a (project, role, member), so deleting either resource
+	 * of a pair revokes it. Every retained grant therefore has a live twin
+	 * that declares the same tuple, and the engine never sees the retained
+	 * one change on its own.
+	 */
+	function tupleOf(grant: TreeResource) {
+		const inputs = expectRecord(grant.inputs, `the inputs of ${grant.name}`);
+
+		return(JSON.stringify([ inputs.project, inputs.role, inputs.member ]));
+	}
+
+	it.each(rows)('gives each retained grant of %s a live twin of the same project, role and member', async function(description, overrides) {
+		const tree = await buildApp(`twins-${description.replace(/[^a-z]+/gi, '-').toLowerCase()}`, overrides);
+		const live = new Set(liveGrantsOf(tree.resources).map(tupleOf));
+		const alone = retainedGrantsOf(tree.resources).filter(function(grant) {
+			return(!live.has(tupleOf(grant)));
+		});
+
+		expect(alone.map(function(grant) {
+			return(grant.name);
+		})).toEqual([]);
+	});
+
+	it.each([ 'mig', 'crwp' ] as const)('keeps retained grants for a %s worker and a migration, so that the twin check above is not empty', async function(kind) {
+		const tree = await buildApp(`twins-present-${kind}`, { ...everything, worker: { kind }});
+
+		expect(retainedGrantsOf(tree.resources).length).toBeGreaterThan(0);
 	});
 
 	/*
@@ -405,5 +439,13 @@ describe('components that receive an identity', function() {
 		await capture(component, build, identityOf([ granted ]), recordingHook(asked));
 
 		expect(asked).toEqual([ left ]);
+	});
+});
+
+/* `identity?` is a public option of ContainerMIG, ContainerCloudRun and MigrationJob, so the class it takes has to be reachable from the package index */
+describe('the index of the package', function() {
+	it('reaches ServiceIdentity through gcp.identity, as the same class as the module', function() {
+		expect(gcpIndex.identity.ServiceIdentity).toBeTypeOf('function');
+		expect(gcpIndex.identity.ServiceIdentity).toBe(ServiceIdentity);
 	});
 });
