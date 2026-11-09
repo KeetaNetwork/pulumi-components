@@ -1,6 +1,7 @@
 import * as pulumi from '@pulumi/pulumi';
 import * as gcp from '@pulumi/gcp';
 import * as path from 'node:path';
+import { createHash } from 'node:crypto';
 import { gcp as gcpComponents } from '@keetanetwork/pulumi-components';
 
 const gcpProject = gcp.config.project ?? process.env.GOOGLE_PROJECT ?? process.env.GCLOUD_PROJECT;
@@ -8,7 +9,13 @@ if (!gcpProject) {
 	throw new Error('GCP project not configured');
 }
 
-const name = `tf-static-${pulumi.getStack()}`.substring(0, 25);
+/*
+ * GCP resource names derive from "name", and some GCP names allow few
+ * characters. A short hash of the stack name keeps them short and unique for
+ * every stack, whatever the length of the stack name.
+ */
+const stackId = createHash('sha256').update(pulumi.getStack()).digest('hex').substring(0, 8);
+const name = `tf-static-${stackId}`;
 
 // === Static Web App ===
 export const staticApp = new gcpComponents.apps.StaticWebApp(name, {
@@ -22,7 +29,7 @@ export const staticApp = new gcpComponents.apps.StaticWebApp(name, {
 	cdn: { enabled: true }
 });
 
-export const staticAppCDNOverride = new gcpComponents.apps.StaticWebApp(`tf-static-cdn-${pulumi.getStack()}`.substring(0, 25), {
+export const staticAppCDNOverride = new gcpComponents.apps.StaticWebApp(`tf-static-cdn-${stackId}`, {
 	staticFilesPath: path.join(__dirname, 'static'),
 	bucketConfig: { location: 'US' },
 	cdn: {
