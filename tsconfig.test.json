@@ -7,7 +7,10 @@
 		// "node" resolution of tsconfig.json cannot resolve. Nothing is emitted
 		// from this config, so it only changes how types are found.
 		"module": "esnext",
-		"moduleResolution": "bundler"
+		"moduleResolution": "bundler",
+		// The cleanup script runs under Node's type stripping, which needs
+		// the ".ts" extension on relative imports
+		"allowImportingTsExtensions": true
 	},
 	"include": [
 		"src/**/*.ts",

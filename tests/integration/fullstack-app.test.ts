@@ -2,7 +2,7 @@ import { describe, it, expect, afterAll } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { deployStack, destroyStack, fetchWithRetry, previewStack, type StackOutputs } from '../helpers/pulumi';
+import { deployStack, destroyStack, testStackName, fetchWithRetry, previewStack, type StackOutputs } from '../helpers/pulumi';
 import { expectBoolean, expectDefined, expectRecord, expectString, expectStringArray } from '../helpers/narrow';
 import { expectHealthyDatabaseService, expectMigrationsApplied } from '../helpers/service-checks';
 
@@ -16,7 +16,7 @@ const domain = (domainPrefix === undefined || domainPrefix === '') ? baseDomain 
 const dnsZoneId = process.env.TEST_DNS_ZONE_ID;
 
 describe('FullStackApp', function() {
-	const stackName = `test-${Date.now()}`;
+	const stackName = testStackName('fs');
 	let outputs: StackOutputs | undefined;
 
 	it('deploys fullstack app with load balancer and database', async function() {

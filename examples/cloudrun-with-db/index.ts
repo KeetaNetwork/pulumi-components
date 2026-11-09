@@ -1,6 +1,7 @@
 import * as pulumi from '@pulumi/pulumi';
 import * as gcp from '@pulumi/gcp';
 import * as path from 'node:path';
+import { createHash } from 'node:crypto';
 import { gcp as gcpComponents } from '@keetanetwork/pulumi-components';
 
 const gcpProject = gcp.config.project ?? process.env.GOOGLE_PROJECT ?? process.env.GCLOUD_PROJECT;
@@ -9,8 +10,13 @@ if (!gcpProject) {
 }
 
 const region: gcpComponents.constants.GCPRegion = 'us-central1';
-const stack = pulumi.getStack();
-const name = `db-test-${stack}`.substring(0, 25);
+/*
+ * GCP resource names derive from "name", and some GCP names allow few
+ * characters. A short hash of the stack name keeps them short and unique for
+ * every stack, whatever the length of the stack name.
+ */
+const stackId = createHash('sha256').update(pulumi.getStack()).digest('hex').substring(0, 8);
+const name = `db-test-${stackId}`;
 
 // Artifact Registry for the test app image
 const registry = new gcp.artifactregistry.Repository(`${name}-repo`, {
