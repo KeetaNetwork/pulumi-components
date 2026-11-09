@@ -79,7 +79,7 @@ interface WorkerCommonArgs {
 /**
  * A worker that runs on a Managed Instance Group of VMs
  */
-export interface MigWorkerArgs extends WorkerCommonArgs {
+export interface MIGWorkerArgs extends WorkerCommonArgs {
 	kind: 'mig';
 
 	/**
@@ -103,7 +103,7 @@ export interface MigWorkerArgs extends WorkerCommonArgs {
  * A worker that runs on a Cloud Run Worker Pool (more modern -- it has
  * neither a `cosImage`, nor `enableSSH`, nor a disk)
  */
-export interface CrwpWorkerArgs extends WorkerCommonArgs {
+export interface CRWPWorkerArgs extends WorkerCommonArgs {
 	kind: 'crwp';
 	cosImage?: never;
 	enableSSH?: never;
@@ -116,7 +116,7 @@ export interface CrwpWorkerArgs extends WorkerCommonArgs {
  *
  * Deprecated: use `worker`. Kept for 2.x; the constructor warns when it is used.
  */
-export type LegacyMigArgs = Omit<MigWorkerArgs, 'kind' | 'diskSizeGb'> & {
+export type LegacyMIGArgs = Omit<MIGWorkerArgs, 'kind' | 'diskSizeGb'> & {
 	/**
 	 * Whether to enable the worker
 	 */
@@ -139,7 +139,7 @@ interface WorkerInput extends WorkerCommonArgs {
 }
 
 interface ParsedWorkerCommon {
-	instanceCount?: number;
+	instanceCount: number;
 	machineType: string;
 	tags?: string[];
 	egress: WorkerEgress;
@@ -149,18 +149,18 @@ interface ParsedWorkerCommon {
 	poolSize?: number;
 }
 
-export interface ParsedMigWorker extends ParsedWorkerCommon {
+export interface ParsedMIGWorker extends ParsedWorkerCommon {
 	kind: 'mig';
 	cosImage?: string;
 	enableSSH: boolean;
 	diskSizeGb?: number;
 }
 
-export interface ParsedCrwpWorker extends ParsedWorkerCommon {
+export interface ParsedCRWPWorker extends ParsedWorkerCommon {
 	kind: 'crwp';
 }
 
-export type ParsedWorker = ParsedMigWorker | ParsedCrwpWorker;
+export type ParsedWorker = ParsedMIGWorker | ParsedCRWPWorker;
 
 type BuildArgs = NonNullable<CloudRunServiceArgs['image']['build']>;
 type RemoteArgs = NonNullable<BuildArgs['remote']>;
@@ -312,7 +312,7 @@ function parseImage(args: CloudRunServiceArgs): ParsedImage {
 
 function parseWorkerCommon(worker: WorkerInput): ParsedWorkerCommon {
 	return({
-		instanceCount: worker.instanceCount,
+		instanceCount: worker.instanceCount ?? CLOUD_RUN_SERVICE_DEFAULTS.worker.instanceCount,
 		machineType: worker.machineType ?? CLOUD_RUN_SERVICE_DEFAULTS.worker.machineType,
 		tags: worker.tags,
 		egress: worker.egress ?? CLOUD_RUN_SERVICE_DEFAULTS.worker.egress,
@@ -328,7 +328,7 @@ function parseWorker(worker: WorkerInput): ParsedWorker {
 				kind: 'mig',
 				...parseWorkerCommon(worker),
 				cosImage: worker.cosImage,
-				enableSSH: worker.enableSSH === true,
+				enableSSH: worker.enableSSH ?? CLOUD_RUN_SERVICE_DEFAULTS.worker.enableSSH,
 				diskSizeGb: worker.diskSizeGb
 			});
 		case 'crwp':
@@ -354,7 +354,7 @@ function parseWorker(worker: WorkerInput): ParsedWorker {
  * The legacy `mig` is a worker written the old way. This reads it as the
  * `worker` that it stands for, or as no worker when it is disabled.
  */
-function workerOfLegacy(mig: LegacyMigArgs): WorkerInput | undefined {
+function workerOfLegacy(mig: LegacyMIGArgs): WorkerInput | undefined {
 	const { enabled, workerKind, ...rest } = mig;
 	if (!enabled) {
 		return(undefined);
@@ -397,8 +397,8 @@ function parseDatabase(database: DatabaseArgs): ParsedDatabase {
 		...database,
 		tier: database.tier ?? POSTGRES_DEFAULTS.tier,
 		version: database.version ?? POSTGRES_DEFAULTS.version,
-		deletionProtection: database.deletionProtection ?? false,
-		queryInsights: database.queryInsights ?? false,
+		deletionProtection: database.deletionProtection ?? POSTGRES_DEFAULTS.deletionProtection,
+		queryInsights: database.queryInsights ?? POSTGRES_DEFAULTS.queryInsights,
 		queryStringLength: database.queryStringLength ?? POSTGRES_DEFAULTS.queryStringLength,
 		flags: {
 			max_connections: POSTGRES_DEFAULTS.maxConnections,
@@ -576,7 +576,7 @@ export function parseCloudRunServiceArgs(args: CloudRunServiceArgs): ParsedCloud
 		}
 
 		if (args.vpc?.network !== undefined) {
-			void pulumi.log.warn('CloudRunService: vpc.network builds a network of its own around the VPC. Services that share a VPC need one private service access connection between them: build one AppNetwork (new AppNetwork(name, { network, ... })) and pass it to each of them as `network`');
+			void pulumi.log.warn('CloudRunService: vpc.network builds a network of its own around the VPC. Services that share a VPC need one private service access connection between them: build one AppNetwork (new AppNetwork(name, { region, network })) and pass it to each of them as `network`. Moving a service that has its own network to a shared AppNetwork is not a state move: its subnet, connector and private service access connection are recreated');
 		}
 
 		if (args.database) {

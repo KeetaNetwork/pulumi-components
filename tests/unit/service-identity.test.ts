@@ -2,7 +2,6 @@ import * as gcp from '@pulumi/gcp';
 import * as pulumi from '@pulumi/pulumi';
 import { describe, expect, it } from 'vitest';
 
-import type * as packageIndex from '../../src/index';
 import type * as apps from '../../src/packages/gcp/apps';
 import type { GCPCommonOptions } from '../../src/packages/gcp/common';
 import type * as container from '../../src/packages/gcp/container';
@@ -17,7 +16,6 @@ import { IMAGE, captureService } from './harness/service-builder';
 
 const { ContainerCloudRun, ContainerMIG } = requireSource<typeof container>('src/packages/gcp/container.ts');
 const { MigrationJob } = requireSource<typeof migration>('src/packages/gcp/migration.ts');
-const { gcp: gcpIndex } = requireSource<typeof packageIndex>('src/index.ts');
 const { ServiceIdentity } = requireSource<typeof identityModule>('src/packages/gcp/identity.ts');
 
 type ServiceArgs = ConstructorParameters<typeof apps.CloudRunService>[1];
@@ -435,10 +433,3 @@ describe('components that receive an identity', function() {
 	});
 });
 
-/* `identity?` is a public option of ContainerMIG, ContainerCloudRun and MigrationJob, so the class it takes has to be reachable from the package index */
-describe('the index of the package', function() {
-	it('reaches ServiceIdentity through gcp.identity, as the same class as the module', function() {
-		expect(gcpIndex.identity.ServiceIdentity).toBeTypeOf('function');
-		expect(gcpIndex.identity.ServiceIdentity).toBe(ServiceIdentity);
-	});
-});

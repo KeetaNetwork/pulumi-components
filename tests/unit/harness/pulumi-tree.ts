@@ -1,3 +1,4 @@
+import { generateKeyPairSync } from 'node:crypto';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
@@ -55,13 +56,6 @@ export interface TreeSnapshot {
 	resources: TreeResource[];
 }
 
-export interface CaptureOptions {
-	project?: string;
-	stack?: string;
-	/** How long to wait for the program to finish registering (default 60 seconds) */
-	settleTimeoutMs?: number;
-}
-
 type OutputsOf = (name: string, inputs: UnknownRecord) => UnknownRecord;
 
 /*
@@ -81,6 +75,16 @@ const KNOWN_OUTPUTS: { [type: string]: OutputsOf } = {
 			connectionName: `connection.${name}`,
 			serverCaCerts: [ { cert: `ca-certificate.${name}` } ]
 		});
+	},
+	/* A key made now, so that no key is kept in the repository */
+	'tls:index/privateKey:PrivateKey': function() {
+		const pair = generateKeyPairSync('ec', {
+			namedCurve: 'prime256v1',
+			privateKeyEncoding: { type: 'sec1', format: 'pem' },
+			publicKeyEncoding: { type: 'spki', format: 'pem' }
+		});
+
+		return({ privateKeyPem: pair.privateKey, publicKeyPem: pair.publicKey });
 	},
 	'random:index/randomString:RandomString': function(name) {
 		return({ result: `random.${name}` });
@@ -197,7 +201,6 @@ function machineRoots(): [string, string][] {
 	return(roots);
 }
 
-/** Cuts a value that came over the wire down to what is worth keeping in a snapshot */
 /** Plain comparison of code units: the same order on every machine, unlike a locale's */
 function compareStrings(a: string, b: string) {
 	if (a < b) {
@@ -211,10 +214,11 @@ function compareStrings(a: string, b: string) {
 	return(0);
 }
 
-function compareUrns(a: TreeResource, b: TreeResource) {
+function compareURNs(a: TreeResource, b: TreeResource) {
 	return(compareStrings(a.urn, b.urn));
 }
 
+/** Cuts a value that came over the wire down to what is worth keeping in a snapshot */
 function normalizeValue(value: unknown, roots: [string, string][], reveal = false): unknown {
 	if (typeof value === 'string') {
 		if (value === pulumi.runtime.unknownValue) {
@@ -265,7 +269,7 @@ interface CaptureState {
 	stack: string;
 	resources: TreeResource[];
 	/** Engine-form URN to the URN the mock monitor knows the resource by */
-	mockUrns: Map<string, string>;
+	mockURNs: Map<string, string>;
 	/**
 	 * Problems found while recording. They are thrown once the program is done:
 	 * an error returned to the SDK would only surface as an unhandled rejection.
@@ -274,22 +278,22 @@ interface CaptureState {
 }
 
 /** Turns the alias list of a request into URNs, the way the engine reads it */
-function aliasUrns(request: resourceProto.RegisterResourceRequest, state: CaptureState) {
+function aliasURNs(request: resourceProto.RegisterResourceRequest, state: CaptureState) {
 	return(Promise.all(request.getAliasesList().map(async function(alias) {
 		const spec = alias.getSpec();
 		if (spec === undefined) {
 			return(alias.getUrn());
 		}
 
-		let parentUrn: string | undefined;
+		let parentURN: string | undefined;
 		if (spec.hasParenturn()) {
-			parentUrn = spec.getParenturn();
+			parentURN = spec.getParenturn();
 		}
 
 		const urn = pulumi.createUrn(
 			spec.getName() || request.getName(),
 			spec.getType() || request.getType(),
-			parentUrn,
+			parentURN,
 			spec.getProject() || state.project,
 			spec.getStack() || state.stack
 		);
@@ -302,11 +306,11 @@ async function recordRegistration(request: resourceProto.RegisterResourceRequest
 	const roots = machineRoots();
 	const parent = request.getParent() || undefined;
 	const urn = await resolveOutput(pulumi.createUrn(request.getName(), request.getType(), parent, state.project, state.stack));
-	if (state.mockUrns.has(urn)) {
+	if (state.mockURNs.has(urn)) {
 		state.failures.push(new Error(`Pulumi would reject this program: ${urn} is registered twice`));
 	}
 
-	state.mockUrns.set(urn, response.getUrn());
+	state.mockURNs.set(urn, response.getUrn());
 	response.setUrn(urn);
 
 	const resource: TreeResource = {
@@ -314,7 +318,7 @@ async function recordRegistration(request: resourceProto.RegisterResourceRequest
 		type: request.getType(),
 		name: request.getName(),
 		custom: request.getCustom(),
-		aliases: await aliasUrns(request, state)
+		aliases: await aliasURNs(request, state)
 	};
 
 	if (parent !== undefined) {
@@ -404,9 +408,9 @@ function instrumentMonitor(state: CaptureState) {
 		/* Reading a resource reference asks the monitor for the resource's state by URN */
 		if (request.getTok() === 'pulumi:pulumi:getResource') {
 			const urnArgument = request.getArgs()?.getFieldsMap().get('urn');
-			const mockUrn = state.mockUrns.get(urnArgument?.getStringValue() ?? '');
-			if (mockUrn !== undefined) {
-				urnArgument?.setStringValue(mockUrn);
+			const mockURN = state.mockURNs.get(urnArgument?.getStringValue() ?? '');
+			if (mockURN !== undefined) {
+				urnArgument?.setStringValue(mockURN);
 			}
 		}
 
@@ -418,9 +422,9 @@ function instrumentMonitor(state: CaptureState) {
 			throw(new TypeError('Unsupported registerResourceOutputs call: the SDK changed the monitor interface'));
 		}
 
-		const mockUrn = state.mockUrns.get(request.getUrn());
-		if (mockUrn !== undefined) {
-			request.setUrn(mockUrn);
+		const mockURN = state.mockURNs.get(request.getUrn());
+		if (mockURN !== undefined) {
+			request.setUrn(mockURN);
 		}
 
 		callMethod(monitor, registerOutputs, [ request, callback ]);
@@ -467,6 +471,9 @@ async function settle(state: CaptureState, timeoutMs: number) {
 	}
 }
 
+/** How long to wait for the program to finish registering */
+const SETTLE_TIMEOUT_MS = 60_000;
+
 let capturing = false;
 
 /**
@@ -474,7 +481,7 @@ let capturing = false;
  * including the ones created later inside `apply` callbacks. Captures cannot
  * overlap because the Pulumi runtime state is process-wide.
  */
-export async function captureTree(build: () => unknown, options: CaptureOptions = {}): Promise<TreeSnapshot> {
+export async function captureTree(build: () => unknown): Promise<TreeSnapshot> {
 	if (capturing) {
 		throw(new Error('captureTree cannot run twice at the same time'));
 	}
@@ -482,10 +489,10 @@ export async function captureTree(build: () => unknown, options: CaptureOptions 
 	capturing = true;
 	try {
 		const state: CaptureState = {
-			project: options.project ?? 'project',
-			stack: options.stack ?? 'stack',
+			project: 'project',
+			stack: 'stack',
 			resources: [],
-			mockUrns: new Map(),
+			mockURNs: new Map(),
 			failures: []
 		};
 
@@ -496,7 +503,7 @@ export async function captureTree(build: () => unknown, options: CaptureOptions 
 			await build();
 		} finally {
 			/* A program that throws has already started registrations; they must land in this capture */
-			await settle(state, options.settleTimeoutMs ?? 60_000);
+			await settle(state, SETTLE_TIMEOUT_MS);
 		}
 
 		const [ failure ] = state.failures;
@@ -504,7 +511,7 @@ export async function captureTree(build: () => unknown, options: CaptureOptions 
 			throw(failure);
 		}
 
-		state.resources.sort(compareUrns);
+		state.resources.sort(compareURNs);
 
 		return({
 			project: state.project,
@@ -572,9 +579,9 @@ function parentAdapter(urn: string, aliases: string[]) {
  * (its own, or one inherited from an ancestor the way the SDK computes it).
  */
 export async function matchLegacyUrns(tree: TreeSnapshot, legacyUrns: string[]): Promise<LegacyMatch> {
-	const byUrn = new Map<string, TreeResource>();
+	const byURN = new Map<string, TreeResource>();
 	for (const resource of tree.resources) {
-		byUrn.set(resource.urn, resource);
+		byURN.set(resource.urn, resource);
 	}
 
 	/* The complete alias set of each resource, filled parent first */
@@ -588,7 +595,7 @@ export async function matchLegacyUrns(tree: TreeSnapshot, legacyUrns: string[]):
 		const computed = (async function(): Promise<string[]> {
 			let complete = resource.aliases;
 			if (resource.parent !== undefined) {
-				const parent = byUrn.get(resource.parent);
+				const parent = byURN.get(resource.parent);
 				if (parent === undefined) {
 					throw(new Error(`${resource.urn} has a parent that is not in the tree: ${resource.parent}`));
 				}

@@ -84,13 +84,7 @@ const PLANNED_EXCEPTIONS: {
 		},
 		'service-database': duplicateEnvironment('Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob', 'service-database-migration-env', DATABASE_SECRETS),
 		'service-mig': duplicateEnvironment('Keeta:GCP:CloudRunService', 'service-mig-mig-env', []),
-		'service-crwp': {
-			...duplicateEnvironment('Keeta:GCP:CloudRunService', 'service-crwp-mig-env', []),
-			[baselineUrn('Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun$gcp:compute/route:Route', 'service-crwp-crwp-nat-default-route')]: 'P10: duplicates the default route of the network'
-		},
-		'service-kv': {
-			[baselineUrn('Keeta:GCP:CloudRunService$gcp:compute/network:Network$gcp:compute/firewall:Firewall', 'service-kv-kv-firewall')]: 'P10: an egress allow, redundant with the implied allow-all egress'
-		}
+		'service-crwp': duplicateEnvironment('Keeta:GCP:CloudRunService', 'service-crwp-mig-env', [])
 	}
 };
 
@@ -182,6 +176,7 @@ const MOVES: Move[] = [
 	{ type: 'gcp:compute/globalAddress:GlobalAddress', name: /-private-ip-alloc$/, parents: [ APP_NETWORK ], oldParent: NETWORK, parentSuffix: '-network' },
 	{ type: 'gcp:servicenetworking/connection:Connection', name: /-svc-networking$/, parents: [ APP_NETWORK ], oldParent: 'gcp:compute/globalAddress:GlobalAddress', parentSuffix: '-network' },
 	{ type: 'gcp:compute/firewall:Firewall', name: /-ssh-iap-firewall$/, parents: [ APP_NETWORK ], oldParent: NETWORK, parentSuffix: '-network' },
+	{ type: 'gcp:compute/firewall:Firewall', name: /-kv-firewall$/, parents: [ APP_NETWORK ], oldParent: NETWORK, parentSuffix: '-network' },
 	/*
 	 * P12: what ExternalLoadBalancer put under its own URL map, backend
 	 * service or forwarding rule moves to the component (the redirect rows
@@ -403,6 +398,7 @@ describe('component tree', function() {
 			}
 
 			expect([ ...componentTypes ].sort()).toEqual([
+				'Keeta:Crypto:ECDSAKeyPair',
 				'Keeta:GCP:AppNetwork',
 				'Keeta:GCP:CloudRunEnvManager',
 				'Keeta:GCP:CloudRunService',
@@ -982,13 +978,14 @@ describe('component tree', function() {
 		 * denies egress. The default route itself is made by GCP, so it is not
 		 * a resource that a test can see.
 		 */
-		it.each(caseNames)('%s creates no route, no network without its default route and no egress deny', function(caseName) {
+		/* The one route is the default route that the Cloud Run worker pool's NAT keeps, as in 1.0.95 */
+		it.each(caseNames)('%s creates no route but the NAT default route, no network without its default route and no egress deny', function(caseName) {
 			const tree = treeOf(caseName);
 			const offenders = tree.resources.filter(function(resource) {
 				const inputs = optionalRecord(resource.inputs);
 				const denies = inputs?.denies;
 				if (resource.type === 'gcp:compute/route:Route') {
-					return(true);
+					return(!resource.name.endsWith('-nat-default-route'));
 				}
 
 				if (resource.type === NETWORK) {
@@ -1014,14 +1011,17 @@ describe('component tree', function() {
 			expect(optionalRecord(byName(tree, 'service-crwp-vpc', NETWORK)?.inputs)?.autoCreateSubnetworks).toBe(false);
 		});
 
-		it.each([ 'service-kv', 'service-crwp' ])('%s creates neither the Redis firewall nor the NAT route, and keeps the rest of its network', function(caseName) {
+		it.each([
+			[ 'service-kv', '-kv-firewall' ],
+			[ 'service-crwp', '-nat-default-route' ]
+		])('%s keeps its %s and the rest of its network', function(caseName, suffix) {
 			const names = treeOf(caseName).resources.map(function(resource) {
 				return(resource.name);
 			});
 
-			expect(names.some(function(name) {
-				return(name.endsWith('-kv-firewall') || name.endsWith('-nat-default-route'));
-			})).toBe(false);
+			expect(names.filter(function(name) {
+				return(name.endsWith(suffix));
+			})).toHaveLength(1);
 			expect(names.filter(function(name) {
 				return(name.endsWith('-vpc') || name.endsWith('-subnet') || name.endsWith('-vpc-connector'));
 			}).length).toBeGreaterThanOrEqual(3);
