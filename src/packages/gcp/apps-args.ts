@@ -516,7 +516,7 @@ function assertConnectionsFit(args: CloudRunServiceArgs, worker: ParsedWorker | 
 		return;
 	}
 
-	const budget = connectionBudget({ maxConnections: resolveMaxConnections({ flags: database.flags, tier: database.tier }) });
+	const budget = connectionBudget(resolveMaxConnections({ flags: database.flags, tier: database.tier }));
 	assertWithinBudget(budget, consumers);
 
 	/* The migration job opens its pool while the old revision still serves with full pools, so its connections come out of the reserve */
