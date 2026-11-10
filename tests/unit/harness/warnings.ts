@@ -1,44 +1,68 @@
+import * as grpc from '@grpc/grpc-js';
 import * as pulumi from '@pulumi/pulumi';
-import { vi } from 'vitest';
+import * as engineGrpc from '@pulumi/pulumi/proto/engine_grpc_pb.js';
+import * as engineProto from '@pulumi/pulumi/proto/engine_pb.js';
+import { Empty } from 'google-protobuf/google/protobuf/empty_pb.js';
 
-/** Replaces `pulumi.log.warn` for as long as `run` takes, and gives the messages it was called with */
-function watchWarnings() {
-	const spy = vi.spyOn(pulumi.log, 'warn').mockImplementation(function() {
-		return(Promise.resolve());
-	});
-
-	return({
-		messages: function() {
-			return(spy.mock.calls.map(function([ message ]) {
-				return(String(message));
-			}));
-		},
-		stop: function() {
-			spy.mockRestore();
+/**
+ * An engine that only takes log messages. Pulumi's runtime sends every
+ * `pulumi.log` call to the engine it is connected to, so the messages are
+ * read where the engine would read them.
+ */
+async function startLogEngine() {
+	const messages: { severity: engineProto.LogSeverity; message: string }[] = [];
+	const server = new grpc.Server();
+	server.addService(engineGrpc.EngineService, {
+		log: function(call: grpc.ServerUnaryCall<engineProto.LogRequest, Empty>, callback: grpc.sendUnaryData<Empty>) {
+			messages.push({ severity: call.request.getSeverity(), message: call.request.getMessage() });
+			callback(null, new Empty());
 		}
 	});
+
+	const port = await new Promise<number>(function(resolve, reject) {
+		server.bindAsync('127.0.0.1:0', grpc.ServerCredentials.createInsecure(), function(err, boundPort) {
+			if (err !== null) {
+				reject(err);
+			} else {
+				resolve(boundPort);
+			}
+		});
+	});
+
+	return({ address: `127.0.0.1:${port}`, messages, server });
 }
 
-/** Runs `run` and returns what it returned with the warnings that the library logged meanwhile */
-export function captureWarnings<Result>(run: () => Result) {
-	const watch = watchWarnings();
-	try {
-		const result = run();
-
-		return({ result, warnings: watch.messages() });
-	} finally {
-		watch.stop();
-	}
+/**
+ * Connects the Pulumi runtime to an engine, or to none with an empty address.
+ * The project and stack are those `captureTree` uses, which sets up its
+ * monitor after this and keeps the engine.
+ */
+function connectEngine(address: string) {
+	pulumi.runtime.resetOptions('project', 'stack', -1, address, '', false, '');
 }
 
-/** The same for a function that returns a promise: the warnings are those logged until it settles */
-export async function captureWarningsAsync<Result>(run: () => Promise<Result>) {
-	const watch = watchWarnings();
+/**
+ * Runs `run` with the Pulumi runtime connected to a log engine, and returns
+ * what it returned with the warnings the library logged until it settled
+ */
+export async function captureWarnings<Result>(run: () => Result | Promise<Result>) {
+	const engine = await startLogEngine();
+	connectEngine(engine.address);
 	try {
 		const result = await run();
 
-		return({ result, warnings: watch.messages() });
+		/* Log messages are delivered in order, so this one arriving means every earlier one has */
+		await pulumi.log.debug('end of the captured warnings');
+
+		const warnings = engine.messages.filter(function(entry) {
+			return(entry.severity === engineProto.LogSeverity.WARNING);
+		}).map(function(entry) {
+			return(entry.message);
+		});
+
+		return({ result, warnings });
 	} finally {
-		watch.stop();
+		connectEngine('');
+		engine.server.forceShutdown();
 	}
 }
