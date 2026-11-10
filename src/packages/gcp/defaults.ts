@@ -8,8 +8,6 @@
  * one (a worker VM from `CloudRunService` is an `e2-micro`, while a
  * `ContainerMIG` that nobody sized is an `e2-medium`), and the objects are
  * never merged.
- *
- * The values are those of 1.0.95.
  */
 
 /** Freezes the object and everything inside it */
