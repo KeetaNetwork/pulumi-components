@@ -63,7 +63,7 @@ describe('service.maxInstances', function() {
 });
 
 /*
- * The pool size is an environment variable (P9: the environment of an app
+ * The pool size is an environment variable (the environment of an app
  * is `${name}-env`). The service and the migration job read the app's;
  * the worker reads it too, unless the worker has a pool size of its own,
  * which reaches it through its view override and never through `${name}-env`.
@@ -132,6 +132,39 @@ describe('the pool size of a database connection', function() {
  * max_connections is 100: 90 are available. The migration job is not a
  * consumer: it is one task that ends before the service takes traffic.
  */
+/* Every rule of the connection arguments, each broken alone */
+describe('the connection arguments of a service', function() {
+	useIsolatedHome();
+
+	const counts: [ string, Partial<ServiceArgs> ][] = [ 0, 1.5 ].flatMap(function(count): [ string, Partial<ServiceArgs> ][] {
+		return([
+			[ `service.maxInstances ${count}`, appWith({ service: { maxInstances: count }}) ],
+			[ `database.poolSize ${count}`, appWith({ database: { poolSize: count }}) ],
+			[ `worker.poolSize ${count}`, appWith({ database: { poolSize: 5 }, worker: { kind: 'crwp', poolSize: count }}) ]
+		]);
+	});
+
+	it.each(counts)('rejects %s, naming it', async function(name, args) {
+		const result = captureService(`args-count-${name.replace(/[^a-z0-9]+/gi, '-')}`, args);
+
+		await expect(result).rejects.toBeInstanceOf(CloudRunServiceArgsError);
+		await expect(result).rejects.toThrow(`${name.split(' ')[0]} must be a whole number of 1 or more`);
+	});
+
+	const conflicts: [ string, Partial<ServiceArgs>, string ][] = [
+		[ 'service.maxInstances with the maxScale annotation', appWith({ service: { maxInstances: 4, annotations: { [MAX_SCALE]: '4' }}}), MAX_SCALE ],
+		[ `database.poolSize with ${POOL_SIZE} in environment`, appWith({ database: { poolSize: 5 }, environment: { [POOL_SIZE]: '5' }}), 'so environment cannot set it too' ],
+		[ `worker.poolSize with ${POOL_SIZE} in worker.environmentOverrides`, appWith({ database: { poolSize: 5 }, worker: { kind: 'crwp', poolSize: 5, environmentOverrides: { [POOL_SIZE]: '5' }}}), 'so worker.environmentOverrides cannot set it too' ]
+	];
+
+	it.each(conflicts)('rejects %s', async function(title, args, message) {
+		const result = captureService(`args-conflict-${title.split(' ')[0]?.replace(/\./g, '-')}`, args);
+
+		await expect(result).rejects.toBeInstanceOf(CloudRunServiceArgsError);
+		await expect(result).rejects.toThrow(message);
+	});
+});
+
 describe('the connection budget of a service', function() {
 	useIsolatedHome();
 

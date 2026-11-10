@@ -5,7 +5,7 @@ import type { EnvironmentVariables } from './cloudrun';
 import type { GCPCommonOptions } from './common';
 import type { GCPRegion } from './constants';
 import type { AppNetwork } from './network';
-import { assertWithinBudget, connectionBudget, parseCloudSqlTier, resolveMaxConnections, tierDefaultMaxConnections } from './connection-budget';
+import { assertWithinBudget, connectionBudget, parseCloudSQLTier, resolveMaxConnections, tierDefaultMaxConnections } from './connection-budget';
 import type { ConnectionConsumer } from './connection-budget';
 import { DATABASE_POOL_SIZE_VARIABLE } from './database-env';
 import { resolveProfile } from './profiles';
@@ -541,7 +541,7 @@ function assertConnectionsFit(args: CloudRunServiceArgs, worker: ParsedWorker | 
 		return;
 	}
 
-	const budget = connectionBudget({ maxConnections: resolveMaxConnections({ flags: database.flags, tier: database.tier }) });
+	const budget = connectionBudget(resolveMaxConnections({ flags: database.flags, tier: database.tier }));
 	assertWithinBudget(budget, consumers);
 
 	/* The migration job opens its pool while the old revision still serves with full pools, so its connections come out of the reserve */
@@ -564,7 +564,7 @@ function profileMaxConnections(database: NonNullable<CloudRunServiceArgs['databa
 		return(profileValue);
 	}
 
-	const shape = parseCloudSqlTier(database.tier);
+	const shape = parseCloudSQLTier(database.tier);
 	if (shape.kind === 'unknown') {
 		throw(new CloudRunServiceArgsError(`database.tier '${database.tier}' is not a tier that the profile knows the max_connections of: give database.flags.max_connections`));
 	}

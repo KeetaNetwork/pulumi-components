@@ -276,7 +276,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 	 * @throws Error naming the tier when no `max_connections` is set and the tier is not one that the library knows
 	 */
 	get connectionBudget(): ConnectionBudget {
-		return(connectionBudget({ maxConnections: this.#maxConnections() }));
+		return(connectionBudget(this.#maxConnections()));
 	}
 
 	constructor(name: string, args: PostgresCloudSQLArgs, opts?: pulumi.ComponentResourceOptions) {

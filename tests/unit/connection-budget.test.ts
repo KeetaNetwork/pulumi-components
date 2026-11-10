@@ -8,17 +8,17 @@ import { requireSource } from './harness/load-sources';
 import { captureTree, useIsolatedHome } from './harness/pulumi-tree';
 import { flagsOf } from './harness/service-builder';
 
-const { parseCloudSqlTier, tierDefaultMaxConnections, resolveMaxConnections, connectionBudget, assertWithinBudget, ConnectionBudgetExceededError, MaxConnectionsConflictError } = requireSource<typeof budget>('src/packages/gcp/connection-budget.ts');
+const { parseCloudSQLTier, tierDefaultMaxConnections, resolveMaxConnections, connectionBudget, assertWithinBudget, ConnectionBudgetExceededError, MaxConnectionsConflictError } = requireSource<typeof budget>('src/packages/gcp/connection-budget.ts');
 const { PostgresCloudSQL } = requireSource<typeof sql>('src/packages/gcp/sql.ts');
 
 const MEGABYTES_PER_GIGABYTE = 1024;
 
-describe('parseCloudSqlTier', function() {
+describe('parseCloudSQLTier', function() {
 	const tiers = [
-		{ tier: 'db-custom-2-7680', shape: { kind: 'custom', cpus: 2, memoryMb: 7680 }},
-		{ tier: 'db-custom-16-61440', shape: { kind: 'custom', cpus: 16, memoryMb: 61440 }},
-		{ tier: 'db-f1-micro', shape: { kind: 'shared', name: 'db-f1-micro' }},
-		{ tier: 'db-g1-small', shape: { kind: 'shared', name: 'db-g1-small' }},
+		{ tier: 'db-custom-2-7680', shape: { kind: 'custom', memoryMB: 7680 }},
+		{ tier: 'db-custom-16-61440', shape: { kind: 'custom', memoryMB: 61440 }},
+		{ tier: 'db-f1-micro', shape: { kind: 'shared', name: 'db-f1-micro', maxConnections: 25 }},
+		{ tier: 'db-g1-small', shape: { kind: 'shared', name: 'db-g1-small', maxConnections: 50 }},
 		{ tier: 'db-perf-optimized-N-8', shape: { kind: 'unknown', tier: 'db-perf-optimized-N-8' }},
 		{ tier: 'db-custom-2', shape: { kind: 'unknown', tier: 'db-custom-2' }},
 		{ tier: 'db-custom-two-7680', shape: { kind: 'unknown', tier: 'db-custom-two-7680' }},
@@ -28,14 +28,14 @@ describe('parseCloudSqlTier', function() {
 	];
 
 	it.each(tiers)('reads "$tier" as $shape.kind', function(testCase) {
-		expect(parseCloudSqlTier(testCase.tier)).toEqual(testCase.shape);
+		expect(parseCloudSQLTier(testCase.tier)).toEqual(testCase.shape);
 	});
 });
 
-/* The table of issue 121: the memory of the tier decides, 1 GB being 1024 MB */
+/* The defaults of Cloud SQL: the memory of a custom tier decides, 1 GB being 1024 MB */
 describe('tierDefaultMaxConnections', function() {
-	function custom(memoryMb: number) {
-		return(tierDefaultMaxConnections(parseCloudSqlTier(`db-custom-2-${memoryMb}`)));
+	function custom(memoryMB: number) {
+		return(tierDefaultMaxConnections(parseCloudSQLTier(`db-custom-2-${memoryMB}`)));
 	}
 
 	const shared = [
@@ -44,7 +44,7 @@ describe('tierDefaultMaxConnections', function() {
 	];
 
 	it.each(shared)('gives $tier $connections', function(testCase) {
-		expect(tierDefaultMaxConnections(parseCloudSqlTier(testCase.tier))).toBe(testCase.connections);
+		expect(tierDefaultMaxConnections(parseCloudSQLTier(testCase.tier))).toBe(testCase.connections);
 	});
 
 	/* Each band starts at its lower edge (inside) and ends one MB before the next band (outside the next) */
@@ -67,7 +67,7 @@ describe('tierDefaultMaxConnections', function() {
 	});
 
 	it('does not throw for a tier it does not know until a default is asked for', function() {
-		const shape = parseCloudSqlTier('db-perf-optimized-N-8');
+		const shape = parseCloudSQLTier('db-perf-optimized-N-8');
 
 		expect(shape).toEqual({ kind: 'unknown', tier: 'db-perf-optimized-N-8' });
 		expect(function() {
@@ -112,19 +112,18 @@ describe('resolveMaxConnections', function() {
 
 describe('connectionBudget', function() {
 	const budgets = [
-		{ title: 'the default reserve of 10%', input: { maxConnections: 100 }, expected: { maxConnections: 100, reserve: 10, available: 90 }},
-		{ title: 'the default reserve of 10% of 25000', input: { maxConnections: 25000 }, expected: { maxConnections: 25000, reserve: 2500, available: 22500 }},
-		{ title: 'a reserve of 25%', input: { maxConnections: 400, reserveFraction: 0.25 }, expected: { maxConnections: 400, reserve: 100, available: 300 }},
-		{ title: 'no reserve', input: { maxConnections: 50, reserveFraction: 0 }, expected: { maxConnections: 50, reserve: 0, available: 50 }}
+		{ title: 'a reserve of 10%', maxConnections: 100, expected: { maxConnections: 100, reserve: 10, available: 90 }},
+		{ title: 'a reserve of 10% of 25000', maxConnections: 25000, expected: { maxConnections: 25000, reserve: 2500, available: 22500 }},
+		{ title: 'no connections', maxConnections: 0, expected: { maxConnections: 0, reserve: 0, available: 0 }}
 	];
 
 	it.each(budgets)('works out $title', function(testCase) {
-		expect(connectionBudget(testCase.input)).toEqual(testCase.expected);
+		expect(connectionBudget(testCase.maxConnections)).toEqual(testCase.expected);
 	});
 
 	/* Whole connections: the reserve is never rounded below its share, and the two parts add up to the maximum */
 	it.each([ 25, 50, 75 ])('splits %s connections into whole numbers that add up, reserving at least 10%%', function(maxConnections) {
-		const result = connectionBudget({ maxConnections });
+		const result = connectionBudget(maxConnections);
 
 		expect(Number.isInteger(result.reserve)).toBe(true);
 		expect(result.reserve).toBeGreaterThanOrEqual(maxConnections / 10);
@@ -134,7 +133,7 @@ describe('connectionBudget', function() {
 
 describe('assertWithinBudget', function() {
 	/* 100 connections, 10 of them reserved: 90 to share */
-	const available90 = connectionBudget({ maxConnections: 100 });
+	const available90 = connectionBudget(100);
 
 	it('passes when the shares add up to exactly what is available', function() {
 		expect(function() {
@@ -199,7 +198,7 @@ function buildDatabase(name: string, args: DatabaseArgs) {
 }
 
 /*
- * The budget a PostgresCloudSQL reports is the one Cloud SQL applies (DE8):
+ * The budget a PostgresCloudSQL reports is the one Cloud SQL applies:
  * reading it writes nothing. Only an explicit `maxConnections` writes the flag.
  */
 describe('PostgresCloudSQL.connectionBudget', function() {
@@ -215,28 +214,28 @@ describe('PostgresCloudSQL.connectionBudget', function() {
 	it.each(tiers)('is the default of $tier ($connections) and writes no max_connections flag', async function(testCase) {
 		const { tree, value } = await buildDatabase(`budget-${testCase.tier}`, { tier: testCase.tier });
 
-		expect(value.connectionBudget).toEqual(connectionBudget({ maxConnections: testCase.connections }));
+		expect(value.connectionBudget).toEqual(connectionBudget(testCase.connections));
 		expect(flagsOf(tree)).not.toHaveProperty('max_connections');
 	});
 
 	it('is the explicit flags.max_connections when it is set, and the flag is written as it was', async function() {
 		const { tree, value } = await buildDatabase('budget-flag', { tier: 'db-g1-small', flags: { max_connections: 75 }});
 
-		expect(value.connectionBudget).toEqual(connectionBudget({ maxConnections: 75 }));
+		expect(value.connectionBudget).toEqual(connectionBudget(75));
 		expect(flagsOf(tree).max_connections).toBe('75');
 	});
 
 	it('writes the flag, and reports it, when maxConnections is a number', async function() {
 		const { tree, value } = await buildDatabase('budget-number', { tier: 'db-g1-small', maxConnections: 120 });
 
-		expect(value.connectionBudget).toEqual(connectionBudget({ maxConnections: 120 }));
+		expect(value.connectionBudget).toEqual(connectionBudget(120));
 		expect(flagsOf(tree).max_connections).toBe('120');
 	});
 
 	it('writes the default of the tier as the flag when maxConnections is "tier-default"', async function() {
 		const { tree, value } = await buildDatabase('budget-tier-default', { tier: 'db-g1-small', maxConnections: 'tier-default' });
 
-		expect(value.connectionBudget).toEqual(connectionBudget({ maxConnections: 50 }));
+		expect(value.connectionBudget).toEqual(connectionBudget(50));
 		expect(flagsOf(tree).max_connections).toBe('50');
 	});
 
@@ -251,7 +250,7 @@ describe('PostgresCloudSQL.connectionBudget', function() {
 	it('reports the explicit flag of a tier it does not know', async function() {
 		const { value } = await buildDatabase('budget-unknown-flag', { tier: 'db-perf-optimized-N-8', flags: { max_connections: 300 }});
 
-		expect(value.connectionBudget).toEqual(connectionBudget({ maxConnections: 300 }));
+		expect(value.connectionBudget).toEqual(connectionBudget(300));
 	});
 
 	it('rejects maxConnections together with flags.max_connections', async function() {
@@ -263,7 +262,7 @@ describe('PostgresCloudSQL.connectionBudget', function() {
 	it('counts a flag that is undefined as not given, so maxConnections is written', async function() {
 		const { tree, value } = await buildDatabase('budget-undefined-flag', { tier: 'db-g1-small', flags: { max_connections: undefined }, maxConnections: 120 });
 
-		expect(value.connectionBudget).toEqual(connectionBudget({ maxConnections: 120 }));
+		expect(value.connectionBudget).toEqual(connectionBudget(120));
 		expect(flagsOf(tree).max_connections).toBe('120');
 	});
 });
