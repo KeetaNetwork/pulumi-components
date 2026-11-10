@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -35,15 +36,11 @@ describe('LocalDockerImage', function() {
 	const directories = useTempDirectories();
 
 	async function build(name: string, buildDirectory: ImageInput['buildDirectory'], versioning?: ImageInput['versioning']) {
-		let cacheTag: string | undefined;
 		const tree = await captureTree(function() {
-			const image = new LocalDockerImage(name, imageInput(name, buildDirectory, versioning));
-			cacheTag = image.inputCacheTag;
-
-			return(image);
+			return(new LocalDockerImage(name, imageInput(name, buildDirectory, versioning)));
 		});
 
-		return({ tree, cacheTag });
+		return({ tree });
 	}
 
 	/** The arguments the local builder is given for `docker build` */
@@ -57,22 +54,6 @@ describe('LocalDockerImage', function() {
 			return(expectString(arg, 'a docker builder argument'));
 		}));
 	}
-
-	/*
-	 * The cache ID of the tarball is the caller's `inputCacheTag` when there
-	 * is one, and the image exposes it.
-	 */
-	const cacheTags: [ string, ImageInput['buildDirectory'], string | undefined ][] = [
-		[ 'a directory with an inputCacheTag', directoryOptions({ inputCacheTag: 'my-cache-tag' }), 'my-cache-tag' ],
-		[ 'a directory without an inputCacheTag', directoryOptions({}), undefined ],
-		[ 'a plain directory path', APP_DIRECTORY, undefined ]
-	];
-
-	it.each(cacheTags)('exposes the cache tag for %s', async function(description, buildDirectory, expected) {
-		const { cacheTag } = await build(`cache-tag-${description.replace(/ /g, '-')}`, buildDirectory);
-
-		expect(cacheTag).toBe(expected);
-	});
 
 	it('gives docker build the Dockerfile relative to the build directory, never a temporary path', async function() {
 		const { tree } = await build('relative-dockerfile', directoryOptions({ dockerfilePath: 'Dockerfile' }));
@@ -124,6 +105,54 @@ describe('LocalDockerImage', function() {
 
 		expect(tags[0]).toBe(tags[1]);
 		expect(tags[2]).not.toBe(tags[0]);
+	});
+
+	/** The tag of the image reference, which holds the version */
+	function imageTag(tree: TreeSnapshot): string {
+		return(builderImageURI(tree).split(':').pop() ?? '');
+	}
+
+	/** The tag of an image built from a directory, before and after one file of it changes */
+	async function tagsAroundChange(name: string, files: { [file: string]: string }, changed: string, buildDirectory: (directory: string) => ImageInput['buildDirectory'], versioning: (directory: string) => ImageInput['versioning']) {
+		const directory = directories.make(files);
+		const before = imageTag((await build(`${name}-before`, buildDirectory(directory), versioning(directory))).tree);
+		fs.writeFileSync(path.join(directory, changed), 'changed');
+		const after = imageTag((await build(`${name}-after`, buildDirectory(directory), versioning(directory))).tree);
+
+		return({ before, after });
+	}
+
+	function fileVersion(directory: string): ImageInput['versioning'] {
+		return({ type: 'FILE', fromFile: directory });
+	}
+
+	/* What changes the FILE tag: the build context, not the files it leaves out */
+	const fileTagRows: [ string, { [file: string]: string }, string, (directory: string) => ImageInput['buildDirectory'], boolean ][] = [
+		[ 'keeps the tag when a file in .dockerignore changes', { '.dockerignore': 'skip.log', 'Dockerfile': 'FROM scratch', 'skip.log': 'a' }, 'skip.log', function(directory) {
+			return(directory);
+		}, false ],
+		[ 'keeps the tag when a file in the DIRECTORY excludePatterns changes', { 'Dockerfile': 'FROM scratch', 'skip.txt': 'a' }, 'skip.txt', function(directory) {
+			return({ type: 'DIRECTORY', directory, excludePatterns: [ 'skip.txt' ] });
+		}, false ],
+		[ 'changes the tag when the dockerfilePath file changes, even if .dockerignore lists it', { '.dockerignore': 'build.Dockerfile', 'build.Dockerfile': 'FROM scratch' }, 'build.Dockerfile', function(directory) {
+			return({ type: 'DIRECTORY', directory, dockerfilePath: 'build.Dockerfile' });
+		}, true ]
+	];
+
+	it.each(fileTagRows)('FILE version %s', async function(description, files, changed, buildDirectory, tagChanges) {
+		const { before, after } = await tagsAroundChange(`file-tag-${fileTagRows.findIndex(function(row) {
+			return(row[0] === description);
+		})}`, files, changed, buildDirectory, fileVersion);
+
+		expect(after !== before).toBe(tagChanges);
+	});
+
+	it('GIT version ignores the DIRECTORY excludePatterns', async function() {
+		const versioning: ImageInput['versioning'] = { type: 'GIT', directory: APP_DIRECTORY };
+		const plain = imageTag((await build('git-tag-plain', directoryOptions({}), versioning)).tree);
+		const excluding = imageTag((await build('git-tag-excluding', directoryOptions({ excludePatterns: [ 'Dockerfile' ] }), versioning)).tree);
+
+		expect(excluding).toBe(plain);
 	});
 });
 
