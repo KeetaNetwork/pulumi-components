@@ -269,12 +269,6 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 	readonly imageCache?: pulumi.Output<string>;
 
 	/**
-	 * @deprecated Has no effect. A directory's tarball is cached by the
-	 * fingerprint of its build context.
-	 */
-	readonly inputCacheTag?: string;
-
-	/**
 	 * The build context loaded for a FILE version, which the tarball of the
 	 * same directory reuses
 	 */
@@ -356,10 +350,6 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 
 	constructor(prefix: string, input: GCPDockerImageInput, opts?: pulumi.CustomResourceOptions) {
 		super(`${GCP_COMPONENT_PREFIX}:DockerImage`, prefix, {}, { ...opts });
-
-		if (typeof input.buildDirectory !== 'string' && input.buildDirectory.type === 'DIRECTORY') {
-			this.inputCacheTag = input.buildDirectory.inputCacheTag;
-		}
 
 		const registryUrlOutput = pulumi.output(input.registryUrl);
 
