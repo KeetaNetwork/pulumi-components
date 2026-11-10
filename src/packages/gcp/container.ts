@@ -198,7 +198,7 @@ type ContainerCloudRunOptions = ContainerGenericOptions<true> & ({
 };
 
 
-/** How a worker reaches the internet (B4) */
+/** How a worker reaches the internet (the `egress` of a `CloudRunService` worker) */
 export type ContainerEgress = WorkerEgress;
 
 interface CloudNatArgs {
