@@ -1,10 +1,10 @@
 import * as gcp from '@pulumi/gcp';
-import * as pulumi from '@pulumi/pulumi';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { expectDefined } from '../helpers/narrow';
 import { captureTree, moveAliases, ofType, useIsolatedHome } from './harness/pulumi-tree';
 import { buildService } from './harness/service-builder';
+import { captureWarnings } from './harness/warnings';
 
 const APP_NETWORK = 'Keeta:GCP:AppNetwork';
 const CONNECTION = 'gcp:servicenetworking/connection:Connection';
@@ -12,13 +12,9 @@ const NETWORK = 'gcp:compute/network:Network';
 const SUBNETWORK = 'gcp:compute/subnetwork:Subnetwork';
 const ADDRESS = 'gcp:compute/globalAddress:GlobalAddress';
 
-afterEach(function() {
-	vi.restoreAllMocks();
-});
-
 /*
  * Uniqueness of a connection across separately built services is not
- * visible to any one of them (I-psa-vpc, a convention): the legacy path
+ * visible to any one of them: the legacy path
  * still builds one AppNetwork for each service, and says so.
  */
 describe('services that share a VPC of the caller without an AppNetwork', function() {
@@ -32,22 +28,21 @@ describe('services that share a VPC of the caller without an AppNetwork', functi
 	}
 
 	it('warns, naming AppNetwork, once for each service that builds a network from a VPC', async function() {
-		const warn = vi.spyOn(pulumi.log, 'warn');
+		const { warnings } = await captureWarnings(function() {
+			return(sharedVpc('legacy-warn'));
+		});
 
-		await sharedVpc('legacy-warn');
-
-		expect(warn).toHaveBeenCalledTimes(1);
-		expect(warn).toHaveBeenCalledWith(expect.stringMatching(/AppNetwork/));
+		expect(warnings).toEqual([ expect.stringMatching(/AppNetwork/) ]);
 	});
 
 	it('does not warn about a network that the service creates for itself', async function() {
-		const warn = vi.spyOn(pulumi.log, 'warn');
-
-		await captureTree(function() {
-			return(buildService('own-network', { database: {}}));
+		const { warnings } = await captureWarnings(function() {
+			return(captureTree(function() {
+				return(buildService('own-network', { database: {}}));
+			}));
 		});
 
-		expect(warn).not.toHaveBeenCalled();
+		expect(warnings).toEqual([]);
 	});
 
 	function twoServices() {
