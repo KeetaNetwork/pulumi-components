@@ -10,6 +10,7 @@ import { buildDatabaseEnvVars } from './database-env';
 import { MIGRATION_DEFAULTS } from './defaults';
 import { movedFrom } from './aliases';
 import { callerOf } from './client-auth';
+import { identityGrantsRole } from './identity';
 import type { ServiceIdentityRef } from './identity';
 import { generateName } from '../../utils';
 
@@ -201,19 +202,16 @@ export class MigrationJob extends pulumi.ComponentResource {
 		// Grant Cloud SQL Client role to service account
 		const cloudSqlClientMember = pulumi.interpolate`serviceAccount:${serviceAccount.email}`;
 		let cloudSqlClient: pulumi.Input<pulumi.Resource> | undefined;
-		/* A role that the identity of the app grants is not granted here (in 1.0.95 it was) */
+		/* A role that the identity of the app grants is not granted here */
 		const cloudSqlRole = 'roles/cloudsql.client';
-		let identityGrants = false;
-		if (args.identity) {
-			identityGrants = args.identity.grantedRoles.includes(cloudSqlRole);
-		}
+		const identityGrants = identityGrantsRole(args.identity, cloudSqlRole);
 
 		if (args.gcp.changeProjectIAMPolicy) {
 			if (!identityGrants) {
 				cloudSqlClient = args.gcp.changeProjectIAMPolicy(cloudSqlRole, [cloudSqlClientMember]);
 			}
 		} else {
-			/* When the identity grants the role this is a retained tombstone, else a grant as in 1.0.95 */
+			/* When the identity grants the role, this is a retained tombstone that keeps the binding and its 1.0.95 URN. Otherwise it is the grant. */
 			let retainOnDelete: boolean | undefined;
 			if (identityGrants) {
 				retainOnDelete = true;

@@ -4,6 +4,7 @@ import * as components from '../../';
 import type { GCPCommonOptions } from './common';
 import { generateName } from '../../utils';
 import { CONTAINER_DEFAULTS } from './defaults';
+import { identityGrantsRole } from './identity';
 import type { ServiceIdentityRef } from './identity';
 import type { WorkerEgress } from './apps-args';
 
@@ -395,21 +396,17 @@ function handleGenericOptions(name: string, options: ContainerGenericOptions<tru
 	}
 
 	/**
-	 * Grant project access to write logs/metrics, unless the identity of the
-	 * app grants that role (a role that it does not grant is granted here, as
-	 * in 1.0.95)
+	 * Grant project access to write logs and metrics, unless the identity of
+	 * the app grants that role
 	 */
 	const logRole = 'roles/logging.logWriter';
 	const metricRole = 'roles/monitoring.metricWriter';
 	const identity = options.identity;
-	let identityGrants: (role: string) => boolean = function() {
-		return(false);
-	};
 	if (identity) {
 		policyChangeToDependOn.push(...identity.grants);
-		identityGrants = function(role) {
-			return(identity.grantedRoles.includes(role));
-		};
+	}
+	function identityGrants(role: string) {
+		return(identityGrantsRole(identity, role));
 	}
 
 	if (options.common.gcp.changeProjectIAMPolicy) {

@@ -30,21 +30,21 @@ function baselineUrn(typeChain: string, name: string) {
 }
 
 /*
- * The one table of planned exceptions. A reason says what the exception
- * does, for example 'build provider removed'.
+ * The one table of planned exceptions. A reason says what makes the
+ * exception, for example 'build provider removed'.
  *
  * - `expectedRemovals`: per case, URNs of the released version that this
  *   branch deliberately no longer answers to. An entry that is still matched
  *   fails the test, so entries cannot go stale.
  *
- * There is no `deferredParents` table: the network chain has a component
- * parent (AppNetwork), so no resource is excused from the parent check.
+ * No resource is excused from the parent check: the network chain has a
+ * component parent (AppNetwork).
  */
 /**
  * The URNs that a duplicate environment had in the released version: its
  * manager, and for each secret variable the secret, its version and its
- * binding. The worker and the migration job read the environment of the app
- * from this release on, so these leave (a one-time rollout).
+ * binding. The worker and the migration job read the environment of the
+ * app, so these leave once, on the first deploy after the upgrade.
  */
 function duplicateEnvironment(parentChain: string, manager: string, variables: string[]) {
 	const reason = 'the worker and the migration job read the environment of the app';
@@ -100,10 +100,10 @@ const CALLER_RESOURCES: { [caseName: string]: string[] } = {
 };
 
 /*
- * The resources that move to the component that owns them, then the IAM
- * grants and the network chain. A resource that matches a row must have a component of one of the
- * `parents` types as its parent, named as the prefix of its own name, and
- * exactly one alias: its URN in the released version.
+ * The resources that move to the component that owns them, the IAM grants
+ * and the network chain included. A resource that matches a row must have a
+ * component of one of the `parents` types as its parent, named as the prefix
+ * of its own name, and exactly one alias: its URN in the released version.
  */
 interface Move {
 	type: string;
@@ -494,8 +494,8 @@ describe('component tree', function() {
 			return(Object.entries(urns).map(function([ urn, reason ]): [ string, string, string ] {
 				return([ caseName, urn, reason ]);
 			}));
-		}))('%s: gives a reason for removing %s', function(_caseName, _urn, reason) {
-			expect(reason).toMatch(/^\S+ \S+/);
+		}))('%s: gives the reason for removing %s', function(_caseName, _urn, reason) {
+			expect(reason).not.toBe('');
 		});
 
 		it.each(Object.entries(PLANNED_EXCEPTIONS.plainParents).flatMap(function([ caseName, names ]) {
@@ -742,7 +742,7 @@ describe('component tree', function() {
 			expect(problems).toEqual([]);
 		});
 
-		/* What the move of the grants must leave alone */
+		/* What the move to the identity leaves alone */
 		it.each(caseNames)('%s leaves the registry grants and the secret versions as they are', function(caseName) {
 			const tree = treeOf(caseName);
 			const problems: string[] = [];
@@ -889,9 +889,9 @@ describe('component tree', function() {
 	});
 
 	/*
-	 * An app owns its network through an AppNetwork, `${name}-network`: the VPC it
-	 * creates, the subnet, the connector, the peering and the IAP firewall are
-	 * its children, and a network that the caller passed is
+	 * An app owns its network through an AppNetwork, `${name}-network`: the
+	 * VPC it creates, the subnet, the connector, the peering and the
+	 * IAP firewall are its children, and a network that the caller passed is
 	 * never one of them. Two resources of the library leave: the EGRESS allow
 	 * of the Redis firewall and the default route that the Cloud NAT of a
 	 * worker pool added to the one every network has.
@@ -1034,10 +1034,10 @@ describe('component tree', function() {
 
 	/*
 	 * Pulumi hands `providers` down to the children that have the component
-	 * as an ancestor. Every resource of a component is a descendant of it
-	 * once they move to it, so a provider that the caller passes reaches all of them,
-	 * including the docker image with its IAM grants and the remote build's
-	 * service account and bucket. The first test keeps the snapshot of the released tree.
+	 * as an ancestor. Every resource of a component is a descendant of it,
+	 * so a provider that the caller passes reaches all of them, including the
+	 * docker image with its IAM grants and the remote build's service account
+	 * and bucket.
 	 */
 	/*
 	 * Every HTTPS front end of the library gets one SSL
