@@ -30,16 +30,11 @@ function baselineUrn(typeChain: string, name: string) {
 }
 
 /*
- * The one table of planned exceptions. A reason names the phase that makes
- * the exception and what it does, for example 'P7: build provider removed',
- * so that a later phase can see which entries are its own.
- *
- * - `expectedRemovals`: per case, URNs of the released version that this
- *   branch deliberately no longer answers to. An entry that is still matched
- *   fails the test, so entries cannot go stale.
- * - `deferredParents`: the ending of the name of a resource that still has a
- *   plain (non-component) resource as its parent, and the phase that removes
- *   it. An entry that no resource needs fails the test as well.
+ * URNs of the released version that this branch deliberately no longer
+ * answers to, per case. The reason says what is dropped and why, for
+ * example 'build provider removed'. The table is
+ * empty until a phase drops a URN on purpose. An entry that is still
+ * matched fails the test, so entries cannot go stale.
  */
 const PLANNED_EXCEPTIONS: {
 	expectedRemovals: { [caseName: string]: { [urn: string]: string }};
