@@ -40,7 +40,7 @@ function catchAll(priority: number, service: string) {
 
 /*
  * One route builder serves StaticWebApp and FullStackApp. These are the
- * lists the two of them built inline in 1.0.95 (Design P12, ACCEPT 6): a
+ * lists the two of them built inline in 1.0.95: a
  * different list updates the URL map of an app that is already deployed.
  */
 describe('buildRouteRules', function() {
@@ -205,7 +205,7 @@ function withoutPolicy(tree: TreeSnapshot) {
 }
 
 /*
- * LoadBalancerConfig.sslPolicy (Design P12, R6): left out, the app gets
+ * LoadBalancerConfig.sslPolicy: left out, the app gets
  * its own policy; given, it uses the caller's; false, it has none, as in
  * 1.0.95. Whichever it is, nothing else about the app differs.
  */

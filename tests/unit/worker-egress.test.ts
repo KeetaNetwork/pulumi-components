@@ -161,7 +161,7 @@ describe('egress of a container VM worker', function() {
 		[ 'vpc+nat', [ ADDRESS, ROUTER, NAT ], [ MANAGER ] ]
 	];
 
-	it.each(differences)('differs from egress vpc, with %s, in the resources that the Design names only', async function(egress, added, changed) {
+	it.each(differences)('differs from egress vpc, with %s, only in the resources that this egress adds or changes', async function(egress, added, changed) {
 		const app = 'egress-diff';
 		const before = await workerTree(app, { kind: 'mig', egress: 'vpc', instanceCount: 3 });
 		const after = await workerTree(app, { kind: 'mig', egress, instanceCount: 3 });
