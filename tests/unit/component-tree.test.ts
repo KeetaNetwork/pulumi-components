@@ -73,9 +73,10 @@ const CALLER_RESOURCES: { [caseName: string]: string[] } = {
 
 /*
  * The resources that move to the component that owns them. The IAM grants
- * and the network chain are not here. A resource that matches a row must have a component of one of the
- * `parents` types as its parent, named as the prefix of its own name, and
- * exactly one alias: its URN in the released version.
+ * and the network chain are not here. A resource that matches a row must
+ * have a component of one of the `parents` types as its parent, named as the
+ * prefix of its own name, and exactly one alias: its URN in the released
+ * version.
  */
 interface Move {
 	type: string;
