@@ -30,15 +30,11 @@ function baselineUrn(typeChain: string, name: string) {
 }
 
 /*
- * The one table of planned exceptions. A reason says what makes the
- * exception, for example 'build provider removed'.
- *
- * - `expectedRemovals`: per case, URNs of the released version that this
- *   branch deliberately no longer answers to. An entry that is still matched
- *   fails the test, so entries cannot go stale.
- *
- * No resource is excused from the parent check: the network chain has a
- * component parent (AppNetwork).
+ * URNs of the released version that this branch deliberately no longer
+ * answers to, per case. The reason says what is dropped and why, for
+ * example 'build provider removed'. The table is
+ * empty until a phase drops a URN on purpose. An entry that is still
+ * matched fails the test, so entries cannot go stale.
  */
 /**
  * The URNs that a duplicate environment had in the released version: its
