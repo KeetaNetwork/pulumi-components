@@ -1,12 +1,12 @@
 import * as gcp from '@pulumi/gcp';
-import * as pulumi from '@pulumi/pulumi';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import type * as network from '../../src/packages/gcp/network';
 import { expectDefined } from '../helpers/narrow';
 import { requireSource } from './harness/load-sources';
 import { captureTree, moveAliases, ofType, useIsolatedHome } from './harness/pulumi-tree';
 import { appNetworkArgs, buildService } from './harness/service-builder';
+import { captureWarnings } from './harness/warnings';
 
 const { AppNetwork } = requireSource<typeof network>('src/packages/gcp/network.ts');
 
@@ -14,9 +14,6 @@ const APP_NETWORK = 'Keeta:GCP:AppNetwork';
 const CONNECTION = 'gcp:servicenetworking/connection:Connection';
 const NETWORK = 'gcp:compute/network:Network';
 
-afterEach(function() {
-	vi.restoreAllMocks();
-});
 
 const NETWORK_RESOURCES = [ '-vpc', '-subnet', '-vpc-connector', '-private-ip-alloc', '-svc-networking' ];
 
@@ -67,13 +64,13 @@ describe('services that share an AppNetwork', function() {
 	});
 
 	it('do not warn', async function() {
-		const warn = vi.spyOn(pulumi.log, 'warn');
-
-		await captureTree(function() {
-			const shared = new AppNetwork('shared-quiet', appNetworkArgs());
-			buildService('quiet-a', { network: shared, database: {}});
+		const { warnings } = await captureWarnings(function() {
+			return(captureTree(function() {
+				const shared = new AppNetwork('shared-quiet', appNetworkArgs());
+				buildService('quiet-a', { network: shared, database: {}});
+			}));
 		});
 
-		expect(warn).not.toHaveBeenCalled();
+		expect(warnings).toEqual([]);
 	});
 });
