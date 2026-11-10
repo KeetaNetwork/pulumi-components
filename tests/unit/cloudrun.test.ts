@@ -6,7 +6,7 @@ import { resolveOutput } from '../helpers/outputs';
 import { requireSource } from './harness/load-sources';
 import { captureTree } from './harness/pulumi-tree';
 
-const { EnvManager } = requireSource<typeof cloudrun>('src/packages/gcp/cloudrun.ts');
+const { EnvManager, EnvView } = requireSource<typeof cloudrun>('src/packages/gcp/cloudrun.ts');
 
 type Variables = ConstructorParameters<typeof EnvManager>[1]['variables'];
 
@@ -131,6 +131,26 @@ describe('EnvManager.view', function() {
 		});
 
 		expect(resolved).toEqual([ { name: 'MODE', value: 'worker' }, { name: 'TOKEN', value: 'hidden' }, { name: 'EXTRA', value: 'extra' } ]);
+	});
+
+	it('keeps an overridden variable in its place, in every form', async function() {
+		let forms: unknown;
+		await captureTree(async function() {
+			const view = buildManager('view-order', resolvable).view({ MODE: 'override', EXTRA: 'extra' });
+			forms = [ await namesOf(view.cloudRun), await resolveOutput(pulumi.output(view.resolvedForVm)) ];
+		});
+
+		expect(forms).toEqual([
+			[ 'MODE', 'TOKEN', 'EXTRA' ],
+			[ { name: 'MODE', value: 'override' }, { name: 'TOKEN', value: 'hidden' }, { name: 'EXTRA', value: 'extra' } ]
+		]);
+	});
+
+	it('gives only the overrides for a runtime without a manager', async function() {
+		const view = EnvView.ofOverrides({ EXTRA: 'extra' });
+		const resolved = await resolveOutput(pulumi.output(view.resolvedForVm));
+
+		expect(resolved).toEqual([ { name: 'EXTRA', value: 'extra' } ]);
 	});
 
 	/* A service and a job can read an existing secret, a virtual machine cannot: only reading that form fails */
