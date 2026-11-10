@@ -279,15 +279,29 @@ async function destroyOnce(stack: automation.Stack): Promise<void> {
 }
 
 /**
- * An entry of "pending_operations" in an exported Pulumi state
+ * A property of a value read from an exported Pulumi state, or undefined
  */
-interface PendingOperation {
-	type?: string;
-	resource?: {
-		type?: string;
-		urn?: string;
-		inputs?: { name?: unknown };
-	};
+function propertyOf(value: unknown, key: string): unknown {
+	if (typeof value !== 'object' || value === null || !(key in value)) {
+		return(undefined);
+	}
+
+	return(Object.getOwnPropertyDescriptor(value, key)?.value);
+}
+
+/**
+ * "<type> <name>" of a pending create in an exported Pulumi state, or
+ * undefined for another pending operation
+ */
+function describePendingCreate(operation: unknown): string | undefined {
+	if (propertyOf(operation, 'type') !== 'creating') {
+		return(undefined);
+	}
+
+	const resource = propertyOf(operation, 'resource');
+	const name = propertyOf(propertyOf(resource, 'inputs'), 'name');
+
+	return(`${String(propertyOf(resource, 'type'))} ${typeof name === 'string' ? name : String(propertyOf(resource, 'urn'))}`);
 }
 
 /**
@@ -299,14 +313,9 @@ interface PendingOperation {
 async function untrackedResourcesOf(stack: automation.Stack): Promise<string> {
 	try {
 		const state = await stack.exportStack();
-		const deployment = state.deployment as { pending_operations?: PendingOperation[] } | undefined;
-		const pending = deployment?.pending_operations ?? [];
-		const names = pending.filter(function(operation) {
-			return(operation.type === 'creating');
-		}).map(function(operation) {
-			const name = operation.resource?.inputs?.name;
-
-			return(`${operation.resource?.type} ${typeof name === 'string' ? name : operation.resource?.urn}`);
+		const pending = propertyOf(state.deployment, 'pending_operations');
+		const names = (Array.isArray(pending) ? pending : []).map(describePendingCreate).filter(function(name) {
+			return(name !== undefined);
 		});
 
 		return(names.length === 0 ? '' : `. Pending creates that the state does not track: ${names.join(', ')}`);
