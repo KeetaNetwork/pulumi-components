@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import type * as apps from '../../src/packages/gcp/apps';
 import type * as frontend from '../../src/packages/gcp/https-frontend';
+import type * as lb from '../../src/packages/gcp/lb';
 import { resolveOutput } from '../helpers/outputs';
 import { expectDefined, expectRecord } from '../helpers/narrow';
 import { requireSource } from './harness/load-sources';
@@ -14,10 +15,12 @@ import type { TreeSnapshot } from './harness/pulumi-tree';
 
 const { StaticWebApp } = requireSource<typeof apps>('src/packages/gcp/apps.ts');
 const { buildRouteRules, parseFrontEndConfig } = requireSource<typeof frontend>('src/packages/gcp/https-frontend.ts');
+const { ExternalLoadBalancer } = requireSource<typeof lb>('src/packages/gcp/lb.ts');
 
 const STATIC_DIRECTORY = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../fixtures/static');
 const SSL_POLICY = 'gcp:compute/sSLPolicy:SSLPolicy';
 const HTTPS_PROXY = 'gcp:compute/targetHttpsProxy:TargetHttpsProxy';
+const CERTIFICATE_MAP_ENTRY = 'gcp:certificatemanager/certificateMapEntry:CertificateMapEntry';
 const DOMAIN = 'app.example.com';
 const STATIC_PATHS = [ '/assets/', '/icons/', '/fonts/', '/images/' ];
 
@@ -266,5 +269,73 @@ describe('LoadBalancerConfig.sslPolicy', function() {
 		});
 
 		expect(withoutPolicy(withPolicy)).toEqual(describeTree(without));
+	});
+});
+
+/*
+ * An ExternalLoadBalancer takes the same certificate and SSL policy choices
+ * as an app: a Certificate Manager certificate with `domainName` gives its
+ * map entry that hostname, and `sslPolicy` is created, the caller's, or none.
+ */
+describe('the certificate and SSL policy of an ExternalLoadBalancer', function() {
+	useIsolatedHome();
+
+	type BalancerArgs = Partial<ConstructorParameters<typeof lb.ExternalLoadBalancer>[1]>;
+
+	function balancerTree(name: string, makeExtras: () => BalancerArgs) {
+		return(captureTree(function() {
+			const certificate = new gcp.certificatemanager.Certificate(`${name}-caller-cert`, { managed: { domains: [ DOMAIN ] }});
+
+			return(new ExternalLoadBalancer(name, {
+				common: { gcp: { project: 'project-id' }},
+				baseDescription: 'test app',
+				healthCheck: new gcp.compute.HealthCheck(`${name}-health`, { httpHealthCheck: { port: 8080 }}),
+				target: { type: 'NEG', host: 'backend.example.com' },
+				sslCertificate: certificate,
+				...makeExtras()
+			}));
+		}));
+	}
+
+	function proxyInputs(tree: TreeSnapshot) {
+		return(expectRecord(expectDefined(ofType(tree, HTTPS_PROXY)[0], 'the HTTPS proxy').inputs, 'the inputs of the proxy'));
+	}
+
+	it('gives the map entry of a Certificate Manager certificate the domain name as its hostname', async function() {
+		const tree = await balancerTree('elb-hostname', function() {
+			return({ domainName: DOMAIN });
+		});
+		const entry = expectDefined(ofType(tree, CERTIFICATE_MAP_ENTRY)[0], 'the certificate map entry');
+
+		expect(expectRecord(entry.inputs, 'the inputs of the entry')).toMatchObject({ hostname: DOMAIN });
+	});
+
+	it('matches every host without a domain name', async function() {
+		const tree = await balancerTree('elb-all-hosts', function() {
+			return({});
+		});
+		const entry = expectDefined(ofType(tree, CERTIFICATE_MAP_ENTRY)[0], 'the certificate map entry');
+
+		expect(expectRecord(entry.inputs, 'the inputs of the entry')).not.toHaveProperty('hostname');
+	});
+
+	it('attaches the policy of the caller, and creates none', async function() {
+		const tree = await balancerTree('elb-caller-policy', function() {
+			return({ sslPolicy: new gcp.compute.SSLPolicy('elb-caller-policy-policy', { profile: 'RESTRICTED' }) });
+		});
+
+		expect(ofType(tree, SSL_POLICY).map(function(resource) {
+			return(resource.name);
+		})).toEqual([ 'elb-caller-policy-policy' ]);
+		expect(proxyInputs(tree).sslPolicy).toBeTypeOf('string');
+	});
+
+	it('creates no policy and attaches none when the caller passes false', async function() {
+		const tree = await balancerTree('elb-no-policy', function() {
+			return({ sslPolicy: false });
+		});
+
+		expect(ofType(tree, SSL_POLICY)).toEqual([]);
+		expect(proxyInputs(tree)).not.toHaveProperty('sslPolicy');
 	});
 });
