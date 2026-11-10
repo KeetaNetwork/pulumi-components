@@ -4,7 +4,7 @@ import * as random from '@pulumi/random';
 import type { GCPRegion, PerGCPRegion } from './constants';
 import { POSTGRES_DEFAULTS } from './defaults';
 import { movedFrom } from './aliases';
-import { assertMaxConnectionsUnambiguous, connectionBudget, parseCloudSqlTier, resolveMaxConnections } from './connection-budget';
+import { assertMaxConnectionsUnambiguous, connectionBudget, parseCloudSQLTier, resolveMaxConnections } from './connection-budget';
 import type { ConnectionBudget, TierShape } from './connection-budget';
 
 type VPCNetworkLike = Pick<gcp.compute.Network, 'id' | 'name'>;
@@ -291,7 +291,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 	 * @throws Error naming the tier when no `max_connections` is set and the tier is not one that the library knows
 	 */
 	get connectionBudget(): ConnectionBudget {
-		return(connectionBudget({ maxConnections: this.#maxConnections() }));
+		return(connectionBudget(this.#maxConnections()));
 	}
 
 	constructor(name: string, args: PostgresCloudSQLArgs, opts?: pulumi.ComponentResourceOptions) {
@@ -444,7 +444,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 	 * library does not know gets none: the API default applies.
 	 */
 	#edition(): Edition | undefined {
-		return(EDITION_OF_TIER[parseCloudSqlTier(this.#options.tier).kind]);
+		return(EDITION_OF_TIER[parseCloudSQLTier(this.#options.tier).kind]);
 	}
 
 	/**

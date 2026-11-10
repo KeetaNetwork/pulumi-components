@@ -1,16 +1,18 @@
 import { CLOUD_SQL_CONNECTION_DEFAULTS } from './defaults';
 
-const CUSTOM_TIER = /^db-custom-(\d+)-(\d+)$/;
+const CUSTOM_TIER = /^db-custom-\d+-(\d+)$/;
 const PERF_OPTIMIZED_TIER = /^db-perf-optimized-N-\d+$/;
 
 /** A Cloud SQL tier, read once: what its name says about how many connections it allows */
 export type TierShape = {
+	/** A shared-core tier: Cloud SQL gives it a fixed `max_connections` */
 	kind: 'shared';
 	name: string;
+	maxConnections: number;
 } | {
+	/** A custom tier (`db-custom-<cpus>-<memory MB>`): its memory decides `max_connections` */
 	kind: 'custom';
-	cpus: number;
-	memoryMb: number;
+	memoryMB: number;
 } | {
 	/** A tier of the Enterprise Plus edition (`db-perf-optimized-N-<cpus>`): the library has no table of connections for it */
 	kind: 'perf-optimized';
@@ -63,17 +65,17 @@ export interface MaxConnectionsSource {
 }
 
 /** Reads the name of a tier. Never throws: a tier that is not known is a shape, and only a default asked of it fails. */
-export function parseCloudSqlTier(tier: string): TierShape {
+export function parseCloudSQLTier(tier: string): TierShape {
 	const shared = CLOUD_SQL_CONNECTION_DEFAULTS.shared.find(function(entry) {
 		return(entry.tier === tier);
 	});
 	if (shared !== undefined) {
-		return({ kind: 'shared', name: shared.tier });
+		return({ kind: 'shared', name: shared.tier, maxConnections: shared.maxConnections });
 	}
 
 	const custom = CUSTOM_TIER.exec(tier);
-	if (custom?.[1] !== undefined && custom[2] !== undefined) {
-		return({ kind: 'custom', cpus: Number(custom[1]), memoryMb: Number(custom[2]) });
+	if (custom?.[1] !== undefined) {
+		return({ kind: 'custom', memoryMB: Number(custom[1]) });
 	}
 
 	if (PERF_OPTIMIZED_TIER.test(tier)) {
@@ -99,19 +101,12 @@ export function tierDefaultMaxConnections(shape: TierShape): number {
 	}
 
 	if (shape.kind === 'shared') {
-		const entry = CLOUD_SQL_CONNECTION_DEFAULTS.shared.find(function(candidate) {
-			return(candidate.tier === shape.name);
-		});
-		if (entry === undefined) {
-			throw(new Error(`The default max_connections of the Cloud SQL tier '${shape.name}' is not known`));
-		}
-
-		return(entry.maxConnections);
+		return(shape.maxConnections);
 	}
 
 	let connections: number = CLOUD_SQL_CONNECTION_DEFAULTS.customBands[0].maxConnections;
 	for (const band of CLOUD_SQL_CONNECTION_DEFAULTS.customBands) {
-		if (shape.memoryMb >= band.fromMemoryMb) {
+		if (shape.memoryMB >= band.fromMemoryMB) {
 			connections = band.maxConnections;
 		}
 	}
@@ -151,27 +146,20 @@ export function resolveMaxConnections(source: MaxConnectionsSource & { tier: str
 		return(source.maxConnections);
 	}
 
-	return(tierDefaultMaxConnections(parseCloudSqlTier(source.tier)));
+	return(tierDefaultMaxConnections(parseCloudSQLTier(source.tier)));
 }
 
 /**
  * Splits `maxConnections` into the reserve (whole connections, rounded up so
  * that it is never below its share) and what is available to share
  */
-export function connectionBudget(input: { maxConnections: number; reserveFraction?: number }): ConnectionBudget {
-	const { maxConnections } = input;
-	const reserveFraction = input.reserveFraction ?? CLOUD_SQL_CONNECTION_DEFAULTS.reserveFraction;
-
+export function connectionBudget(maxConnections: number): ConnectionBudget {
 	if (!Number.isInteger(maxConnections) || maxConnections < 0) {
 		throw(new Error(`max_connections must be a whole number of connections, 0 or more (got ${maxConnections})`));
 	}
 
-	if (!(reserveFraction >= 0 && reserveFraction <= 1)) {
-		throw(new Error(`The reserve of the connection budget must be a fraction from 0 to 1 (got ${reserveFraction})`));
-	}
-
 	/* Rounded to nine places first, so that a product such as 120 * 0.1 is not pushed over a whole number by floating point */
-	const reserve = Math.ceil(Number((maxConnections * reserveFraction).toFixed(9)));
+	const reserve = Math.ceil(Number((maxConnections * CLOUD_SQL_CONNECTION_DEFAULTS.reserveFraction).toFixed(9)));
 
 	return({ maxConnections, reserve, available: maxConnections - reserve });
 }

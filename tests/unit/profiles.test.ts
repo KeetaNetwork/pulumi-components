@@ -227,7 +227,7 @@ describe('a service with a profile', function() {
 	it.each(SIZE_TABLE)('counts the maxScale annotation of the caller for the $size budget: the largest scale that fits builds, one more is rejected', async function(row) {
 		const profile: Profile = { environment: 'test', size: row.size };
 		const connections = Number(flagsOf(await profiled(`scale-read-${row.size}`, { profile })).max_connections);
-		const largest = Math.floor((connectionBudget({ maxConnections: connections }).available - row.workerPool) / row.webPool);
+		const largest = Math.floor((connectionBudget(connections).available - row.workerPool) / row.webPool);
 		const scaledTo = function(instances: number): Partial<ServiceArgs> {
 			return({ profile, service: { annotations: { [MAX_SCALE]: String(instances) }}});
 		};
@@ -286,7 +286,7 @@ describe('a service with a profile', function() {
 	it.each(SIZE_TABLE)('fits the explicit pool size of the largest service the $size budget holds, and rejects one more', async function(row) {
 		const profile: Profile = { environment: 'production', size: row.size };
 		const connections = Number(flagsOf(await profiled(`limit-read-${row.size}`, { profile })).max_connections);
-		const largest = Math.floor((connectionBudget({ maxConnections: connections }).available - 1) / row.maxInstances);
+		const largest = Math.floor((connectionBudget(connections).available - 1) / row.maxInstances);
 		const withPool = function(poolSize: number): Partial<ServiceArgs> {
 			return({ profile, database: { poolSize }, worker: { kind: 'crwp', poolSize: 1 }});
 		};

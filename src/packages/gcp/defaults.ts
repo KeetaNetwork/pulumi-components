@@ -36,8 +36,8 @@ export const POSTGRES_DEFAULTS = deepFreeze({
 });
 
 /**
- * What Cloud SQL sets `max_connections` to when nobody does (issue 121), and
- * how much of it the connection budget keeps back. A shared-core tier has a
+ * What Cloud SQL sets `max_connections` to when nobody does (its documented
+ * defaults), and how much of it the connection budget keeps back. A shared-core tier has a
  * fixed value; a custom tier (`db-custom-<cpus>-<MB>`) has the value of the
  * band that its memory falls in, 1 GB being 1024 MB.
  */
@@ -49,13 +49,13 @@ export const CLOUD_SQL_CONNECTION_DEFAULTS = deepFreeze({
 
 	/** Ascending by memory; a custom tier below the first band gets the first one (the lowest value, so the budget stays safe) */
 	customBands: [
-		{ fromMemoryMb: 3840, maxConnections: 100 },
-		{ fromMemoryMb: 6144, maxConnections: 200 },
-		{ fromMemoryMb: 7680, maxConnections: 400 },
-		{ fromMemoryMb: 15360, maxConnections: 500 },
-		{ fromMemoryMb: 30720, maxConnections: 600 },
-		{ fromMemoryMb: 61440, maxConnections: 800 },
-		{ fromMemoryMb: 122880, maxConnections: 1000 }
+		{ fromMemoryMB: 3840, maxConnections: 100 },
+		{ fromMemoryMB: 6144, maxConnections: 200 },
+		{ fromMemoryMB: 7680, maxConnections: 400 },
+		{ fromMemoryMB: 15360, maxConnections: 500 },
+		{ fromMemoryMB: 30720, maxConnections: 600 },
+		{ fromMemoryMB: 61440, maxConnections: 800 },
+		{ fromMemoryMB: 122880, maxConnections: 1000 }
 	],
 
 	/** The share of `max_connections` that is kept back for administration, migrations and the like */
