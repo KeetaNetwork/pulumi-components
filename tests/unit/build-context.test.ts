@@ -147,7 +147,7 @@ describe('tarball of a build context', function() {
 	it.each(rows)('holds exactly the files of the context: %s', async function(_description, files, links, excludePatterns) {
 		const directory = temp.make(files, links);
 		const context = loadBuildContext(directory, { excludePatterns });
-		const archive = new DirTarballArchive(directory, 'cache-id', excludePatterns);
+		const archive = new DirTarballArchive(directory, { excludePatterns });
 
 		expect(listTarballFiles(await archive.path)).toEqual(context.files);
 	});
