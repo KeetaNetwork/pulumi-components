@@ -14,7 +14,7 @@ const ADDRESS = 'gcp:compute/globalAddress:GlobalAddress';
 
 /*
  * Uniqueness of a connection across separately built services is not
- * visible to any one of them (I-psa-vpc, a convention): the legacy path
+ * visible to any one of them: the legacy path
  * still builds one AppNetwork for each service, and says so.
  */
 describe('services that share a VPC of the caller without an AppNetwork', function() {
@@ -32,8 +32,7 @@ describe('services that share a VPC of the caller without an AppNetwork', functi
 			return(sharedVpc('legacy-warn'));
 		});
 
-		expect(warnings).toHaveLength(1);
-		expect(warnings[0]).toMatch(/AppNetwork/);
+		expect(warnings).toEqual([ expect.stringMatching(/AppNetwork/) ]);
 	});
 
 	it('does not warn about a network that the service creates for itself', async function() {
