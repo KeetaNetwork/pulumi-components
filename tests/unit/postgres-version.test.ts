@@ -29,7 +29,7 @@ function editionOf(instance: TreeResource) {
  * A database that is created without a version is created on the current
  * engine, and one that exists keeps the version it has: the instance
  * ignores `databaseVersion` when the caller gave none, so a plain `up`
- * never upgrades, downgrades or replaces it (P16). The mock harness has no
+ * never upgrades, downgrades or replaces it. The mock harness has no
  * earlier state, so these tests pin the option; the outcome is the
  * `pulumi preview` of a real stack with a 14 database.
  */
