@@ -1,8 +1,9 @@
 import { describe, it, expect, afterAll } from 'vitest';
-import { deployStack, destroyStack, type StackOutputs } from '../helpers/pulumi';
+import { deployStack, destroyStack, testStackName, type StackOutputs } from '../helpers/pulumi';
+import { expectRecord, expectString } from '../helpers/narrow';
 
 describe('StaticWebApp', function() {
-	const stackName = `test-${Date.now()}`;
+	const stackName = testStackName('sw');
 	let outputs: StackOutputs | undefined;
 
 	it('deploys and serves content', async function() {
@@ -12,27 +13,27 @@ describe('StaticWebApp', function() {
 		expect(outputs.staticApp).toBeDefined();
 
 		// Get bucket name from component's registered outputs
-		const staticApp = outputs.staticApp as {
-			bucket: { name: string };
-			backendBucket: { enableCdn: boolean; compressionMode: string; cdnPolicy: { cacheMode: string } };
-		};
-		expect(staticApp.bucket?.name).toBeDefined();
+		const staticApp = expectRecord(outputs.staticApp, 'staticApp output');
+		const bucketName = expectString(expectRecord(staticApp.bucket, 'staticApp bucket').name, 'staticApp bucket name');
+		expect(bucketName).toBeDefined();
 
 		/* cdn: { enabled: true } turns on CDN with the defaults */
-		expect(staticApp.backendBucket.enableCdn).toBe(true);
-		expect(staticApp.backendBucket.compressionMode).toBe('AUTOMATIC');
-		expect(staticApp.backendBucket.cdnPolicy.cacheMode).toBe('USE_ORIGIN_HEADERS');
+		const backendBucket = expectRecord(staticApp.backendBucket, 'staticApp backendBucket');
+		const cdnPolicy = expectRecord(backendBucket.cdnPolicy, 'staticApp cdnPolicy');
+		expect(backendBucket.enableCdn).toBe(true);
+		expect(backendBucket.compressionMode).toBe('AUTOMATIC');
+		expect(cdnPolicy.cacheMode).toBe('USE_ORIGIN_HEADERS');
 
-		const staticAppCDNOverride = outputs.staticAppCDNOverride as {
-			backendBucket: { enableCdn: boolean; compressionMode: string; cdnPolicy: { cacheMode: string; defaultTtl: number } };
-		};
-		expect(staticAppCDNOverride.backendBucket.enableCdn).toBe(true);
-		expect(staticAppCDNOverride.backendBucket.compressionMode).toBe('DISABLED');
-		expect(staticAppCDNOverride.backendBucket.cdnPolicy.cacheMode).toBe('FORCE_CACHE_ALL');
-		expect(staticAppCDNOverride.backendBucket.cdnPolicy.defaultTtl).toBe(120);
+		const staticAppCDNOverride = expectRecord(outputs.staticAppCDNOverride, 'staticAppCDNOverride output');
+		const overrideBackendBucket = expectRecord(staticAppCDNOverride.backendBucket, 'staticAppCDNOverride backendBucket');
+		const overrideCDNPolicy = expectRecord(overrideBackendBucket.cdnPolicy, 'staticAppCDNOverride cdnPolicy');
+		expect(overrideBackendBucket.enableCdn).toBe(true);
+		expect(overrideBackendBucket.compressionMode).toBe('DISABLED');
+		expect(overrideCDNPolicy.cacheMode).toBe('FORCE_CACHE_ALL');
+		expect(overrideCDNPolicy.defaultTtl).toBe(120);
 
 		// Fetch the deployed content
-		const bucketUrl = `https://storage.googleapis.com/${staticApp.bucket.name}/index.html`;
+		const bucketUrl = `https://storage.googleapis.com/${bucketName}/index.html`;
 		const response = await fetch(bucketUrl);
 		expect(response.ok).toBe(true);
 

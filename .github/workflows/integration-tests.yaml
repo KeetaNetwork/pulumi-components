@@ -4,9 +4,34 @@ on:
   push:
     branches:
       - main
+  # Only pull requests into main deploy: all stacked pull requests share one
+  # GCP project and its quotas. Run a stacked branch by hand when needed.
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+# One run at a time per pull request; every commit on main has its own group.
+# A running job is never cancelled: a cancelled job skips the tests' teardown
+# and leaves its GCP resources behind. A newer push queues behind the
+# running job instead.
+concurrency:
+  group: integration-tests-${{ github.event_name == 'push' && github.sha || github.ref }}
+  cancel-in-progress: false
 
 jobs:
   test:
+    # Fork pull requests get no secrets, so the GCP login cannot succeed.
+    # A GitHub stack of pull requests runs this workflow for each pull
+    # request in the stack, so the job also checks that the base is main.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.base.ref == 'main')
+    # A pull request runs its own code with the GCP key. The required
+    # reviewers of the "integration-pull-request" environment approve each
+    # such run first; a push to main runs without approval.
+    environment: ${{ github.event_name == 'pull_request' && 'integration-pull-request' || 'integration-main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     permissions:
@@ -33,6 +58,7 @@ jobs:
       - uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6.6.1
 
       - name: Login to Pulumi State Backend
+        id: pulumi_login
         run: pulumi login gs://pulumi-liftoffs-truest-561598453/
 
       - name: Build
@@ -41,10 +67,79 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run Integration Tests
-        run: make test
+        # Leaves the cleanup step time to run inside the job's timeout
+        timeout-minutes: 80
+        run: make test-integration
         env:
           GOOGLE_PROJECT: ${{ vars.GOOGLE_PROJECT }}
           TEST_DOMAIN: ${{ vars.TEST_DOMAIN }}
+          # Makes the domain unique per run, inside the same DNS zone, so concurrent runs do not share a record or certificate
+          TEST_DOMAIN_PREFIX: r${{ github.run_id }}
           TEST_DNS_ZONE_ID: ${{ vars.TEST_DNS_ZONE_ID }}
           PULUMI_EXPERIMENTAL: "true"
-          PULUMI_SKIP_CHECKPOINTS: "true"
+
+      # Destroys this run's stacks whatever the tests did (failed, cancelled,
+      # timed out), and any stale test stack an earlier run left behind. It
+      # fails the job if a stack cannot be destroyed. An aborted test step
+      # leaves its processes running until the job ends, holding their stack
+      # locks, so they are stopped first. The stale locks are deleted with
+      # the gcloud CLI from the "setup-gcloud" step.
+      - name: Clean Up Integration Test Stacks
+        if: ${{ always() && steps.pulumi_login.outcome == 'success' }}
+        timeout-minutes: 35
+        run: make ci-stop-test-processes cleanup-integration
+        env:
+          GOOGLE_PROJECT: ${{ vars.GOOGLE_PROJECT }}
+          PULUMI_EXPERIMENTAL: "true"
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Publishes only after the integration tests passed on the same commit,
+  # and never from a pull request.
+  publish:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Read Node Version
+        id: node_version
+        run: echo "NODE_VERSION=$(jq -crM .engines.node < package.json)" >> $GITHUB_OUTPUT
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ steps.node_version.outputs.NODE_VERSION }}
+          registry-url: 'https://npm.pkg.github.com'
+
+      - name: Install Packages
+        run: make node_modules
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lint
+        run: make do-lint
+
+      - name: Type-check
+        run: make typecheck
+
+      - name: Unit Tests
+        run: make test-unit
+
+      - name: Build
+        run: make dist
+
+      - name: Check version changes
+        uses: EndBug/version-check@eea9dab124be9214bd32356f32f7d8945173db13 # v1
+        id: check
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          diff-search: true
+
+      - name: Publish Package
+        if: steps.check.outputs.changed == 'true'
+        run: cd dist && npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

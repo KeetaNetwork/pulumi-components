@@ -1,8 +1,10 @@
 import { describe, it, expect, afterAll } from 'vitest';
-import { deployStack, destroyStack, type StackOutputs } from '../helpers/pulumi';
+import { deployStack, destroyStack, testStackName, type StackOutputs } from '../helpers/pulumi';
+import { expectString } from '../helpers/narrow';
+import { expectDynamicOutputs, expectHealthyDatabaseService, expectMigrationsApplied } from '../helpers/service-checks';
 
 describe('CloudRunService with Database', function() {
-	const stackName = `test-${Date.now()}`;
+	const stackName = testStackName('db');
 	let outputs: StackOutputs | undefined;
 
 	it('deploys and connects to database', async function() {
@@ -12,42 +14,15 @@ describe('CloudRunService with Database', function() {
 		expect(outputs.backend).toBeDefined();
 		expect(outputs.serviceUrl).toBeDefined();
 
-		// Make HTTP request to verify database connectivity
-		const serviceUrl = outputs.serviceUrl as string;
-		const response = await fetch(serviceUrl);
-		const body = await response.text();
-		expect(response.ok, `HTTP ${response.status}: ${body}`).toBe(true);
-
-		// Verify database connection succeeded
-		const data = JSON.parse(body) as {
-			status: string;
-			database: string;
-			env: Record<string, string>;
-		};
-		expect(data.status).toBe('ok');
-		expect(data.database).toBeDefined();
-
-		// Verify env vars were injected ("set" means the env var was injected)
-		expect(data.env.user).toBe('set');
-		expect(data.env.password).toBe('set');
-		expect(data.env.database).toBe('set');
-		expect(data.env.host).toBe('set');
-		expect(data.env.port).toBe('set');
+		// Verify database connectivity and the injected env vars
+		const serviceUrl = expectString(outputs.serviceUrl, 'serviceUrl');
+		await expectHealthyDatabaseService(serviceUrl);
 
 		// Verify migrations ran by querying the test_migrations table
-		const migrationsResponse = await fetch(`${serviceUrl}/migrations`);
-		const migrationsBody = await migrationsResponse.text();
-		expect(migrationsResponse.ok, `Migrations HTTP ${migrationsResponse.status}: ${migrationsBody}`).toBe(true);
+		await expectMigrationsApplied(`${serviceUrl}/migrations`);
 
-		const migrationsData = JSON.parse(migrationsBody) as {
-			status: string;
-			count: number;
-			rows: Array<{ id: number; name: string; created_at: string }>;
-		};
-		expect(migrationsData.status).toBe('ok');
-		expect(migrationsData.count).toBeGreaterThan(0);
-		expect(migrationsData.rows.length).toBeGreaterThan(0);
-		expect(migrationsData.rows[0].name).toMatch(/^migration-/);
+		// The dynamic resources report their outputs: the digest of the local build pins the image, and the run of the migration reports its status
+		expectDynamicOutputs(outputs);
 	}, 1_800_000); // 30 min timeout for Cloud SQL + image build
 
 	afterAll(async function() {

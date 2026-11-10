@@ -1,6 +1,7 @@
 import * as pulumi from '@pulumi/pulumi';
 import * as gcp from '@pulumi/gcp';
 import * as path from 'node:path';
+import { createHash } from 'node:crypto';
 import { gcp as gcpComponents } from '@keetanetwork/pulumi-components';
 
 const gcpProject = gcp.config.project ?? process.env.GOOGLE_PROJECT ?? process.env.GCLOUD_PROJECT;
@@ -13,8 +14,13 @@ const domain = config.require('domain');
 const dnsZoneId = config.get('dnsZoneId');
 
 const region: gcpComponents.constants.GCPRegion = 'us-central1';
-const stack = pulumi.getStack();
-const name = `fs-test-${stack}`.substring(0, 25);
+/*
+ * GCP resource names derive from "name", and some GCP names allow few
+ * characters. A short hash of the stack name keeps them short and unique for
+ * every stack, whatever the length of the stack name.
+ */
+const stackId = createHash('sha256').update(pulumi.getStack()).digest('hex').substring(0, 8);
+const name = `fs-test-${stackId}`;
 
 const registry = new gcp.artifactregistry.Repository(`${name}-repo`, {
 	location: region,
@@ -73,3 +79,11 @@ export const app = new gcpComponents.apps.FullStackApp(name, {
 
 export const serviceUrl = app.backend.service.statuses.apply(function(s) { return(s[0]?.url); });
 export const ips = app.ips;
+
+// The image that the service runs, pinned by the digest that Cloud Build reported
+export const deployedImage = app.backend.service.template.apply(function(template) {
+	return(template?.spec.containers[0]?.image);
+});
+
+// The status of the migration run, as the dynamic resource of the run reported it
+export const migrationStatus = app.backend.migration?.status;
