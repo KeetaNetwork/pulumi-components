@@ -30,9 +30,8 @@ function baselineUrn(typeChain: string, name: string) {
 }
 
 /*
- * The one table of planned exceptions. A reason names the phase that makes
- * the exception and what it does, for example 'build provider removed',
- * so that a later phase can see which entries are its own.
+ * The one table of planned exceptions. A reason says what makes the
+ * exception, for example 'build provider removed'.
  *
  * - `expectedRemovals`: per case, URNs of the released version that this
  *   branch deliberately no longer answers to. An entry that is still matched
@@ -74,9 +73,10 @@ const CALLER_RESOURCES: { [caseName: string]: string[] } = {
 
 /*
  * The resources that move to the component that owns them. The IAM grants
- * and the network chain are not here. A resource that matches a row must have a component of one of the
- * `parents` types as its parent, named as the prefix of its own name, and
- * exactly one alias: its URN in the released version.
+ * and the network chain are not here. A resource that matches a row must
+ * have a component of one of the `parents` types as its parent, named as the
+ * prefix of its own name, and exactly one alias: its URN in the released
+ * version.
  */
 interface Move {
 	type: string;
