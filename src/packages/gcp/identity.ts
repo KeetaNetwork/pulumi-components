@@ -14,10 +14,18 @@ export interface ServiceIdentityRef {
 	grants: pulumi.Input<pulumi.Resource>[];
 
 	/**
-	 * The project roles that the identity grants itself. A component skips
-	 * (or retains) its own grant of a role only if it is in this list.
+	 * Whether the identity grants the project role itself. A component skips
+	 * (or retains) its own grant of a role only when this is true.
 	 */
-	grantedRoles: string[];
+	grantsRole(role: string): boolean;
+}
+
+/**
+ * Whether the identity a component received grants the role, so the
+ * component does not. Without an identity, the component grants it.
+ */
+export function identityGrantsRole(identity: ServiceIdentityRef | undefined, role: string): boolean {
+	return(identity?.grantsRole(role) ?? false);
 }
 
 export interface ServiceIdentityArgs {
@@ -79,7 +87,8 @@ function appProjectRoles(args: Pick<ServiceIdentityArgs, 'app' | 'database' | 'w
 
 /**
  * The one owner of the service account of an app and of the project roles
- * that it is granted (invariant I-iam-owner). The components of the app
+ * that it is granted: each role is granted once, by the identity. The
+ * components of the app
  * (the migration job and the worker) receive it and grant nothing.
  *
  * `changeProjectIAMPolicy` is asked for each role once, here.
@@ -94,6 +103,10 @@ export class ServiceIdentity extends pulumi.ComponentResource {
 
 	/** The roles that this identity grants (none when the caller's account is used or `grantRoles` is false) */
 	readonly grantedRoles: string[] = [];
+
+	grantsRole(role: string): boolean {
+		return(this.grantedRoles.includes(role));
+	}
 
 	/**
 	 * @param name Name of the app: the identity is `${name}-identity`, and

@@ -102,7 +102,7 @@ function secretOf(app: string, variable: string) {
 
 /*
  * An app has one environment. Its secrets are made once, by `${name}-env`,
- * and the service, the migration job and the worker read them (P9).
+ * and the service, the migration job and the worker read them.
  */
 describe('the environment of an app', function() {
 	useIsolatedHome();
