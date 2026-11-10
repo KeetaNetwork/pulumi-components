@@ -43,11 +43,9 @@ function profiled(name: string, extra: Partial<ServiceArgs>) {
 }
 
 /*
- * The numbers of issue 121's starting table, for the size axis. The issue
- * gives max_connections as "60-75", "~150" and "~800". Small stays within
- * the 75 that db-g1-small holds (about 13 MB a backend), so its worker pool
- * is 7, which with 12 x 5 fills the 67 that 75 leaves after the reserve;
- * medium and large are wide enough to hold what the budget needs.
+ * The numbers of the size axis. Each size fills or fits the connections that
+ * its max_connections leaves after the reserve: small 12 x 5 + 7 = 67 of 67,
+ * medium 12 x 10 + 16 = 136 of 139, large 70 x 10 + 64 = 764 of 765.
  */
 const SIZE_TABLE = [
 	{ size: 'small', tier: 'db-g1-small', connections: [ 60, 75 ], maxInstances: 12, webPool: 5, workerPool: 7 },
@@ -121,7 +119,7 @@ describe('a service with a profile', function() {
 		expect(read.connections).toBeLessThanOrEqual(row.connections[1]);
 	});
 
-	/* Every preset is within its own budget: building it runs the check of P13 */
+	/* Every preset is within its own budget: building it runs the connection budget check */
 	it.each(ALL_PROFILES)('builds the $environment $size preset, which fits its own connection budget', async function(profile) {
 		const tree = await profiled(`profile-fits-${profile.environment}-${profile.size}`, { profile });
 
@@ -173,7 +171,7 @@ describe('a service with a profile', function() {
 
 	/*
 	 * On the size axis the tier and its max_connections go together: a tier
-	 * of the caller brings the default of that tier (P13), not the profile's.
+	 * of the caller brings the default of that tier, not the profile's.
 	 */
 	const tiers = [
 		{ size: 'small', tier: 'db-custom-1-3840', connections: '100' },
@@ -252,9 +250,10 @@ describe('a service with a profile', function() {
 
 	it('builds the same app from the spread values of the profiles export as from the profile', async function() {
 		const profile = production;
-		const values = profiles[profile.environment][profile.size];
+		/* `kv` is left out: it would add a store that the profiled app does not have */
+		const { database, service, vpc, worker } = profiles[profile.environment][profile.size];
 		const fromProfile = await profiled('spread-app', { profile });
-		const spread = await captureService('spread-app', { ...values, worker: { kind: 'crwp', ...values.worker }});
+		const spread = await captureService('spread-app', { database, service, vpc, worker: { kind: 'crwp', ...worker }});
 
 		expect(describeTree(spread)).toEqual(describeTree(fromProfile));
 	});
@@ -311,13 +310,13 @@ describe('the Redis and the connector of a service with a profile', function() {
 	it('gives the Redis of the app the memory of the profile when kv names none', async function() {
 		const tree = await profiled('kv-profile', { profile: production, kv: { type: 'redis' }});
 
-		expect(inputOf(tree, REDIS, 'memorySizeGb')).toBe(values.kvMemorySizeGb);
+		expect(inputOf(tree, REDIS, 'memorySizeGb')).toBe(values.kv.memorySizeGb);
 	});
 
 	it('keeps the memory of the caller for the Redis, whatever the profile says', async function() {
-		const tree = await profiled('kv-explicit', { profile: production, kv: { type: 'redis', memorySizeGb: values.kvMemorySizeGb + 1 }});
+		const tree = await profiled('kv-explicit', { profile: production, kv: { type: 'redis', memorySizeGb: values.kv.memorySizeGb + 1 }});
 
-		expect(inputOf(tree, REDIS, 'memorySizeGb')).toBe(values.kvMemorySizeGb + 1);
+		expect(inputOf(tree, REDIS, 'memorySizeGb')).toBe(values.kv.memorySizeGb + 1);
 	});
 
 	it('rejects a Redis without memory when no profile gives it', async function() {
