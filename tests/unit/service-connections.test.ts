@@ -8,7 +8,7 @@ import { requireSource } from './harness/load-sources';
 import { ofType, useIsolatedHome } from './harness/pulumi-tree';
 import type { TreeSnapshot } from './harness/pulumi-tree';
 import { annotationsOf, captureService, databaseInput, environmentOf } from './harness/service-builder';
-import { captureWarningsAsync } from './harness/warnings';
+import { captureWarnings } from './harness/warnings';
 
 const { ConnectionBudgetExceededError } = requireSource<typeof budget>('src/packages/gcp/connection-budget.ts');
 const { CloudRunServiceArgsError } = requireSource<typeof apps>('src/packages/gcp/apps.ts');
@@ -185,7 +185,7 @@ describe('the connection budget of a service', function() {
 	];
 
 	it.each(migrationPools)('$title', async function(testCase) {
-		const { warnings } = await captureWarningsAsync(function() {
+		const { warnings } = await captureWarnings(function() {
 			return(captureService('budget-migration-reserve', budgeted({ migration: testCase.migration, database: { flags: { max_connections: 100 }, poolSize: testCase.poolSize }, service: { maxInstances: 1 }})));
 		});
 		const reserve = warnings.filter(function(message) {
@@ -196,7 +196,7 @@ describe('the connection budget of a service', function() {
 	});
 
 	it('names the pool size and the reserve in the warning about the migration job', async function() {
-		const { warnings } = await captureWarningsAsync(function() {
+		const { warnings } = await captureWarnings(function() {
 			return(captureService('budget-migration-reserve-text', budgeted({ database: { flags: { max_connections: 100 }, poolSize: 11 }, service: { maxInstances: 1 }})));
 		});
 

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { expectDefined } from '../helpers/narrow';
 import { captureTree, moveAliases, ofType, useIsolatedHome } from './harness/pulumi-tree';
 import { buildService } from './harness/service-builder';
-import { captureWarningsAsync } from './harness/warnings';
+import { captureWarnings } from './harness/warnings';
 
 const APP_NETWORK = 'Keeta:GCP:AppNetwork';
 const CONNECTION = 'gcp:servicenetworking/connection:Connection';
@@ -28,7 +28,7 @@ describe('services that share a VPC of the caller without an AppNetwork', functi
 	}
 
 	it('warns, naming AppNetwork, once for each service that builds a network from a VPC', async function() {
-		const { warnings } = await captureWarningsAsync(function() {
+		const { warnings } = await captureWarnings(function() {
 			return(sharedVpc('legacy-warn'));
 		});
 
@@ -37,7 +37,7 @@ describe('services that share a VPC of the caller without an AppNetwork', functi
 	});
 
 	it('does not warn about a network that the service creates for itself', async function() {
-		const { warnings } = await captureWarningsAsync(function() {
+		const { warnings } = await captureWarnings(function() {
 			return(captureTree(function() {
 				return(buildService('own-network', { database: {}}));
 			}));
