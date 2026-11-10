@@ -29,13 +29,6 @@ function baselineUrn(typeChain: string, name: string) {
 	return(`${BASELINE_PREFIX}${typeChain}::${name}`);
 }
 
-/*
- * URNs of the released version that this branch deliberately no longer
- * answers to, per case. The reason says what is dropped and why, for
- * example 'build provider removed'. The table is
- * empty until a phase drops a URN on purpose. An entry that is still
- * matched fails the test, so entries cannot go stale.
- */
 /**
  * The URNs that a duplicate environment had in the released version: its
  * manager, and for each secret variable the secret, its version and its
@@ -58,6 +51,17 @@ function duplicateEnvironment(parentChain: string, manager: string, variables: s
 
 const DATABASE_SECRETS = [ 'mc-psql-db-password', 'mc-psql-db-url' ];
 
+/*
+ * The one table of planned exceptions. A reason says what makes the
+ * exception, for example 'build provider removed'.
+ *
+ * - `expectedRemovals`: per case, URNs of the released version that this
+ *   branch deliberately no longer answers to. An entry that is still matched
+ *   fails the test, so entries cannot go stale.
+ *
+ * No resource is excused from the parent check: the network chain has a
+ * component parent (AppNetwork).
+ */
 const PLANNED_EXCEPTIONS: {
 	expectedRemovals: { [caseName: string]: { [urn: string]: string }};
 	/** Resources that keep a plain resource as their parent, by name */
