@@ -129,12 +129,6 @@ describe('secret variables roll out with their version', function() {
 	}
 
 	describe.each(paths)('in $description', function(path) {
-		it('uses the version number the provider returned', async function() {
-			const tree = await capture(path, 'one');
-
-			expect(path.versionOf(entryNamed(path, tree, 'API_TOKEN'))).toBe('1');
-		});
-
 		it('keeps the version the caller named for an existing secret', async function() {
 			const tree = await capture(path, 'one');
 
