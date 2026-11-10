@@ -69,7 +69,7 @@ const PLANNED_EXCEPTIONS: {
 } = {
 	plainParents: {
 		'internal-load-balancer': Object.fromEntries([ '-cert', '-map', '-target', '-ilb', '-ilb-in', '-ilb-in-health' ].map(function(ending) {
-			return([ `internal-load-balancer${ending}`, 'P12: not moved, outside IN 13' ]);
+			return([ `internal-load-balancer${ending}`, 'not moved: the internal load balancer is outside the move' ]);
 		}))
 	},
 	expectedRemovals: {
@@ -177,10 +177,10 @@ const MOVES: Move[] = [
 	{ type: 'gcp:compute/firewall:Firewall', name: /-ssh-iap-firewall$/, parents: [ APP_NETWORK ], oldParent: NETWORK, parentSuffix: '-network' },
 	{ type: 'gcp:compute/firewall:Firewall', name: /-kv-firewall$/, parents: [ APP_NETWORK ], oldParent: NETWORK, parentSuffix: '-network' },
 	/*
-	 * P12: what ExternalLoadBalancer put under its own URL map, backend
+	 * What ExternalLoadBalancer put under its own URL map, backend
 	 * service or forwarding rule moves to the component (the redirect rows
 	 * above cover its HTTP redirect). Each row names the type of the old
-	 * parent. InternalLoadBalancer moves nothing (Design P12, outside IN 13).
+	 * parent. InternalLoadBalancer moves nothing.
 	 */
 	{ type: URL_MAP, name: /-ext-map$/, parents: [ EXTERNAL_LB ], oldParent: 'gcp:compute/backendService:BackendService' },
 	{ type: CERTIFICATE_MAP, name: /-ext-cert-map$/, parents: [ EXTERNAL_LB ], oldParent: URL_MAP },
@@ -1040,11 +1040,10 @@ describe('component tree', function() {
 	 * and bucket.
 	 */
 	/*
-	 * Design P12, R6: every HTTPS front end of the library gets one SSL
+	 * Every HTTPS front end of the library gets one SSL
 	 * policy of its own (`${name}-ssl-policy`), attached to its proxy. It is
 	 * the only resource the release creates: no front end loses or replaces
-	 * anything. InternalLoadBalancer is outside this table: the Design does
-	 * not say that it gets a policy.
+	 * anything. InternalLoadBalancer is outside this table: it gets no policy.
 	 */
 	describe('SSL policy', function() {
 		/* [ case, the proxy, the policy it is attached to ] */
@@ -1085,7 +1084,7 @@ describe('component tree', function() {
 	});
 
 	/*
-	 * Design P12, B19: the policy of InternalLoadBalancer is named after the
+	 * The policy of InternalLoadBalancer is named after the
 	 * internal balancer. Its parent stays, so one alias to the URN under the
 	 * old name is all the move needs, and nothing is replaced.
 	 */
