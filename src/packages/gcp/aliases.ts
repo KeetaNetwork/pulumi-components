@@ -13,9 +13,10 @@ export type OldParent = {
 };
 
 /**
- * The URN that a resource had before it moved to another parent. This SDK
- * has no alias for "no parent", so a resource that sat at the root of the
- * stack gets its URN built without a parent.
+ * The URN that a resource had before it moved to another parent. A resource
+ * that sat at the root of the stack gets its URN built without a parent.
+ * Every move uses this one alias form, an exact URN, so the baseline test
+ * compares each alias string for string with the URNs of 1.0.95.
  */
 export function legacyUrn(name: string, type: string, oldParent: OldParent): pulumi.Output<pulumi.URN> {
 	if (oldParent.kind === 'stack') {
