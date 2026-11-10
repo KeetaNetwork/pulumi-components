@@ -31,9 +31,9 @@ const MACHINE_SCOPES = [
 ];
 
 /*
- * The values are those of 1.0.95. The component tree snapshot proves that the
- * components still use them; these tests prove that the module holds them,
- * in the object that owns each one, and that nobody can change them.
+ * The component tree snapshot proves that the components use these values.
+ * These tests prove that the module holds them, in the object that owns
+ * each one, and that nobody can change them.
  */
 describe('defaults module', function() {
 	const names = Object.keys(exported);
