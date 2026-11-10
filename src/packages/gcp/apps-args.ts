@@ -637,7 +637,7 @@ function applyProfile(args: CloudRunServiceArgs): CloudRunServiceArgs {
 	}
 
 	if (args.kv !== undefined) {
-		layered.kv = { ...args.kv, memorySizeGb: args.kv.memorySizeGb ?? values.kvMemorySizeGb };
+		layered.kv = { ...args.kv, memorySizeGb: args.kv.memorySizeGb ?? values.kv.memorySizeGb };
 	}
 
 	/* An AppNetwork owns its connector, and an app with no network resource gets none from a profile */

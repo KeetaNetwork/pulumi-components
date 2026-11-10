@@ -17,10 +17,11 @@ export interface DeploymentProfile {
 }
 
 /**
- * What a profile stands for. The fields mirror the arguments of
- * `CloudRunService`, so a caller can spread them (`{ ...profiles.production.small }`),
- * except `kvMemorySizeGb`, which is the value for `kv.memorySizeGb` of an app
- * that has a key-value store (a spread cannot make one).
+ * What a profile stands for, with the names of the arguments of
+ * `CloudRunService`, so a caller can spread them (`{ ...profiles.production.small }`).
+ * Leave `kv` out of a spread unless the app has a key-value store (it only
+ * gives `kv.memorySizeGb`, and `kv` adds a store), and leave `vpc` out when
+ * the app has a `network`.
  */
 export interface ProfileValues {
 	database: {
@@ -42,35 +43,32 @@ export interface ProfileValues {
 	service: { maxInstances: number };
 	worker: { poolSize: number };
 	vpc: { connector: { minInstances: number; maxInstances: number }};
-	kvMemorySizeGb: number;
+	kv: { memorySizeGb: number };
 }
 
 /** Merges the two axes into the values of the profile. Pure: every call returns new objects. */
 export function resolveProfile(profile: DeploymentProfile): ProfileValues {
-	const environment = PROFILE_PRESETS.environment[profile.environment];
+	const environment = PROFILE_PRESETS.environment[profile.environment].database;
 	const size = PROFILE_PRESETS.size[profile.size];
 
 	const values: ProfileValues = {
 		database: {
-			tier: size.tier,
-			flags: { max_connections: size.maxConnections },
-			poolSize: size.service.poolSize,
+			tier: size.database.tier,
+			flags: { ...size.database.flags },
+			poolSize: size.database.poolSize,
 			deletionProtection: environment.deletionProtection,
 			queryInsights: environment.queryInsights
 		},
-		service: { maxInstances: size.service.maxInstances },
-		worker: { poolSize: size.worker.poolSize },
-		vpc: { connector: { ...size.connector }},
-		kvMemorySizeGb: size.kv.memorySizeGb
+		service: { ...size.service },
+		worker: { ...size.worker },
+		vpc: { connector: { ...size.vpc.connector }},
+		kv: { ...size.kv }
 	};
 
 	if (environment.backups !== undefined) {
 		values.database.backups = {
 			pointInTimeRecovery: environment.backups.pointInTimeRecovery,
-			retentionSettings: {
-				retainCount: environment.backups.retainCount,
-				transactionLogRetentionDays: environment.backups.transactionLogRetentionDays
-			}
+			retentionSettings: { ...environment.backups.retentionSettings }
 		};
 	}
 

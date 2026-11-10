@@ -107,60 +107,56 @@ export const CLOUD_RUN_SERVICE_DEFAULTS = deepFreeze({
 });
 
 /**
- * The presets of the deployment profiles (`profiles.ts`), from the starting
- * table of issue 121. The two axes are independent: `environment` sets what
- * is about safety and visibility, `size` what is about capacity.
+ * The presets of the deployment profiles (`profiles.ts`), in the shape of the
+ * arguments of `CloudRunService`. The two axes are independent:
+ * `environment` sets safety and visibility, `size` sets capacity.
  *
- * Small keeps the 75 connections that the issue estimates for a
- * `db-g1-small` (about 13 MB a backend), and its worker pool is 7 so that the
- * demand fits: the connection budget keeps 10% of `max_connections` back and
- * counts the worker, which leaves 67 connections (12 x 5 + 7 = 67). The issue's
- * worker pool of 10 needed 78. Medium and large take a `maxConnections` a
- * little above the issue's (about 150, about 800) for the same reason: their
- * rows need 136 and 764 connections, so medium 155 leaves 139 and large 850
- * leaves 765.
+ * Each size fits its own connection budget: `max_connections` less the
+ * reserve of 10% holds every instance of the service with its pool, and the
+ * worker with its pool. Small (75 connections on a `db-g1-small`) leaves 67
+ * for 12 x 5 + 7. Medium (155) leaves 139 for 12 x 10 + 16. Large (850)
+ * leaves 765 for 70 x 10 + 64.
  */
 export const PROFILE_PRESETS = deepFreeze({
 	environment: {
 		development: {
-			deletionProtection: false,
-			queryInsights: false,
-			backups: undefined
+			database: { deletionProtection: false, queryInsights: false, backups: undefined }
 		},
 		test: {
-			deletionProtection: false,
-			queryInsights: true,
-			backups: { pointInTimeRecovery: false, retainCount: 3, transactionLogRetentionDays: undefined }
+			database: {
+				deletionProtection: false,
+				queryInsights: true,
+				backups: { pointInTimeRecovery: false, retentionSettings: { retainCount: 3, transactionLogRetentionDays: undefined }}
+			}
 		},
 		production: {
-			deletionProtection: true,
-			queryInsights: true,
-			backups: { pointInTimeRecovery: true, retainCount: 14, transactionLogRetentionDays: 7 }
+			database: {
+				deletionProtection: true,
+				queryInsights: true,
+				backups: { pointInTimeRecovery: true, retentionSettings: { retainCount: 14, transactionLogRetentionDays: 7 }}
+			}
 		}
 	},
 	size: {
 		small: {
-			tier: 'db-g1-small',
-			maxConnections: 75,
-			service: { maxInstances: 12, poolSize: 5 },
+			database: { tier: 'db-g1-small', flags: { max_connections: 75 }, poolSize: 5 },
+			service: { maxInstances: 12 },
 			worker: { poolSize: 7 },
-			connector: { minInstances: 2, maxInstances: 3 },
+			vpc: { connector: { minInstances: 2, maxInstances: 3 }},
 			kv: { memorySizeGb: 1 }
 		},
 		medium: {
-			tier: 'db-custom-1-3840',
-			maxConnections: 155,
-			service: { maxInstances: 12, poolSize: 10 },
+			database: { tier: 'db-custom-1-3840', flags: { max_connections: 155 }, poolSize: 10 },
+			service: { maxInstances: 12 },
 			worker: { poolSize: 16 },
-			connector: { minInstances: 2, maxInstances: 5 },
+			vpc: { connector: { minInstances: 2, maxInstances: 5 }},
 			kv: { memorySizeGb: 2 }
 		},
 		large: {
-			tier: 'db-custom-4-15360',
-			maxConnections: 850,
-			service: { maxInstances: 70, poolSize: 10 },
+			database: { tier: 'db-custom-4-15360', flags: { max_connections: 850 }, poolSize: 10 },
+			service: { maxInstances: 70 },
 			worker: { poolSize: 64 },
-			connector: { minInstances: 3, maxInstances: 10 },
+			vpc: { connector: { minInstances: 3, maxInstances: 10 }},
 			kv: { memorySizeGb: 5 }
 		}
 	}
