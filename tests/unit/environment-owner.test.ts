@@ -99,7 +99,7 @@ describe('the environment of an app', function() {
 		expect(Object.keys(environment)).not.toContain('W');
 	});
 
-	/* The worker of 1.0.95 had no Redis variables (B6) */
+	/* The worker of 1.0.95 had no Redis variables */
 	it('gives the Cloud Run worker pool the secrets of the app, the Redis variables and its own overrides only', async function() {
 		const app = 'env-pool';
 		const environment = environmentOf(await captureService(app, argsFor('crwp')), POOL_TYPE);
