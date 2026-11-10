@@ -50,7 +50,7 @@ describe('defaults module', function() {
 		expect(CONTAINER_DEFAULTS.crwp.size).toEqual({ cpu: '2', ram: '4096' });
 	});
 
-	/* The two front ends differ on purpose (Design DE7): unifying the lists would update the URL map of every StaticWebApp */
+	/* The two front ends differ on purpose: unifying the lists would update the URL map of every StaticWebApp */
 	it('keeps the routing defaults of each front end apart', function() {
 		const paths = [ '/assets/', '/icons/', '/fonts/', '/images/' ];
 
