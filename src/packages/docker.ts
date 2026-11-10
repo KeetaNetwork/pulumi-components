@@ -548,7 +548,7 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 				name: 'gcr.io/cloud-builders/gcloud',
 				entrypoint: 'bash',
 				args: [
-					'-c', `mkdir -p ${remoteSecretFileDirectory} && echo $$${secretEnvName} > ${remoteSecretFilePath}`
+					'-c', `mkdir -p ${remoteSecretFileDirectory} && printf '%s' "$$${secretEnvName}" > ${remoteSecretFilePath}`
 				],
 				secretEnv: [secretEnvName]
 			});

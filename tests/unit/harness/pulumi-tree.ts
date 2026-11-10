@@ -474,8 +474,12 @@ export async function captureTree(build: () => unknown): Promise<TreeSnapshot> {
 		await pulumi.runtime.setMocks(mocks, state.project, state.stack, false);
 		instrumentMonitor(state);
 
-		await build();
-		await settle(state, SETTLE_TIMEOUT_MS);
+		try {
+			await build();
+		} finally {
+			/* A program that throws has already started registrations; they must land in this capture */
+			await settle(state, SETTLE_TIMEOUT_MS);
+		}
 
 		const [ failure ] = state.failures;
 		if (failure !== undefined) {

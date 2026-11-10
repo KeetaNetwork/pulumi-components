@@ -13,6 +13,13 @@ The Pulumi packages are peer dependencies now, so your program and this library 
 2. Run `npm dedupe` so that `npm ls @pulumi/pulumi` shows one version.
 3. Run `pulumi preview`. Expect no resource changes from this step.
 
+### Removed or changed in 2.0
+
+- `EnvManager.resolvedVariableOutput` throws for a variable that references an existing secret (`{ name, version }`) and names that variable. Before, it left the variable out and the container started without it. A `CloudRunService` with a MIG worker (`workerKind: 'mig'`) therefore fails when `environment` holds an existing-secret variable. Give the worker a plain value through `mig.environmentOverrides`, or use `workerKind: 'crwp'`, which reads Secret Manager. CRWP workers are not affected.
+- `CloudRunService` throws `migration.enabled requires database` when `migration.enabled` is true without `database`. Before, the migration was silently skipped.
+- Local Docker builds choose the digest of the repository in the image URI, and fail when `docker image inspect` lists none for it (it used the first `RepoDigests` entry). The secret file of a local build is written with mode `0600` (was `0700`).
+- Remote builds with `secrets` write the secret file with `printf '%s'` instead of `echo`, so a value that starts with `-` or contains a backslash is no longer altered. The Cloud Build step changes, so on the first deploy the image is built again. The rebuilt image usually has a new digest, so the Cloud Run service rolls a new revision and the migration job runs again. Nothing is replaced. This applies only to remote builds with `secrets`.
+
 ## GCP
 
 ### Cloud Run Env Manager
