@@ -23,7 +23,8 @@ const baselinePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
 
 /*
  * URNs of the released version that this branch deliberately no longer
- * answers to, per case. The reason names what the change drops, for example 'build provider removed'. The table is
+ * answers to, per case. The reason says what is dropped and why, for
+ * example 'build provider removed'. The table is
  * empty until a phase drops a URN on purpose. An entry that is still
  * matched fails the test, so entries cannot go stale.
  */
