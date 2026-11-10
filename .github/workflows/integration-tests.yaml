@@ -28,6 +28,10 @@ jobs:
       github.event_name != 'pull_request' ||
       (github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.base.ref == 'main')
+    # A pull request runs its own code with the GCP key. The required
+    # reviewers of the "integration-pull-request" environment approve each
+    # such run first; a push to main runs without approval.
+    environment: ${{ github.event_name == 'pull_request' && 'integration-pull-request' || 'integration-main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     permissions:
