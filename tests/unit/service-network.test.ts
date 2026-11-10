@@ -53,7 +53,7 @@ describe('services that share a VPC of the caller without an AppNetwork', functi
 		}));
 	}
 
-	it('still gives each of two services its own connection (B13 stays reachable on this path)', async function() {
+	it('still gives each of two services its own connection on this path', async function() {
 		expect(ofType(await twoServices(), CONNECTION)).toHaveLength(2);
 	});
 
