@@ -68,7 +68,7 @@ function egressOf(tree: TreeSnapshot) {
 }
 
 /*
- * A MIG worker reaches the internet in one of three ways (B4). `vpc+direct`
+ * A MIG worker reaches the internet in one of three ways. `vpc+direct`
  * gives each VM an ephemeral external address. `vpc+nat` keeps the reserved
  * address of the worker (`${name}-mig-ext-ip`, so the IP that peers allow
  * does not change) and puts it on a Cloud NAT, so every VM, however many,
