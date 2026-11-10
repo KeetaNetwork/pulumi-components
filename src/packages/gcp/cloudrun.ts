@@ -109,52 +109,63 @@ function toJobEnvs(entries: ContainerEnv[]): gcp.types.input.cloudrunv2.JobTempl
 	}));
 }
 
+/** One variable of an `EnvManager`: its value as given, and its Cloud Run form */
+interface EnvEntry {
+	variable: EnvironmentVariables[string];
+	output: ContainerEnv;
+}
+
+/** One variable of a view: a variable of the manager, or an override */
+type ViewEntry = { name: string; entry: EnvEntry } | { name: string; override: pulumi.Input<string> };
+
 /**
- * Plain values of variables, for a container that cannot read Secret Manager.
- * An override replaces the variable of the same name. Throws when a variable
- * that is not replaced references an existing secret.
+ * The variables of a view, in order. An override takes the place of the
+ * variable of the same name, and the other overrides follow the variables.
  */
-function resolveVariables(variables: EnvironmentVariables, overrides: EnvOverrides): pulumi.Output<{ name: string; value: string }[]> {
-	const entries: pulumi.Output<{ name: string; value: string }>[] = [];
-	const overridden = new Set(Object.keys(overrides));
-	for (const variableName in variables) {
-		if (overridden.has(variableName)) {
-			continue;
+function mergeOverrides(entries: ReadonlyMap<string, EnvEntry>, overrides: EnvOverrides): ViewEntry[] {
+	const merged: ViewEntry[] = [];
+	for (const [ name, entry ] of entries) {
+		const override = overrides[name];
+		if (override !== undefined) {
+			merged.push({ name, override });
+		} else {
+			merged.push({ name, entry });
 		}
-
-		const valueOrWrapper = variables[variableName];
-
-		// An existing secret can only be read through Secret Manager, which these containers cannot do
-		if (isEnvironmentGCPSecretData(valueOrWrapper)) {
-			throw(new Error(`Variable ${variableName} references an existing secret, which cannot be resolved to a plain value for a container without Secret Manager support`));
-		}
-
-		if (typeof valueOrWrapper === 'object' && 'value' in valueOrWrapper) {
-			// A literal that the caller marked secret stays a secret output, so the metadata that holds it is masked in the state
-			let value = pulumi.output(valueOrWrapper.value);
-			if (valueOrWrapper.secret) {
-				value = pulumi.secret(value);
-			}
-
-			entries.push(value.apply(function(val) {
-				return({ name: variableName, value: String(val) });
-			}));
-
-			continue;
-		}
-
-		entries.push(pulumi.output(valueOrWrapper).apply(function(val) {
-			return({ name: variableName, value: String(val) });
-		}));
 	}
 
-	for (const variableName of overridden) {
-		entries.push(pulumi.output(overrides[variableName]).apply(function(val) {
-			return({ name: variableName, value: String(val) });
-		}));
+	for (const [ name, override ] of Object.entries(overrides)) {
+		if (!entries.has(name)) {
+			merged.push({ name, override });
+		}
 	}
 
-	return(pulumi.all(entries));
+	return(merged);
+}
+
+/**
+ * The plain value of a variable, for a container that cannot read Secret
+ * Manager. Throws when the variable references an existing secret.
+ */
+function resolveVariable(name: string, valueOrWrapper: EnvironmentVariables[string]): pulumi.Output<{ name: string; value: string }> {
+	// An existing secret can only be read through Secret Manager, which these containers cannot do
+	if (isEnvironmentGCPSecretData(valueOrWrapper)) {
+		throw(new Error(`Variable ${name} references an existing secret, which cannot be resolved to a plain value for a container without Secret Manager support`));
+	}
+
+	let value: pulumi.Output<string | number>;
+	if (typeof valueOrWrapper === 'object' && 'value' in valueOrWrapper) {
+		// A literal that the caller marked secret stays a secret output, so the metadata that holds it is masked in the state
+		value = pulumi.output(valueOrWrapper.value);
+		if (valueOrWrapper.secret) {
+			value = pulumi.secret(value);
+		}
+	} else {
+		value = pulumi.output(valueOrWrapper);
+	}
+
+	return(value.apply(function(val) {
+		return({ name, value: String(val) });
+	}));
 }
 
 /**
@@ -169,36 +180,27 @@ export class EnvView {
 	/** For a Cloud Run job or worker pool (the v2 form) */
 	readonly cloudRunJob: gcp.types.input.cloudrunv2.JobTemplateTemplateContainerEnv[];
 
-	readonly #variables: EnvironmentVariables;
-	readonly #overrides: EnvOverrides;
+	readonly #entries: ViewEntry[];
 
 	/**
-	 * @param variables The variables of the manager
-	 * @param variableOutput Its Cloud Run form, in the order of `variables`
+	 * @internal Use `EnvManager.view()`, or `EnvView.ofOverrides()` for a
+	 * runtime without a manager
 	 */
-	constructor(variables: EnvironmentVariables, variableOutput: ContainerEnv[], overrides: EnvOverrides) {
-		this.#variables = variables;
-		this.#overrides = overrides;
-
-		const names = Object.keys(variables);
-		const overridden = new Set(Object.keys(overrides));
-		const entries = variableOutput.map(function(entry, index) {
-			const variableName = names[index];
-			if (variableName !== undefined && overridden.has(variableName)) {
-				return({ name: variableName, value: overrides[variableName] });
+	constructor(entries: ReadonlyMap<string, EnvEntry>, overrides: EnvOverrides) {
+		this.#entries = mergeOverrides(entries, overrides);
+		this.cloudRun = this.#entries.map(function(viewEntry) {
+			if ('override' in viewEntry) {
+				return({ name: viewEntry.name, value: viewEntry.override });
 			}
 
-			return(entry);
+			return(viewEntry.entry.output);
 		});
+		this.cloudRunJob = toJobEnvs(this.cloudRun);
+	}
 
-		for (const variableName of overridden) {
-			if (!names.includes(variableName)) {
-				entries.push({ name: variableName, value: overrides[variableName] });
-			}
-		}
-
-		this.cloudRun = entries;
-		this.cloudRunJob = toJobEnvs(entries);
+	/** The view of a runtime without an `EnvManager`: only its overrides */
+	static ofOverrides(overrides: EnvOverrides = {}): EnvView {
+		return(new EnvView(new Map(), overrides));
 	}
 
 	/**
@@ -207,7 +209,15 @@ export class EnvView {
 	 * references a secret that the caller owns.
 	 */
 	get resolvedForVm(): pulumi.Output<{ name: string; value: string }[]> {
-		return(resolveVariables(this.#variables, this.#overrides));
+		return(pulumi.all(this.#entries.map(function(viewEntry) {
+			if ('override' in viewEntry) {
+				return(pulumi.output(viewEntry.override).apply(function(val) {
+					return({ name: viewEntry.name, value: String(val) });
+				}));
+			}
+
+			return(resolveVariable(viewEntry.name, viewEntry.entry.variable));
+		})));
 	}
 }
 
@@ -230,6 +240,7 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 	#name: string;
 	#prefix: string;
 	#replaces: ReplacedEnvironment[];
+	readonly #entries = new Map<string, EnvEntry>();
 
 	readonly variables: EnvironmentVariables;
 	readonly variableOutput: ContainerEnv[] = [];
@@ -254,34 +265,22 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 
 		for (const variableName in input.variables) {
 			const valueOrWrapper = input.variables[variableName];
+			let output: ContainerEnv;
 			if (isEnvironmentGCPSecretData(valueOrWrapper)) {
-				this.variableOutput.push(this.registerExistingSecret(variableName, valueOrWrapper));
-
-				continue;
-			}
-
-			if (typeof valueOrWrapper === 'object' && 'value' in valueOrWrapper) {
-				const { value, secret } = valueOrWrapper;
-
-				const asString = convertValueToString(value);
-
-				if (secret) {
-					this.variableOutput.push(this.makeSecretVariable(variableName, asString));
-					continue;
+				output = this.registerExistingSecret(variableName, valueOrWrapper);
+			} else if (typeof valueOrWrapper === 'object' && 'value' in valueOrWrapper) {
+				const asString = convertValueToString(valueOrWrapper.value);
+				if (valueOrWrapper.secret) {
+					output = this.makeSecretVariable(variableName, asString);
+				} else {
+					output = { name: variableName, value: asString };
 				}
-
-				this.variableOutput.push({
-					name: variableName,
-					value: asString
-				});
-
-				continue;
+			} else {
+				output = { name: variableName, value: convertValueToString(valueOrWrapper) };
 			}
 
-			this.variableOutput.push({
-				name: variableName,
-				value: convertValueToString(valueOrWrapper)
-			});
+			this.variableOutput.push(output);
+			this.#entries.set(variableName, { variable: valueOrWrapper, output });
 		}
 
 		this.registerOutputs({ variableOutput: this.variableOutput });
@@ -297,7 +296,7 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 	 * creates no resource.
 	 */
 	view(overrides: EnvOverrides = {}): EnvView {
-		return(new EnvView(this.variables, this.variableOutput, overrides));
+		return(new EnvView(this.#entries, overrides));
 	}
 
 	/**
@@ -306,7 +305,7 @@ export class EnvManager extends pulumi.ComponentResource implements CloudRunEnvM
 	 * Throws when a variable references an existing secret, because it cannot be resolved.
 	 */
 	get resolvedVariableOutput(): pulumi.Output<{ name: string; value: string }[]> {
-		return(resolveVariables(this.variables, {}));
+		return(this.view().resolvedForVm);
 	}
 
 	private registerExistingSecret(name: string, secret: EnvironmentGCPSecretData) {
