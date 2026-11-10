@@ -288,8 +288,8 @@ const EGRESS_WARNINGS: { title: string; worker: unknown; warnings: number }[] = 
 ];
 
 describe('parseCloudRunServiceArgs worker egress', function() {
-	it.each(EGRESS_WARNINGS)('$title', function(testCase) {
-		const { warnings } = captureWarnings(function() {
+	it.each(EGRESS_WARNINGS)('$title', async function(testCase) {
+		const { warnings } = await captureWarnings(function() {
 			return(parse({ worker: testCase.worker }));
 		});
 
