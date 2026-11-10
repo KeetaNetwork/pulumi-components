@@ -6,7 +6,7 @@ import { expectDefined } from '../helpers/narrow';
 import { requireSource } from './harness/load-sources';
 import { captureTree, moveAliases, ofType, useIsolatedHome } from './harness/pulumi-tree';
 import { appNetworkArgs, buildService } from './harness/service-builder';
-import { captureWarningsAsync } from './harness/warnings';
+import { captureWarnings } from './harness/warnings';
 
 const { AppNetwork } = requireSource<typeof network>('src/packages/gcp/network.ts');
 
@@ -63,7 +63,7 @@ describe('services that share an AppNetwork', function() {
 	});
 
 	it('do not warn', async function() {
-		const { warnings } = await captureWarningsAsync(function() {
+		const { warnings } = await captureWarnings(function() {
 			return(captureTree(function() {
 				const shared = new AppNetwork('shared-quiet', appNetworkArgs());
 				buildService('quiet-a', { network: shared, database: {}});
