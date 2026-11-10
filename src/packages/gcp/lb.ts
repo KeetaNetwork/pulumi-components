@@ -2,7 +2,7 @@ import * as pulumi from '@pulumi/pulumi';
 import * as gcp from '@pulumi/gcp';
 import * as utils from '../../utils';
 import { legacyUrn, movedFrom } from './aliases';
-import { createHTTPSFrontEnd, parseSslPolicy } from './https-frontend';
+import { createHTTPSFrontEnd, parseCallerCertificate, parseSslPolicy } from './https-frontend';
 import type { CertChoice } from './https-frontend';
 
 import type { GCPCommonOptions, CertificateManagerCert, ComputeManagedSslCert } from './common';
@@ -285,12 +285,11 @@ export class InternalLoadBalancer extends pulumi.ComponentResource {
 		let certificateID: pulumi.Output<string>;
 		let useCertificateManager = false;
 		if ('sslCertificate' in config && config.sslCertificate !== undefined) {
-			const cert = config.sslCertificate;
-			// Discriminate based on presence of certificateId (compute.ManagedSslCertificate only)
-			if ('certificateId' in cert) {
-				// This is a compute.ManagedSslCertificate - look it up by name
+			const cert = parseCallerCertificate(config.sslCertificate);
+			if (cert.kind === 'compute') {
+				// A compute certificate is looked up by name
 				const globalCert = gcp.compute.getCertificateOutput({
-					name: pulumi.output(cert.id).apply(function(id) {
+					name: cert.id.apply(function(id) {
 						const parts = id.split('/');
 						return(parts[parts.length - 1] ?? id);
 					})
@@ -302,9 +301,8 @@ export class InternalLoadBalancer extends pulumi.ComponentResource {
 
 				useCertificateManager = false;
 			} else {
-				// This is a certificatemanager.Certificate
 				useCertificateManager = true;
-				certificateID = pulumi.output(cert.id);
+				certificateID = cert.id;
 			}
 		} else if ('domainName' in config && config.domainName !== undefined) {
 			const domainValidation = new gcp.certificatemanager.DnsAuthorization(`${name}-cert-dns`, {
@@ -504,13 +502,7 @@ export class ExternalLoadBalancer extends pulumi.ComponentResource {
 		 */
 		let cert: CertChoice;
 		if ('sslCertificate' in config && config.sslCertificate !== undefined) {
-			const certificate = config.sslCertificate;
-			// Discriminate based on presence of certificateId (compute.ManagedSslCertificate only)
-			if ('certificateId' in certificate) {
-				cert = { kind: 'compute', id: pulumi.output(certificate.id) };
-			} else {
-				cert = { kind: 'certificate-manager', id: pulumi.output(certificate.id), hostname: config.domainName };
-			}
+			cert = parseCallerCertificate(config.sslCertificate, config.domainName);
 		} else if ('domainName' in config && config.domainName !== undefined) {
 			cert = { kind: 'managed', domains: [config.domainName] };
 		} else {
