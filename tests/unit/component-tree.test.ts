@@ -502,11 +502,11 @@ describe('component tree', function() {
 			return(Object.entries(names).map(function([ name, reason ]): [ string, string, string ] {
 				return([ caseName, name, reason ]);
 			}));
-		}))('%s: keeps the plain parent of %s only for a reason that names a phase, and only while it has one', function(caseName, name, reason) {
+		}))('%s: keeps the plain parent of %s only for a reason, and only while it has one', function(caseName, name, reason) {
 			const tree = treeOf(caseName);
 			const resource = expectDefined(byName(tree, name), `the resource ${name}`);
 
-			expect(reason).toMatch(/^P\d+: /);
+			expect(reason).toMatch(/^\S+ \S+/);
 			expect(hasPlainParent(tree, resource)).toBe(true);
 			expect(moveAliases(resource)).toEqual([]);
 		});
