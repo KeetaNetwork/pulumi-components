@@ -6,7 +6,7 @@ import ignore from '@balena/dockerignore';
 export interface BuildContextOptions {
 	/**
 	 * Patterns for files to leave out on top of ".dockerignore". They
-	 * match at any depth, as the "--exclude" patterns of "tar" did
+	 * match at any depth.
 	 */
 	excludePatterns?: string[];
 
