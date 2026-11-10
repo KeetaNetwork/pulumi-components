@@ -3,6 +3,7 @@ import * as gcp from '@pulumi/gcp';
 import type { IPAddressConfig, LoadBalancerConfig } from './apps';
 import { legacyUrn, movedFrom } from './aliases';
 import { FRONT_END_DEFAULTS } from './defaults';
+import type * as common from './common';
 
 const URL_MAP_TYPE = 'gcp:compute/uRLMap:URLMap';
 const CERTIFICATE_MAP_TYPE = 'gcp:certificatemanager/certificateMap:CertificateMap';
@@ -197,20 +198,26 @@ export function parseSslPolicy(sslPolicy: gcp.compute.SSLPolicy | false | undefi
 }
 
 /**
+ * Reads a certificate that the caller passes: a compute certificate (only it
+ * has `certificateId`) or a Certificate Manager certificate, whose map entry
+ * matches `hostname` when it is given
+ */
+export function parseCallerCertificate(certificate: common.CertificateManagerCert | common.ComputeManagedSslCert, hostname?: pulumi.Input<string>): Extract<CertChoice, { kind: 'compute' | 'certificate-manager' }> {
+	if ('certificateId' in certificate) {
+		return({ kind: 'compute', id: pulumi.output(certificate.id) });
+	}
+
+	return({ kind: 'certificate-manager', id: pulumi.output(certificate.id), hostname });
+}
+
+/**
  * Reads the load balancer configuration of `StaticWebApp` and `FullStackApp`
  * once: the choice of certificate, and the choice of SSL policy.
  */
 export function parseFrontEndConfig(config: LoadBalancerConfig): ParsedFrontEnd {
 	let cert: CertChoice;
 	if ('sslCertificate' in config.ssl && config.ssl.sslCertificate) {
-		const certificate = config.ssl.sslCertificate;
-
-		// Discriminate based on presence of certificateId (compute.ManagedSslCertificate only)
-		if ('certificateId' in certificate) {
-			cert = { kind: 'compute', id: pulumi.output(certificate.id) };
-		} else {
-			cert = { kind: 'certificate-manager', id: pulumi.output(certificate.id) };
-		}
+		cert = parseCallerCertificate(config.ssl.sslCertificate);
 	} else {
 		cert = {
 			kind: 'managed',
