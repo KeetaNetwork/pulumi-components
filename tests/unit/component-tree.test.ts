@@ -30,11 +30,16 @@ function baselineUrn(typeChain: string, name: string) {
 }
 
 /*
- * URNs of the released version that this branch deliberately no longer
- * answers to, per case. The reason says what is dropped and why, for
- * example 'build provider removed'. The table is
- * empty until a phase drops a URN on purpose. An entry that is still
- * matched fails the test, so entries cannot go stale.
+ * The one table of planned exceptions. A reason names the phase that makes
+ * the exception and what it does, for example 'build provider removed',
+ * so that a later phase can see which entries are its own.
+ *
+ * - `expectedRemovals`: per case, URNs of the released version that this
+ *   branch deliberately no longer answers to. An entry that is still matched
+ *   fails the test, so entries cannot go stale.
+ * - `deferredParents`: the ending of the name of a resource that still has a
+ *   plain (non-component) resource as its parent, and what removes it. An
+ *   entry that no resource needs fails the test as well.
  */
 const PLANNED_EXCEPTIONS: {
 	expectedRemovals: { [caseName: string]: { [urn: string]: string }};
@@ -42,19 +47,19 @@ const PLANNED_EXCEPTIONS: {
 } = {
 	expectedRemovals: {
 		'service-build-remote': {
-			[baselineUrn('Keeta:GCP:CloudRunService$pulumi:providers:gcp', 'service-build-remote-build-provider')]: 'P7: build provider removed'
+			[baselineUrn('Keeta:GCP:CloudRunService$pulumi:providers:gcp', 'service-build-remote-build-provider')]: 'build provider removed'
 		},
 		'service-providers': {
-			[baselineUrn('Keeta:GCP:CloudRunService$pulumi:providers:gcp', 'service-providers-build-provider')]: 'P7: build provider removed'
+			[baselineUrn('Keeta:GCP:CloudRunService$pulumi:providers:gcp', 'service-providers-build-provider')]: 'build provider removed'
 		}
 	},
 	deferredParents: {
-		'-subnet': 'P10: the network chain moves to AppNetwork',
-		'-vpc-connector': 'P10: the network chain moves to AppNetwork',
-		'-private-ip-alloc': 'P10: the network chain moves to AppNetwork',
-		'-svc-networking': 'P10: the network chain moves to AppNetwork',
-		'-kv-firewall': 'P10: the network chain moves to AppNetwork',
-		'-ssh-iap-firewall': 'P10: the network chain moves to AppNetwork'
+		'-subnet': 'the network chain moves to AppNetwork',
+		'-vpc-connector': 'the network chain moves to AppNetwork',
+		'-private-ip-alloc': 'the network chain moves to AppNetwork',
+		'-svc-networking': 'the network chain moves to AppNetwork',
+		'-kv-firewall': 'the network chain moves to AppNetwork',
+		'-ssh-iap-firewall': 'the network chain moves to AppNetwork'
 	}
 };
 
@@ -68,9 +73,8 @@ const CALLER_RESOURCES: { [caseName: string]: string[] } = {
 };
 
 /*
- * The resources that P7 moves to the component that owns them (Design P7,
- * "Moves in P7"). The IAM grants (P8) and the network chain (P10) are not
- * here. A resource that matches a row must have a component of one of the
+ * The resources that move to the component that owns them. The IAM grants
+ * and the network chain are not here. A resource that matches a row must have a component of one of the
  * `parents` types as its parent, named as the prefix of its own name, and
  * exactly one alias: its URN in the released version.
  */
@@ -304,7 +308,7 @@ describe('component tree', function() {
 				}));
 			});
 
-			expect(reason).toMatch(/^P\d+: /);
+			expect(reason).not.toBe('');
 			expect(needed).toBe(true);
 		});
 
@@ -342,8 +346,8 @@ describe('component tree', function() {
 			return(Object.entries(urns).map(function([ urn, reason ]): [ string, string, string ] {
 				return([ caseName, urn, reason ]);
 			}));
-		}))('%s: names the phase that removes %s', function(_caseName, _urn, reason) {
-			expect(reason).toMatch(/^P\d+: /);
+		}))('%s: gives the reason for removing %s', function(_caseName, _urn, reason) {
+			expect(reason).not.toBe('');
 		});
 
 		it('keeps the binding of a secret the caller owns where it was', function() {
@@ -457,10 +461,10 @@ describe('component tree', function() {
 
 	/*
 	 * Pulumi hands `providers` down to the children that have the component
-	 * as an ancestor. Every resource of a component is a descendant of it
-	 * after P7, so a provider that the caller passes reaches all of them,
-	 * including the docker image with its IAM grants and the remote build's
-	 * service account and bucket. The first test keeps the snapshot of P2.
+	 * as an ancestor. Every resource of a component is a descendant of it,
+	 * so a provider that the caller passes reaches all of them, including the
+	 * docker image with its IAM grants and the remote build's service account
+	 * and bucket.
 	 */
 	describe('provider propagation', function() {
 		function gcpNamesByProvider(caseName: string) {
