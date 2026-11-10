@@ -308,8 +308,8 @@ describe('parseCloudRunServiceArgs legacy mig', function() {
 		expect(legacy).toEqual(typed);
 	});
 
-	it.each(WORKER_ROWS)('warns once about %s', function(_description, form) {
-		const { warnings } = captureWarnings(function() {
+	it.each(WORKER_ROWS)('warns once about %s', async function(_description, form) {
+		const { warnings } = await captureWarnings(function() {
 			return(parse({ mig: form.legacy }));
 		});
 
@@ -319,8 +319,8 @@ describe('parseCloudRunServiceArgs legacy mig', function() {
 		expect(deprecations[0]).toMatch(/\bworker\b/);
 	});
 
-	it.each(WORKER_ROWS)('does not warn about %s given as a worker', function(_description, form) {
-		const { warnings } = captureWarnings(function() {
+	it.each(WORKER_ROWS)('does not warn about %s given as a worker', async function(_description, form) {
+		const { warnings } = await captureWarnings(function() {
 			return(parse({ worker: form.worker }));
 		});
 
