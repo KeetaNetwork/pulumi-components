@@ -23,10 +23,10 @@ function readBaseline(file: string, version: string): { version: string, cases: 
 
 /**
  * Adds the URNs of the named cases to the baseline file of a released
- * version. It only adds: a case that is already in the file is an error, so
+ * version. It only adds. A case that is already in the file is an error, so
  * a frozen entry is never rewritten. Run it (through `make urn-baseline`) on
  * a checkout of the release's `src`, with the new case already appended to
- * `tree-cases.ts`; computed against changed code it would match trivially.
+ * `tree-cases.ts`. Computed against changed code, it would match trivially.
  * The caller must have isolated HOME (`useIsolatedHome`).
  */
 export async function writeBaselineCases(version: string, caseNames: string[]): Promise<void> {

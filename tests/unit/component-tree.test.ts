@@ -387,7 +387,12 @@ describe('component tree', function() {
 			expect(orphans).toEqual([]);
 		});
 
-		it('covers every component the library registers', function() {
+		/*
+		 * The components the cases build. An exported component that no case
+		 * builds (ECDSAKeyPair, and the load balancers until they get cases)
+		 * is not in this list.
+		 */
+		it('builds these components across its cases', function() {
 			const componentTypes = new Set<string>();
 			for (const caseName of caseNames) {
 				for (const resource of treeOf(caseName).resources) {
