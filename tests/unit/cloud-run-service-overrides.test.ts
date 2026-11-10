@@ -11,7 +11,7 @@ import { requireSource } from './harness/load-sources';
 import { captureTree, useIsolatedHome } from './harness/pulumi-tree';
 import type { TreeSnapshot } from './harness/pulumi-tree';
 import { workerSpec, workerSubnetwork } from './harness/tree-cases';
-import { captureWarningsAsync } from './harness/warnings';
+import { captureWarnings } from './harness/warnings';
 
 const { CloudRunService } = requireSource<typeof apps>('src/packages/gcp/apps.ts');
 const { ContainerMIG } = requireSource<typeof container>('src/packages/gcp/container.ts');
@@ -79,7 +79,7 @@ interface Setting {
 	/** The end of the name of the resource, for a type that has several */
 	nameEnding: string;
 	path: (string | number)[];
-	/** What the resource gets when the caller says nothing: the value of 1.0.95 */
+	/** What the resource gets when the caller says nothing */
 	fallback: unknown;
 	/** What the resource gets when the caller sets it */
 	override: unknown;
@@ -198,9 +198,8 @@ const SETTINGS: Setting[] = [
 ];
 
 /*
- * Each setting that can be overridden has a default (the value of 1.0.95,
- * which the component tree snapshot pins for the cases it covers) and an
- * override. These captures check the override on the input of the resource
+ * Each setting that can be overridden has a default (which the component
+ * tree snapshot pins for the cases it covers) and an override. These captures check the override on the input of the resource
  * it is meant for.
  */
 describe('settings that can be overridden', function() {
@@ -246,7 +245,7 @@ describe('ContainerMIG zone', function() {
 	];
 
 	it.each(rows)('is %s', async function(description, options, type, warnings) {
-		const { result: tree, warnings: messages } = await captureWarningsAsync(function() {
+		const { result: tree, warnings: messages } = await captureWarnings(function() {
 			return(captureTree(function() {
 				return(buildMig(`zone-${description.replace(/[^a-z]+/g, '-')}`, options));
 			}));
@@ -259,7 +258,7 @@ describe('ContainerMIG zone', function() {
 	});
 
 	it('names the zone in the warning', async function() {
-		const { warnings } = await captureWarningsAsync(function() {
+		const { warnings } = await captureWarnings(function() {
 			return(captureTree(function() {
 				return(buildMig('zone-warning', { zone: undefined }));
 			}));
