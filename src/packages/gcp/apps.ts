@@ -926,9 +926,8 @@ export class CloudRunService extends pulumi.ComponentResource {
 
 		/*
 		 * The one environment of the app: the service, the migration job and the
-		 * worker read views of it. The worker and the migration job each had a
-		 * manager of their own in 1.0.95; a binding of theirs for a secret that
-		 * the caller owns stays, retained (see `ReplacedEnvironment`).
+		 * worker read views of it. The bindings of the replaced managers for a
+		 * secret that the caller owns stay, retained (see `ReplacedEnvironment`).
 		 */
 		const parsedWorker = parsedVpc?.worker;
 		const replaces: ReplacedEnvironment[] = [];
@@ -1118,7 +1117,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 				workerOverrides[DATABASE_POOL_SIZE_VARIABLE] = String(worker.poolSize);
 			}
 
-			const workerEnv = envManager?.view(workerOverrides) ?? new EnvView({}, [], workerOverrides);
+			const workerEnv = envManager?.view(workerOverrides) ?? EnvView.ofOverrides(workerOverrides);
 
 			if (worker.kind === 'mig') {
 				// Reserve the external IP if the worker egresses through a NAT
