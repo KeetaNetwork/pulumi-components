@@ -19,7 +19,7 @@ const NETWORK_RESOURCES = [ '-vpc', '-subnet', '-vpc-connector', '-private-ip-al
 
 /*
  * A network has one private service access connection, and that is a
- * property of the AppNetwork, not of the services that use it (B13).
+ * property of the AppNetwork, not of the services that use it.
  */
 describe('services that share an AppNetwork', function() {
 	useIsolatedHome();

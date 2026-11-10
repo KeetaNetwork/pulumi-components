@@ -366,7 +366,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 		}, {
 			parent: this,
 			aliases: movedFrom(`${this.#prefix}-db-user`, 'gcp:sql/user:User', { kind: 'resource', urn: masterDatabase.urn }),
-			/* The user is protected like the instance */
+			/* Protected with the database */
 			protect: args.deletionProtection,
 			deletedWith: masterDatabase
 		});
