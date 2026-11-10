@@ -12,6 +12,7 @@ import CloudBuild from './gcp/cloudbuild';
 import type { ISecrets, IBuild } from './gcp/cloudbuild';
 import * as Tarball from './tarball';
 import { fingerprintBuildContext, loadBuildContext } from './build-context';
+import type { BuildContext } from './build-context';
 import { GCP_COMPONENT_PREFIX } from './gcp/constants';
 import { BUILD_DEFAULTS } from './gcp/defaults';
 import LocalDockerImageBuilder from './localdocker';
@@ -92,6 +93,11 @@ interface GitBuildDirOptions extends BaseBuildDirectoryOptions<'GIT'> {
 
 interface DirectoryBuildDirOptions extends BaseBuildDirectoryOptions<'DIRECTORY'> {
 	excludePatterns?: string[];
+
+	/**
+	 * @deprecated Has no effect. A directory's tarball is cached by the
+	 * fingerprint of its build context.
+	 */
 	inputCacheTag?: string;
 }
 
@@ -205,14 +211,23 @@ interface GCPDockerRemoteImageInput extends GCPDockerImageInput {
 }
 
 /**
+ * A build context that was loaded to version an image, kept so the tarball
+ * of the same directory does not read it again
+ */
+interface LoadedBuildContext {
+	directory: string;
+	context: BuildContext;
+}
+
+/**
  * The version of an image that is derived from the contents of `fromFile`.
  * A directory is versioned by its build context (what ".dockerignore" and
  * the build directory's exclusions leave of it), so the version only changes
- * when what is sent to Docker changes.
+ * when what is sent to Docker changes. The loaded context is returned with it.
  */
-function getFileVersion(fromFile: string, buildDirectory: GCPDockerImageInput['buildDirectory']) {
+function getFileVersion(fromFile: string, buildDirectory: GCPDockerImageInput['buildDirectory']): { version: string, loaded?: LoadedBuildContext } {
 	if (fs.statSync(fromFile).isFile()) {
-		return(getFileResourceIdentifier(fromFile));
+		return({ version: getFileResourceIdentifier(fromFile) });
 	}
 
 	let excludePatterns: string[] | undefined;
@@ -225,7 +240,9 @@ function getFileVersion(fromFile: string, buildDirectory: GCPDockerImageInput['b
 		}
 	}
 
-	return(fingerprintBuildContext(loadBuildContext(fromFile, { excludePatterns, dockerfilePath })));
+	const context = loadBuildContext(fromFile, { excludePatterns, dockerfilePath });
+
+	return({ version: fingerprintBuildContext(context), loaded: { directory: fs.realpathSync(fromFile), context }});
 }
 
 abstract class BaseDockerImage extends pulumi.ComponentResource {
@@ -252,12 +269,16 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 	readonly imageCache?: pulumi.Output<string>;
 
 	/**
-	 * Cache tag for generated tarball, which may be used for caching
-	 * tarball creation from directories.  The tarball itself is found by
-	 * the contents of the directory, so a tag only has to be present for
-	 * the tarball to be kept.
+	 * @deprecated Has no effect. A directory's tarball is cached by the
+	 * fingerprint of its build context.
 	 */
 	readonly inputCacheTag?: string;
+
+	/**
+	 * The build context loaded for a FILE version, which the tarball of the
+	 * same directory reuses
+	 */
+	private readonly versionBuildContext?: LoadedBuildContext;
 
 	/**
 	 * Version identifier used as the image tag
@@ -320,6 +341,19 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 		}));
 	}
 
+	/**
+	 * Archive a build directory, reusing the build context loaded for the
+	 * image's version when it is the same directory
+	 */
+	protected dirTarball(directory: string, options: Pick<Tarball.DirTarballOptions, 'excludePatterns' | 'dockerfilePath'> = {}): Tarball.DirTarballArchive {
+		let context: BuildContext | undefined;
+		if (this.versionBuildContext?.directory === fs.realpathSync(directory)) {
+			context = this.versionBuildContext.context;
+		}
+
+		return(new Tarball.DirTarballArchive(directory, { ...options, context }));
+	}
+
 	constructor(prefix: string, input: GCPDockerImageInput, opts?: pulumi.CustomResourceOptions) {
 		super(`${GCP_COMPONENT_PREFIX}:DockerImage`, prefix, {}, { ...opts });
 
@@ -332,7 +366,11 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 		let versionIdentifier: string;
 		switch (input.versioning.type) {
 			case 'FILE':
-				versionIdentifier = `hash_${getFileVersion(input.versioning.fromFile, input.buildDirectory)}`;
+				{
+					const { version, loaded } = getFileVersion(input.versioning.fromFile, input.buildDirectory);
+					versionIdentifier = `hash_${version}`;
+					this.versionBuildContext = loaded;
+				}
 				break;
 			case 'PLAIN':
 				versionIdentifier = input.versioning.value;
@@ -398,7 +436,7 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 export class LocalDockerImage extends BaseDockerImage {
 	private buildDirectory: string | undefined;
 
-	private async getBuildDirectory(input: GCPDockerImageInput['buildDirectory'], cacheID: string) {
+	private async getBuildDirectory(input: GCPDockerImageInput['buildDirectory']) {
 		if (typeof input === 'string') {
 			return(input);
 		}
@@ -411,7 +449,7 @@ export class LocalDockerImage extends BaseDockerImage {
 		if (input.type === 'GIT') {
 			tarball = new Tarball.GitTarballArchive(input.directory, input.commitID);
 		} else if (input.type === 'DIRECTORY') {
-			tarball = new Tarball.DirTarballArchive(input.directory, cacheID, input.excludePatterns, input.dockerfilePath);
+			tarball = this.dirTarball(input.directory, { excludePatterns: input.excludePatterns, dockerfilePath: input.dockerfilePath });
 		} else {
 			throw(new Error(`Invalid docker buildDirectory input ${JSON.stringify(input)}`));
 		}
@@ -433,18 +471,12 @@ export class LocalDockerImage extends BaseDockerImage {
 	}
 
 	_checkImage(prefix: string, imageURI: string, input: GCPDockerImageInput): pulumi.Output<string> {
-		/**
-		 * Cache ID based on the ImageURI, which includes the version
-		 * info so if it changes the image will be rebuilt
-		 */
-		const cacheID = this.inputCacheTag ?? hash(imageURI, 32);
-
 		let secretContents;
 		if (input.secrets) {
 			secretContents = this.resolveSecretsObject(input.secrets);
 		}
 
-		const buildDirectory = pulumi.output(this.getBuildDirectory(input.buildDirectory, cacheID));
+		const buildDirectory = pulumi.output(this.getBuildDirectory(input.buildDirectory));
 
 		const buildArgs = this.getDockerBuildArgs(input);
 
@@ -480,12 +512,12 @@ export class LocalDockerImage extends BaseDockerImage {
  */
 export class RemoteDockerImage extends BaseDockerImage implements PublicInterface<LocalDockerImage> {
 	private localAsset?: Tarball.GitTarballArchive | Tarball.DirTarballArchive;
-	private getBuildTarball(input: GCPDockerImageInput['buildDirectory'], cacheID: string) {
+	private getBuildTarball(input: GCPDockerImageInput['buildDirectory']) {
 		let tarball: Tarball.GitTarballArchive | Tarball.DirTarballArchive;
 		if (typeof input === 'string') {
-			tarball = new Tarball.DirTarballArchive(input, cacheID);
+			tarball = this.dirTarball(input);
 		} else if (input.type === 'DIRECTORY') {
-			tarball = new Tarball.DirTarballArchive(input.directory, cacheID, input.excludePatterns, input.dockerfilePath);
+			tarball = this.dirTarball(input.directory, { excludePatterns: input.excludePatterns, dockerfilePath: input.dockerfilePath });
 		} else if (input.type === 'GIT') {
 			tarball = new Tarball.GitTarballArchive(input.directory, input.commitID);
 		} else {
@@ -499,12 +531,6 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 	}
 
 	_checkImage(prefix: string, imageURI: string, input: GCPDockerRemoteImageInput): pulumi.Output<string> {
-		/**
-		 * Cache ID based on the ImageURI, which includes the version
-		 * info so if it changes the image will be rebuilt
-		 */
-		const cacheID = this.inputCacheTag ?? hash(imageURI, 32);
-
 		/*
 		 * Get project from provider
 		 */
@@ -524,7 +550,7 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 		 * Source tarball for the build, which will be uploaded to
 		 * the bucket and passed to CloudBuild
 		 */
-		const source = this.getBuildTarball(input.buildDirectory, cacheID);
+		const source = this.getBuildTarball(input.buildDirectory);
 
 		/*
 		 * The source object is named "<imageName>/<version>.tar.gz"

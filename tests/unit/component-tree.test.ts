@@ -64,7 +64,12 @@ describe('component tree', function() {
 			expect(orphans).toEqual([]);
 		});
 
-		it('covers every component the library registers', function() {
+		/*
+		 * The components the cases build. An exported component that no case
+		 * builds (ECDSAKeyPair, and the load balancers until they get cases)
+		 * is not in this list.
+		 */
+		it('builds these components across its cases', function() {
 			const componentTypes = new Set<string>();
 			for (const caseName of caseNames) {
 				for (const resource of treeOf(caseName).resources) {
@@ -118,8 +123,8 @@ describe('component tree', function() {
 	 * Records which children get the provider passed to a component today.
 	 * Pulumi hands `providers` down to children that have the component as
 	 * an ancestor, so a resource without a parent (or under one) is created
-	 * with the default provider instead. This is the behaviour the
-	 * parenting phase changes; when it does, this snapshot changes with it.
+	 * with the default provider instead. The parenting phase changes this
+	 * behaviour. When it does, this snapshot changes with it.
 	 */
 	describe('provider propagation', function() {
 		function gcpNamesByProvider(caseName: string) {
