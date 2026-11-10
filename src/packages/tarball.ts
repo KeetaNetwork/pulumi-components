@@ -4,20 +4,11 @@ import * as os from 'os';
 import * as child_process from 'child_process';
 import * as path from 'path';
 import * as process from 'process';
-import * as crypto from 'crypto';
 
 import * as utils from '../utils';
 import { fingerprintBuildContext, loadBuildContext } from './build-context';
 import type { BuildContext } from './build-context';
 
-/**
- * Create a tarball of the build context of a directory, caching it in the
- * home directory and returning the path to the tarball.  The tarball holds
- * exactly the files of the context (the ones its fingerprint is made from)
- * and its path follows that fingerprint, so a changed source never gets the
- * tarball of an older one.  If a cacheID is provided the tarball is kept for
- * reuse, otherwise it is for one use and should be cleaned up.
- */
 /** The environment for `tar`: the caller's, with a fixed locale so file names are read the same everywhere */
 function tarEnvironment(): NodeJS.ProcessEnv {
 	return({
@@ -83,16 +74,33 @@ function writeTarball(context: BuildContext, runDir: string, tarballPath: string
 	fs.renameSync(tarballTmpPath, tarballPath);
 }
 
-function createTarballFromDir(directory: string, cacheID?: string, excludePatterns: string[] = [], dockerfilePath?: string): { file: string, uniqueID: string, shouldClean: boolean } {
-	const context = loadBuildContext(directory, { excludePatterns, dockerfilePath });
+export interface DirTarballOptions {
+	/**
+	 * Patterns for files to leave out on top of ".dockerignore"
+	 */
+	excludePatterns?: string[];
 
-	let cacheKey = fingerprintBuildContext(context);
-	let shouldClean = false;
-	if (cacheID === undefined) {
-		cacheKey = crypto.randomUUID();
+	/**
+	 * Dockerfile relative to the directory, which is always archived
+	 */
+	dockerfilePath?: string;
 
-		shouldClean = true;
-	}
+	/**
+	 * The build context of the directory, loaded with the same options.
+	 * When given, the directory is not read again.
+	 */
+	context?: BuildContext;
+}
+
+/**
+ * Create a tarball of the build context of a directory, cache it in the
+ * home directory, and return the path to the tarball. The tarball holds
+ * exactly the files of the context (the ones its fingerprint is made from).
+ * Its path follows that fingerprint, so a changed source gets a tarball of
+ * its own.
+ */
+function createTarballFromDir(directory: string, options: DirTarballOptions): { file: string, uniqueID: string } {
+	const context = options.context ?? loadBuildContext(directory, { excludePatterns: options.excludePatterns, dockerfilePath: options.dockerfilePath });
 
 	const tarballDir = path.join(os.homedir(), '.cache', 'pulumi-tarballs');
 	fs.mkdirSync(tarballDir, {
@@ -102,17 +110,14 @@ function createTarballFromDir(directory: string, cacheID?: string, excludePatter
 	const canonicalDir = fs.realpathSync(directory);
 	const dirHash = utils.hash(canonicalDir, 32);
 
-	const uniqueID = `${dirHash}-${cacheKey}`;
+	const uniqueID = `${dirHash}-${fingerprintBuildContext(context)}`;
 
 	const tarballPath = path.join(tarballDir, `${uniqueID}.tar.gz`);
 
 	if (fs.existsSync(tarballPath)) {
 		return({
 			uniqueID: uniqueID,
-			file: tarballPath,
-
-			/* If we didn't create this tarball, we shouldn't clean it up */
-			shouldClean: false
+			file: tarballPath
 		});
 	}
 
@@ -126,8 +131,7 @@ function createTarballFromDir(directory: string, cacheID?: string, excludePatter
 
 	return({
 		uniqueID: uniqueID,
-		file: tarballPath,
-		shouldClean: shouldClean
+		file: tarballPath
 	});
 }
 
@@ -253,7 +257,8 @@ export class GitTarballArchive extends pulumi.asset.FileAsset {
 }
 
 /**
- * Create a tarball from a directory
+ * Create a tarball from a directory. The tarball is cached by the build
+ * context's fingerprint and kept for reuse.
  */
 export class DirTarballArchive extends pulumi.asset.FileAsset {
 	/**
@@ -263,47 +268,24 @@ export class DirTarballArchive extends pulumi.asset.FileAsset {
 	readonly uniqueID: string;
 
 	/**
-	 * Should the generated archive be cleaned up because there is no
-	 * value in caching it because no cache ID was supplied ?
-	 */
-	private shouldClean: boolean;
-
-	/**
-	 * Path of generated tarball
-	 */
-	private _path: string;
-
-	/**
 	 * @param dir Directory to archive (".dockerignore" is applied to it)
-	 * @param cacheID Keep the tarball for reuse, it is cleaned up after use when omitted
-	 * @param excludePatterns Patterns for files to leave out on top of ".dockerignore"
-	 * @param dockerfilePath Dockerfile relative to `dir`, which is always archived
+	 * @param options What to leave out, the Dockerfile, and the build context if already loaded
 	 */
-	constructor(dir: string, cacheID?: string, excludePatterns?: string[], dockerfilePath?: string) {
-		const { file, uniqueID, shouldClean } = createTarballFromDir(dir, cacheID, excludePatterns, dockerfilePath);
+	constructor(dir: string, options: DirTarballOptions = {}) {
+		const { file, uniqueID } = createTarballFromDir(dir, options);
 
 		super(file);
 		this.uniqueID = uniqueID;
-		this.shouldClean = shouldClean;
-		this._path = file;
 	}
 
-	/**
-	 * Clean up the generated tarball if it is not cachable
-	 */
 	clean() {
-		if (!this.shouldClean) {
-			return;
-		}
-
-		try {
-			fs.unlinkSync(this._path);
-		} catch {
-			/* Ignore errors */
-		}
-
-		this.shouldClean = false;
+		/* Do nothing: the tarball is cached for the next deploy, and this keeps the interface of GitTarballArchive */
 	}
 }
+
+/** @internal */
+export const _Testing = {
+	tarCommand
+};
 
 export default GitTarballArchive;
