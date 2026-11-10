@@ -299,7 +299,8 @@ interface PendingOperation {
 async function untrackedResourcesOf(stack: automation.Stack): Promise<string> {
 	try {
 		const state = await stack.exportStack();
-		const pending: PendingOperation[] = state.deployment?.pending_operations ?? [];
+		const deployment = state.deployment as { pending_operations?: PendingOperation[] } | undefined;
+		const pending = deployment?.pending_operations ?? [];
 		const names = pending.filter(function(operation) {
 			return(operation.type === 'creating');
 		}).map(function(operation) {
