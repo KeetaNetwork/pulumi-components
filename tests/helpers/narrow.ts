@@ -52,3 +52,12 @@ export function expectDefined<Value>(value: Value | undefined, description: stri
 
 	return(value);
 }
+
+/** Narrows to a record without throwing, for values that may legitimately be something else */
+export function optionalRecord(value: unknown): UnknownRecord | undefined {
+	if (isRecord(value)) {
+		return(value);
+	}
+
+	return(undefined);
+}
