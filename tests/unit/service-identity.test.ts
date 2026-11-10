@@ -86,7 +86,7 @@ function releasedUrn(tree: TreeSnapshot, typeChain: string, name: string) {
 
 /*
  * The ServiceIdentity of an app grants the project roles of its service
- * account, once each (invariant I-iam-owner). When it does not grant a role
+ * account, once each. When it does not grant a role
  * (the caller supplied the account, or `grantIAMRoles` is false), the worker
  * and the migration job grant their roles as in 1.0.95: nothing is revoked
  * on upgrade, and nothing is left behind on destroy.
@@ -106,7 +106,7 @@ describe('project roles of an app', function() {
 		[ 'an app with a database, a migration and a worker', everything, [ CLOUD_SQL_CLIENT, LOG_WRITER, METRIC_WRITER ] ],
 		[ 'an app with a worker pool, a database and a migration', { ...everything, worker: { kind: 'crwp' }}, [ CLOUD_SQL_CLIENT, LOG_WRITER, METRIC_WRITER ] ],
 		/* The identity grants nothing for these: the worker and the migration job do, as in 1.0.95 */
-		[ 'a plain app with a service account of the caller (C5)', { service: { serviceAccount: ACCOUNT }}, [] ],
+		[ 'a plain app with a service account of the caller ', { service: { serviceAccount: ACCOUNT }}, [] ],
 		[ 'a service account of the caller, with a worker', { worker: { kind: 'mig' }, service: { serviceAccount: ACCOUNT }}, [ LOG_WRITER, METRIC_WRITER ] ],
 		[ 'a service account of the caller, with a migration', { ...migrationApp, service: { serviceAccount: ACCOUNT }}, [ CLOUD_SQL_CLIENT ] ],
 		[ 'a service account of the caller, with everything', { ...everything, service: { serviceAccount: ACCOUNT }}, [ CLOUD_SQL_CLIENT, LOG_WRITER, METRIC_WRITER ] ],
@@ -300,7 +300,13 @@ describe('components that receive an identity', function() {
 	useIsolatedHome();
 
 	function identityOf(grantedRoles: string[]): IdentityRef {
-		return({ email: ACCOUNT, grants: [], grantedRoles });
+		return({
+			email: ACCOUNT,
+			grants: [],
+			grantsRole: function(role) {
+				return(grantedRoles.includes(role));
+			}
+		});
 	}
 
 	function identityOption(identity: IdentityRef | undefined) {

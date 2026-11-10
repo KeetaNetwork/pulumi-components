@@ -30,25 +30,24 @@ function baselineUrn(typeChain: string, name: string) {
 }
 
 /*
- * The one table of planned exceptions. A reason names the phase that makes
- * the exception and what it does, for example 'P7: build provider removed',
- * so that a later phase can see which entries are its own.
+ * The one table of planned exceptions. A reason says what makes the
+ * exception, for example 'build provider removed'.
  *
  * - `expectedRemovals`: per case, URNs of the released version that this
  *   branch deliberately no longer answers to. An entry that is still matched
  *   fails the test, so entries cannot go stale.
  * - `deferredParents`: the ending of the name of a resource that still has a
- *   plain (non-component) resource as its parent, and the phase that removes
- *   it. An entry that no resource needs fails the test as well.
+ *   plain (non-component) resource as its parent, and what removes it. An
+ *   entry that no resource needs fails the test as well.
  */
 /**
  * The URNs that a duplicate environment had in the released version: its
  * manager, and for each secret variable the secret, its version and its
- * binding. The worker and the migration job read the environment of the app
- * from P9 on, so these leave (the one-time rollout of the Design).
+ * binding. The worker and the migration job read the environment of the
+ * app, so these leave once, on the first deploy after the upgrade.
  */
 function duplicateEnvironment(parentChain: string, manager: string, variables: string[]) {
-	const reason = 'P9: the worker and the migration job read the environment of the app';
+	const reason = 'the worker and the migration job read the environment of the app';
 	const environment = `${parentChain}$Keeta:GCP:CloudRunEnvManager`;
 	const secret = `${environment}$gcp:secretmanager/secret:Secret`;
 	const removed: { [urn: string]: string } = { [baselineUrn(environment, manager)]: reason };
@@ -69,10 +68,10 @@ const PLANNED_EXCEPTIONS: {
 } = {
 	expectedRemovals: {
 		'service-build-remote': {
-			[baselineUrn('Keeta:GCP:CloudRunService$pulumi:providers:gcp', 'service-build-remote-build-provider')]: 'P7: build provider removed'
+			[baselineUrn('Keeta:GCP:CloudRunService$pulumi:providers:gcp', 'service-build-remote-build-provider')]: 'build provider removed'
 		},
 		'service-providers': {
-			[baselineUrn('Keeta:GCP:CloudRunService$pulumi:providers:gcp', 'service-providers-build-provider')]: 'P7: build provider removed',
+			[baselineUrn('Keeta:GCP:CloudRunService$pulumi:providers:gcp', 'service-providers-build-provider')]: 'build provider removed',
 			...duplicateEnvironment('Keeta:GCP:CloudRunService', 'service-providers-mig-env', [ ...DATABASE_SECRETS, 'secret' ]),
 			...duplicateEnvironment('Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob', 'service-providers-migration-env', [ ...DATABASE_SECRETS, 'secret' ])
 		},
@@ -81,12 +80,12 @@ const PLANNED_EXCEPTIONS: {
 		'service-crwp': duplicateEnvironment('Keeta:GCP:CloudRunService', 'service-crwp-mig-env', [])
 	},
 	deferredParents: {
-		'-subnet': 'P10: the network chain moves to AppNetwork',
-		'-vpc-connector': 'P10: the network chain moves to AppNetwork',
-		'-private-ip-alloc': 'P10: the network chain moves to AppNetwork',
-		'-svc-networking': 'P10: the network chain moves to AppNetwork',
-		'-kv-firewall': 'P10: the network chain moves to AppNetwork',
-		'-ssh-iap-firewall': 'P10: the network chain moves to AppNetwork'
+		'-subnet': 'the network chain moves to AppNetwork',
+		'-vpc-connector': 'the network chain moves to AppNetwork',
+		'-private-ip-alloc': 'the network chain moves to AppNetwork',
+		'-svc-networking': 'the network chain moves to AppNetwork',
+		'-kv-firewall': 'the network chain moves to AppNetwork',
+		'-ssh-iap-firewall': 'the network chain moves to AppNetwork'
 	}
 };
 
@@ -100,9 +99,8 @@ const CALLER_RESOURCES: { [caseName: string]: string[] } = {
 };
 
 /*
- * The resources that P7 moves to the component that owns them (Design P7,
- * "Moves in P7"). The IAM grants (P8) and the network chain (P10) are not
- * here. A resource that matches a row must have a component of one of the
+ * The resources that move to the component that owns them. The IAM grants
+ * and the network chain are not here. A resource that matches a row must have a component of one of the
  * `parents` types as its parent, named as the prefix of its own name, and
  * exactly one alias: its URN in the released version.
  */
@@ -142,7 +140,7 @@ const MOVES: Move[] = [
 	{ type: 'gcp:servicenetworking/connection:Connection', name: /-postgres-vpc-connection$/, parents: [ DATABASE ] },
 	{ type: 'gcp:secretmanager/secretVersion:SecretVersion', name: /-version$/, parents: [ ENV_MANAGER ] },
 	/*
-	 * P8: the service account and the project roles of an app move to its
+	 * The service account and the project roles of an app move to its
 	 * ServiceIdentity. The migration job's own grant, the build service
 	 * account (`-build-sa`) and the standalone components' accounts had
 	 * another parent in 1.0.95 and stay where they are.
@@ -410,7 +408,7 @@ describe('component tree', function() {
 				}));
 			});
 
-			expect(reason).toMatch(/^P\d+: /);
+			expect(reason).not.toBe('');
 			expect(needed).toBe(true);
 		});
 
@@ -448,8 +446,8 @@ describe('component tree', function() {
 			return(Object.entries(urns).map(function([ urn, reason ]): [ string, string, string ] {
 				return([ caseName, urn, reason ]);
 			}));
-		}))('%s: names the phase that removes %s', function(_caseName, _urn, reason) {
-			expect(reason).toMatch(/^P\d+: /);
+		}))('%s: gives the reason for removing %s', function(_caseName, _urn, reason) {
+			expect(reason).not.toBe('');
 		});
 
 		it('keeps the binding of a secret the caller owns where it was', function() {
@@ -562,7 +560,7 @@ describe('component tree', function() {
 	});
 
 	/*
-	 * One owner per project role (Design P8, invariant I-iam-owner): the
+	 * One owner per project role: the
 	 * ServiceIdentity of an app grants the project roles of its service
 	 * account. A grant that a component made for itself before stays in the
 	 * code as a retained tombstone at its old URN, so removing the duplicate
@@ -683,7 +681,7 @@ describe('component tree', function() {
 			expect(problems).toEqual([]);
 		});
 
-		/* What P8 must leave alone */
+		/* What the move to the identity leaves alone */
 		it.each(caseNames)('%s leaves the registry grants and the secret versions as they are', function(caseName) {
 			const tree = treeOf(caseName);
 			const problems: string[] = [];
@@ -718,7 +716,7 @@ describe('component tree', function() {
 
 	/*
 	 * An app has one EnvManager, `${name}-env`, and its service, migration job
-	 * and worker read views of it (P9). The EnvManagers of the worker and of
+	 * and worker read views of it. The EnvManagers of the worker and of
 	 * the migration job leave with their secrets: the one-time rollout that
 	 * `PLANNED_EXCEPTIONS.expectedRemovals` names. A standalone MigrationJob
 	 * keeps its own EnvManager.
@@ -844,10 +842,10 @@ describe('component tree', function() {
 
 	/*
 	 * Pulumi hands `providers` down to the children that have the component
-	 * as an ancestor. Every resource of a component is a descendant of it
-	 * after P7, so a provider that the caller passes reaches all of them,
-	 * including the docker image with its IAM grants and the remote build's
-	 * service account and bucket. The first test keeps the snapshot of P2.
+	 * as an ancestor. Every resource of a component is a descendant of it,
+	 * so a provider that the caller passes reaches all of them, including the
+	 * docker image with its IAM grants and the remote build's service account
+	 * and bucket.
 	 */
 	describe('provider propagation', function() {
 		function gcpNamesByProvider(caseName: string) {
