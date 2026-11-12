@@ -224,7 +224,9 @@ export interface PostgresCloudSQLArgs {
 	abandonOnDelete?: boolean;
 
 	/**
-	 * Query Insights options
+	 * Query Insights options. Left out, Query Insights is on, without
+	 * application tags or client addresses. Pass
+	 * `{ queryInsightsEnabled: false }` to turn it off.
 	 */
 	insightsConfig?: NonNullable<pulumi.Unwrap<ConstructorParameters<typeof gcp.sql.DatabaseInstance>[1]['settings']>>['insightsConfig'];
 }
@@ -547,9 +549,8 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 				databaseFlags: databaseFlags,
 				backupConfiguration: backupConfiguration,
 				insightsConfig: this.#options.insightsConfig ?? {
-					queryInsightsEnabled: false,
-					queryPlansPerMinute: 0,
-					queryStringLength: 0,
+					queryInsightsEnabled: POSTGRES_DEFAULTS.queryInsights,
+					queryStringLength: POSTGRES_DEFAULTS.queryStringLength,
 					recordApplicationTags: false,
 					recordClientAddress: false
 				}
