@@ -208,14 +208,14 @@ describe('the environment of an app', function() {
 });
 
 /*
- * A virtual machine reads its variables from the metadata of the instance
- * template, and a literal that the caller marked secret has to be a secret
- * there, or it would sit in the state in plain text.
+ * A virtual machine reads its variables from the cloud-init user data of
+ * the instance template, and a literal that the caller marked secret has to
+ * be a secret there, or it would sit in the state in plain text.
  */
 describe('the environment of a virtual machine worker', function() {
 	useIsolatedHome();
 
-	const DECLARATION = 'gce-container-declaration';
+	const DECLARATION = 'user-data';
 	const TEMPLATE = 'gcp:compute/instanceTemplate:InstanceTemplate';
 
 	async function declarationOf(name: string, environment: Partial<ServiceArgs>['environment']) {
