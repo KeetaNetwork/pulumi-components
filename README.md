@@ -136,7 +136,7 @@ const backend = new keetapulumi.gcp.apps.CloudRunService('my-backend', {
 	// database: { tier: 'db-custom-1-3840' }
 });
 ```
-- `environment` sets `database.deletionProtection` (true for `production`), `database.backups` (none for `development`; daily with 3 kept for `test`; point-in-time recovery with 14 kept and 7 days of logs for `production`) and `database.queryInsights` (off for `development`).
+- `environment` sets `database.deletionProtection` (true for `production`), `database.backups` (none for `development`; daily with 3 kept for `test`; point-in-time recovery with 14 kept and 7 days of logs for `production`) and `database.queryInsights` (on in every environment, as it is without a profile; set it to `false` to turn it off).
 - `size` sets the database `tier` and `flags.max_connections`, `service.maxInstances`, `database.poolSize`, `worker.poolSize`, the VPC connector range and `kv.memorySizeGb` (a profile makes `kv.memorySizeGb` optional; without a profile it is still required, and leaving it out throws a `CloudRunServiceArgsError`). Each part applies only where the app has it: a profile adds no database, worker, key-value store or network. It does not touch an `AppNetwork` that you pass as `network`.
 
 | size | tier | `max_connections` | web instances x pool | worker pool |
