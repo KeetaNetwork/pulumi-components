@@ -23,16 +23,25 @@ const SECRET = 'gcp:secretmanager/secret:Secret';
 const MAX_SCALE = 'autoscaling.knative.dev/maxScale';
 const POOL_SIZE = 'MC_PSQL_DB_POOL_SIZE';
 
-/** The variables of the container that a virtual machine worker runs: its template holds them in a declaration that is a secret once the database password is in it */
+/** The variables of the container that a virtual machine worker runs: its template holds them in the cloud-init user data, as the `-e` arguments of the script that starts the container, which is a secret once the database password is in it */
 function templateEnvironment(tree: TreeSnapshot) {
 	const template = expectDefined(ofType(tree, INSTANCE_TEMPLATE)[0], 'the instance template');
-	const declaration = expectString(valueAt(template.revealed, [ 'metadata', 'gce-container-declaration' ]), 'the container declaration');
-	const variables = expectArray(valueAt(JSON.parse(declaration), [ 'spec', 'containers', 0, 'env' ]), 'the variables of the container');
+	const userData = expectString(valueAt(template.revealed, [ 'metadata', 'user-data' ]), 'the user data');
+	const files = expectArray(valueAt(JSON.parse(userData.replace(/^#cloud-config\n/, '')), [ 'write_files' ]), 'the files of the user data');
+	const script = files.map(function(file) {
+		return(expectRecord(file, 'a file of the user data'));
+	}).find(function(file) {
+		return(String(file.path).endsWith('/run.sh'));
+	});
+	const content = expectString(script?.content, 'the script that starts the container');
+	const assignments = [ ...content.matchAll(/-e '((?:[^']|'\\'')*)'/g) ].map(function(match) {
+		return(expectDefined(match[1], 'a variable of the container').replace(/'\\''/g, '\''));
+	});
 
-	return(Object.fromEntries(variables.map(function(variable) {
-		const record = expectRecord(variable, 'a variable of the container');
+	return(Object.fromEntries(assignments.map(function(assignment) {
+		const separator = assignment.indexOf('=');
 
-		return([ String(record.name), record.value ]);
+		return([ assignment.slice(0, separator), assignment.slice(separator + 1) ]);
 	})));
 }
 
