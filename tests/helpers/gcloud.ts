@@ -1,5 +1,7 @@
 import { execFileSync } from 'node:child_process';
 
+import { expectArray, optionalRecord } from './narrow';
+
 const GCLOUD = process.env.GCLOUD_PATH ?? 'gcloud';
 
 export function gcloud(args: string[]): string {
@@ -17,11 +19,12 @@ export interface ManagedInstance {
 
 export function listManagedInstances(project: string, region: string, migName: string): ManagedInstance[] {
 	const output = gcloud(['compute', 'instance-groups', 'managed', 'list-instances', migName, '--region', region, '--project', project, '--format', 'json']);
-	const entries = JSON.parse(output.trim() === '' ? '[]' : output) as { instance?: string }[];
+	const entries = expectArray(JSON.parse(output.trim() === '' ? '[]' : output), 'the managed instances');
 
 	return(entries.map(function(entry) {
 		// .../projects/<project>/zones/<zone>/instances/<name>
-		const parts = (entry.instance ?? '').split('/');
+		const instanceURL = optionalRecord(entry)?.instance;
+		const parts = (typeof instanceURL === 'string' ? instanceURL : '').split('/');
 		return({
 			name: parts[parts.length - 1] ?? '',
 			zone: parts[parts.length - 3] ?? ''
@@ -39,7 +42,7 @@ export function resetInstance(project: string, instance: ManagedInstance): void 
 
 export function readLogs(project: string, filter: string, limit = 5): unknown[] {
 	const output = gcloud(['logging', 'read', filter, '--project', project, '--limit', String(limit), '--format', 'json', '--freshness', '1h']);
-	return(JSON.parse(output.trim() === '' ? '[]' : output) as unknown[]);
+	return(expectArray(JSON.parse(output.trim() === '' ? '[]' : output), 'the log entries'));
 }
 
 /**
