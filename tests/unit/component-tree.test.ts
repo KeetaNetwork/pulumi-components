@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import { expectDefined, expectRecord } from '../helpers/narrow';
+import { expectDefined, expectRecord, optionalRecord } from '../helpers/narrow';
 import { captureTree, describeTree, matchLegacyUrns, readBaselineCase, urnsOf, useIsolatedHome } from './harness/pulumi-tree';
 import type { TreeResource, TreeSnapshot } from './harness/pulumi-tree';
 import { TREE_CASES } from './harness/tree-cases';
@@ -82,6 +82,10 @@ interface Move {
 	type: string;
 	name: RegExp;
 	parents: string[];
+	/** The type of the 1.0.95 parent, for a row that applies only to resources that had a parent of that type */
+	oldParent?: string;
+	/** The ending of the parent's name when the parent is not named after its children (`${app}-identity` owns `${app}-sa`) */
+	parentSuffix?: string;
 }
 
 const STATIC_APP = 'Keeta:GCP:StaticWebApp';
@@ -89,6 +93,7 @@ const FRONT_ENDS = [ STATIC_APP, 'Keeta:GCP:FullStackApp' ];
 const SERVICE = 'Keeta:GCP:CloudRunService';
 const DATABASE = 'Keeta:GCP:PostgresCloudSQL';
 const ENV_MANAGER = 'Keeta:GCP:CloudRunEnvManager';
+const IDENTITY = 'Keeta:GCP:ServiceIdentity';
 
 const MOVES: Move[] = [
 	{ type: 'gcp:storage/bucket:Bucket', name: /-bucket$/, parents: [ STATIC_APP ] },
@@ -108,13 +113,45 @@ const MOVES: Move[] = [
 	{ type: 'gcp:sql/databaseInstance:DatabaseInstance', name: /-replica$/, parents: [ DATABASE ] },
 	{ type: 'gcp:servicenetworking/connection:Connection', name: /-postgres-vpc-connection$/, parents: [ DATABASE ] },
 	{ type: 'gcp:secretmanager/secretVersion:SecretVersion', name: /-version$/, parents: [ ENV_MANAGER ] },
+	/*
+	 * The service account and the project roles of an app move to its
+	 * ServiceIdentity. The migration job's own grant, the build service
+	 * account (`-build-sa`) and the standalone components' accounts had
+	 * another parent in 1.0.95 and stay where they are.
+	 */
+	{ type: 'gcp:serviceaccount/account:Account', name: /^(?!.*-build-sa$).*-sa$/, parents: [ IDENTITY ], oldParent: SERVICE, parentSuffix: '-identity' },
+	{ type: 'gcp:projects/iAMMember:IAMMember', name: /-log-writer$/, parents: [ IDENTITY ], oldParent: SERVICE, parentSuffix: '-identity' },
+	{ type: 'gcp:projects/iAMMember:IAMMember', name: /-cloudsql-client$/, parents: [ IDENTITY ], oldParent: DATABASE, parentSuffix: '-identity' },
 	/* The binding of a secret the caller owns (`-non-managed-`) had the EnvManager as its parent in 1.0.95 and stays there */
 	{ type: 'gcp:secretmanager/secretIamMember:SecretIamMember', name: /^(?!.*-non-managed-).*-iam-binding$/, parents: [ ENV_MANAGER ] }
 ];
 
-function moveOf(resource: TreeResource) {
+/** The one URN of the released version that has this resource's name and type as its own */
+function releasedUrnOf(caseName: string, resource: TreeResource) {
+	const matches = readBaselineCase(baseline, caseName).filter(function(urn) {
+		const [ , , typeChain, name ] = urn.split('::');
+
+		return(name === resource.name && typeChain?.split('$').pop() === resource.type);
+	});
+
+	return(matches);
+}
+
+function moveOf(caseName: string, resource: TreeResource) {
 	return(MOVES.find(function(move) {
-		return(move.type === resource.type && move.name.test(resource.name));
+		if (move.type !== resource.type || !move.name.test(resource.name)) {
+			return(false);
+		}
+
+		if (move.oldParent === undefined) {
+			return(true);
+		}
+
+		/* The type chain of the one URN the resource had, without its own type, ends with the type of its old parent */
+		const [ released ] = releasedUrnOf(caseName, resource);
+		const chain = released?.split('::')[2]?.split('$') ?? [];
+
+		return(chain[chain.length - 2] === move.oldParent);
 	}));
 }
 
@@ -162,17 +199,6 @@ function byName(tree: TreeSnapshot, name: string, type?: string) {
 	}));
 }
 
-/** The one URN of the released version that has this resource's name and type as its own */
-function releasedUrnOf(caseName: string, resource: TreeResource) {
-	const matches = readBaselineCase(baseline, caseName).filter(function(urn) {
-		const [ , , typeChain, name ] = urn.split('::');
-
-		return(name === resource.name && typeChain?.split('$').pop() === resource.type);
-	});
-
-	return(matches);
-}
-
 /*
  * The aliases that move a resource: those that keep its type. The provider
  * SDK adds aliases of its own that change the type (for example for
@@ -182,6 +208,11 @@ function moveAliases(resource: TreeResource) {
 	return(resource.aliases.filter(function(alias) {
 		return(alias.split('::')[2]?.split('$').pop() === resource.type);
 	}));
+}
+
+/** The parent's name is the resource's prefix, once the ending that the parent adds to its owner's name is taken off */
+function isNamedAfter(parent: TreeResource, resource: TreeResource, suffix: string) {
+	return(parent.name.endsWith(suffix) && resource.name.startsWith(`${parent.name.slice(0, parent.name.length - suffix.length)}-`));
 }
 
 function isDeferred(resource: TreeResource) {
@@ -194,6 +225,48 @@ function hasPlainParent(tree: TreeSnapshot, resource: TreeResource) {
 	return(parentOf(tree, resource)?.custom === true);
 }
 
+
+const PROJECT_GRANT = 'gcp:projects/iAMMember:IAMMember';
+
+/** The components whose project grants an app's ServiceIdentity now owns */
+const GRANTING_COMPONENTS = [ 'Keeta:GCP:MigrationJob', 'Keeta:GCP:ContainerMIG', 'Keeta:GCP:ContainerCloudRun' ];
+
+function childrenOf(tree: TreeSnapshot, parent: TreeResource) {
+	return(tree.resources.filter(function(resource) {
+		return(resource.parent === parent.urn);
+	}));
+}
+
+function appsOf(tree: TreeSnapshot) {
+	return(tree.resources.filter(function(resource) {
+		return(resource.type === SERVICE);
+	}));
+}
+
+/** What identifies a project grant in GCP: the same triple granted twice is one binding */
+function grantKey(resource: TreeResource) {
+	const inputs = expectRecord(resource.inputs, `the inputs of ${resource.name}`);
+
+	return(JSON.stringify([ inputs.project, inputs.role, inputs.member ]));
+}
+
+/** The project grants of a tree that a later `pulumi destroy` would revoke */
+function liveGrants(tree: TreeSnapshot) {
+	return(tree.resources.filter(function(resource) {
+		return(resource.type === PROJECT_GRANT && resource.retainOnDelete !== true);
+	}));
+}
+
+function ancestorTypes(tree: TreeSnapshot, resource: TreeResource) {
+	const types: string[] = [];
+	let current = parentOf(tree, resource);
+	while (current !== undefined) {
+		types.push(current.type);
+		current = parentOf(tree, current);
+	}
+
+	return(types);
+}
 
 const caseNames = TREE_CASES.map(function(treeCase) {
 	return(treeCase.name);
@@ -254,6 +327,7 @@ describe('component tree', function() {
 				'Keeta:GCP:FullStackApp',
 				'Keeta:GCP:MigrationJob',
 				'Keeta:GCP:PostgresCloudSQL',
+				'Keeta:GCP:ServiceIdentity',
 				'Keeta:GCP:StaticWebApp',
 				'keeta:synced-folder:GoogleCloudFolderWithArgs'
 			]);
@@ -363,7 +437,7 @@ describe('component tree', function() {
 			const unused = MOVES.filter(function(move) {
 				return(!caseNames.some(function(caseName) {
 					return(treeOf(caseName).resources.some(function(resource) {
-						return(moveOf(resource) === move);
+						return(moveOf(caseName, resource) === move);
 					}));
 				}));
 			});
@@ -375,13 +449,13 @@ describe('component tree', function() {
 			const tree = treeOf(caseName);
 			const problems: string[] = [];
 			for (const resource of tree.resources) {
-				const move = moveOf(resource);
+				const move = moveOf(caseName, resource);
 				const parent = parentOf(tree, resource);
 				if (move === undefined) {
 					continue;
 				}
 
-				if (parent === undefined || !move.parents.includes(parent.type) || !resource.name.startsWith(`${parent.name}-`)) {
+				if (parent === undefined || !move.parents.includes(parent.type) || !isNamedAfter(parent, resource, move.parentSuffix ?? '')) {
 					problems.push(`${resource.name} has the parent ${parent?.name ?? 'none'} (${parent?.type ?? 'none'}), expected a ${move.parents.join(' or ')} that its name starts with`);
 				}
 			}
@@ -393,7 +467,7 @@ describe('component tree', function() {
 			const tree = treeOf(caseName);
 			const problems: string[] = [];
 			for (const resource of tree.resources) {
-				if (moveOf(resource) === undefined) {
+				if (moveOf(caseName, resource) === undefined) {
 					continue;
 				}
 
@@ -408,7 +482,7 @@ describe('component tree', function() {
 
 		it.each(caseNames)('%s gives an alias to nothing that did not move', function(caseName) {
 			const withAlias = treeOf(caseName).resources.filter(function(resource) {
-				return(moveAliases(resource).length > 0 && moveOf(resource) === undefined);
+				return(moveAliases(resource).length > 0 && moveOf(caseName, resource) === undefined);
 			});
 
 			expect(withAlias.map(function(resource) {
@@ -456,6 +530,161 @@ describe('component tree', function() {
 			const target = expectDefined(byName(tree, waitsFor), `the resource ${waitsFor}`);
 
 			expect(resource.dependsOn).toContain(target.urn);
+		});
+	});
+
+	/*
+	 * One owner per project role: the
+	 * ServiceIdentity of an app grants the project roles of its service
+	 * account. A grant that a component made for itself before stays in the
+	 * code as a retained tombstone at its old URN, so removing the duplicate
+	 * never revokes the role a surviving binding still gives.
+	 */
+	describe('IAM ownership', function() {
+		it.each(caseNames)('%s has no two live project grants with the same project, role and member', function(caseName) {
+			const seen = new Map<string, string[]>();
+			for (const grant of liveGrants(treeOf(caseName))) {
+				seen.set(grantKey(grant), [ ...seen.get(grantKey(grant)) ?? [], grant.name ]);
+			}
+
+			const duplicates = [ ...seen.values() ].filter(function(names) {
+				return(names.length > 1);
+			});
+
+			expect(duplicates).toEqual([]);
+		});
+
+		it.each(caseNames)('%s gives each app one ServiceIdentity, named after it, under it', function(caseName) {
+			const tree = treeOf(caseName);
+			const problems: string[] = [];
+			for (const app of appsOf(tree)) {
+				const identities = childrenOf(tree, app).filter(function(child) {
+					return(child.type === IDENTITY);
+				});
+				if (identities.length !== 1 || identities[0]?.name !== `${app.name}-identity`) {
+					problems.push(`${app.name} has the identities ${JSON.stringify(identities.map(function(identity) {
+						return(identity.name);
+					}))}`);
+				}
+			}
+
+			expect(problems).toEqual([]);
+		});
+
+		/* The roles an app needs: the service account gets the log writer, the Cloud SQL client with a database and the metric writer with a worker */
+		it.each(caseNames)('%s grants the project roles of each app through its ServiceIdentity, once each', function(caseName) {
+			const tree = treeOf(caseName);
+			const problems: string[] = [];
+			for (const app of appsOf(tree)) {
+				const children = childrenOf(tree, app);
+				const identity = children.find(function(child) {
+					return(child.type === IDENTITY);
+				});
+				const account = tree.resources.find(function(resource) {
+					return(resource.name === `${app.name}-sa` && resource.type === 'gcp:serviceaccount/account:Account');
+				});
+				const expected: string[] = [];
+				if (account !== undefined) {
+					expected.push(`${app.name}-log-writer`);
+					if (children.some(function(child) {
+						return(child.type === DATABASE);
+					})) {
+						expected.push(`${app.name}-cloudsql-client`);
+					}
+
+					if (children.some(function(child) {
+						return(GRANTING_COMPONENTS.includes(child.type) && child.type !== 'Keeta:GCP:MigrationJob');
+					})) {
+						expected.push(`${app.name}-metric-writer`);
+					}
+				}
+
+				let owned: TreeResource[] = [];
+				if (identity !== undefined) {
+					owned = childrenOf(tree, identity).filter(function(child) {
+						return(child.type === PROJECT_GRANT && child.retainOnDelete !== true);
+					});
+				}
+
+				const onTheApp = liveGrants(tree).filter(function(grant) {
+					return(ancestorTypes(tree, grant).includes(SERVICE) && !ancestorTypes(tree, grant).includes('Keeta:GCP:DockerImage') && grant.parent !== identity?.urn);
+				});
+				const actual = owned.map(function(grant) {
+					return(grant.name);
+				}).sort();
+
+				if (JSON.stringify(actual) !== JSON.stringify([ ...expected ].sort()) || onTheApp.length > 0) {
+					problems.push(`${app.name}: the identity owns ${JSON.stringify(actual)}, expected ${JSON.stringify([ ...expected ].sort())}; other live grants: ${JSON.stringify(onTheApp.map(function(grant) {
+						return(grant.name);
+					}))}`);
+				}
+			}
+
+			expect(problems).toEqual([]);
+		});
+
+		/*
+		 * The project grants of a migration job, a container MIG or a Cloud
+		 * Run worker pool of an app are tombstones: they keep their URN (and
+		 * so their state) and their binding in GCP, but are retained. A
+		 * component used on its own still grants for itself, as today.
+		 */
+		it.each(caseNames)('%s keeps the superseded grants as retained tombstones at their old URN, and standalone components keep granting', function(caseName) {
+			const tree = treeOf(caseName);
+			const problems: string[] = [];
+			for (const grant of tree.resources) {
+				const parent = parentOf(tree, grant);
+				if (grant.type !== PROJECT_GRANT || parent === undefined || !GRANTING_COMPONENTS.includes(parent.type)) {
+					continue;
+				}
+
+				const ownedByApp = parentOf(tree, parent)?.type === SERVICE;
+				if (ownedByApp && grant.retainOnDelete !== true) {
+					problems.push(`${grant.name} is not retained`);
+				}
+
+				if (ownedByApp && (moveAliases(grant).length > 0 || !readBaselineCase(baseline, caseName).includes(grant.urn))) {
+					problems.push(`${grant.name} is not at its URN of 1.0.95`);
+				}
+
+				if (!ownedByApp && grant.retainOnDelete !== undefined) {
+					problems.push(`${grant.name} is retained, but its component has no identity`);
+				}
+			}
+
+			expect(problems).toEqual([]);
+		});
+
+		/* What the move to the identity leaves alone */
+		it.each(caseNames)('%s leaves the registry grants and the secret versions as they are', function(caseName) {
+			const tree = treeOf(caseName);
+			const problems: string[] = [];
+			for (const resource of tree.resources) {
+				const inputs = optionalRecord(resource.inputs);
+				if (resource.type === 'gcp:artifactregistry/repositoryIamMember:RepositoryIamMember' && (resource.retainOnDelete !== undefined || moveAliases(resource).length > 0)) {
+					problems.push(`${resource.name} changed`);
+				}
+
+				if (resource.type === 'gcp:secretmanager/secretVersion:SecretVersion' && (inputs?.deletionPolicy !== 'DISABLE' || resource.retainOnDelete !== undefined)) {
+					problems.push(`${resource.name} no longer has deletionPolicy DISABLE`);
+				}
+			}
+
+			expect(problems).toEqual([]);
+		});
+
+		it('gives the passed provider to the resources of the ServiceIdentity', function() {
+			const tree = treeOf('service-providers');
+			const passed = expectDefined(byName(tree, 'caller-provider'), 'the provider of the caller');
+			const identity = expectDefined(byName(tree, 'service-providers-identity', IDENTITY), 'the ServiceIdentity');
+			const owned = childrenOf(tree, identity);
+
+			expect(owned.map(function(resource) {
+				return(resource.name);
+			}).sort()).toEqual([ 'service-providers-cloudsql-client', 'service-providers-log-writer', 'service-providers-metric-writer', 'service-providers-sa' ]);
+			expect(owned.filter(function(resource) {
+				return(resource.provider !== passed.urn);
+			})).toEqual([]);
 		});
 	});
 

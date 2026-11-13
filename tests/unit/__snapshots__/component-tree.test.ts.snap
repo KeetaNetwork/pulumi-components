@@ -41,10 +41,13 @@ exports[`component tree > provider propagation > gives the passed provider to th
     "service-providers-migration-env-secret-version",
     "service-providers-migration-job",
     "service-providers-migration-cloudsql-client",
-    "service-providers-cloudsql-client",
     "service-providers-db-db",
     "service-providers-db-master",
     "service-providers-db-db-user",
+    "service-providers-cloudsql-client",
+    "service-providers-log-writer",
+    "service-providers-metric-writer",
+    "service-providers-sa",
     "service-providers-invoker",
     "service-providers-api",
     "service-providers-backend",
@@ -54,9 +57,7 @@ exports[`component tree > provider propagation > gives the passed provider to th
     "service-providers-subnet",
     "service-providers-vpc",
     "service-providers-neg",
-    "service-providers-log-writer",
     "service-providers-build-sa",
-    "service-providers-sa",
     "service-providers-docker",
   ],
   "withoutProvider": [],
@@ -65,6 +66,44 @@ exports[`component tree > provider propagation > gives the passed provider to th
 
 exports[`component tree > snapshot > full-stack-app keeps its resources, parents, aliases and key inputs 1`] = `
 [
+  {
+    "aliases": [
+      "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService$gcp:projects/iAMMember:IAMMember::full-stack-backend-log-writer",
+    ],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:full-stack-backend-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/logging.logWriter",
+    },
+    "name": "full-stack-backend-log-writer",
+    "parent": "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::full-stack-backend-identity",
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:projects/iAMMember:IAMMember::full-stack-backend-log-writer",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService$gcp:serviceaccount/account:Account::full-stack-backend-sa",
+      "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:serviceAccount/account:Account::full-stack-backend-sa",
+    ],
+    "custom": true,
+    "inputs": {
+      "accountId": "full-stack-backend-sa",
+      "description": "[full-stack-backend] Service account",
+    },
+    "name": "full-stack-backend-sa",
+    "parent": "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::full-stack-backend-identity",
+    "type": "gcp:serviceaccount/account:Account",
+    "urn": "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:serviceaccount/account:Account::full-stack-backend-sa",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "full-stack-backend-identity",
+    "parent": "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService::full-stack-backend",
+    "type": "Keeta:GCP:ServiceIdentity",
+    "urn": "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::full-stack-backend-identity",
+  },
   {
     "aliases": [
       "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService$gcp:cloudrun/service:Service$gcp:cloudrun/iamMember:IamMember::full-stack-backend-invoker",
@@ -148,33 +187,6 @@ exports[`component tree > snapshot > full-stack-app keeps its resources, parents
     "parent": "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService::full-stack-backend",
     "type": "gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup",
     "urn": "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService$gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup::full-stack-backend-neg",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "member": "serviceAccount:full-stack-backend-sa@mock.iam.gserviceaccount.com",
-      "project": "project-id",
-      "role": "roles/logging.logWriter",
-    },
-    "name": "full-stack-backend-log-writer",
-    "parent": "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService::full-stack-backend",
-    "type": "gcp:projects/iAMMember:IAMMember",
-    "urn": "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService$gcp:projects/iAMMember:IAMMember::full-stack-backend-log-writer",
-  },
-  {
-    "aliases": [
-      "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService$gcp:serviceAccount/account:Account::full-stack-backend-sa",
-    ],
-    "custom": true,
-    "inputs": {
-      "accountId": "full-stack-backend-sa",
-      "description": "[full-stack-backend] Service account",
-    },
-    "name": "full-stack-backend-sa",
-    "parent": "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService::full-stack-backend",
-    "type": "gcp:serviceaccount/account:Account",
-    "urn": "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService$gcp:serviceaccount/account:Account::full-stack-backend-sa",
   },
   {
     "aliases": [],
@@ -550,6 +562,44 @@ exports[`component tree > snapshot > full-stack-app-without-frontend keeps its r
 [
   {
     "aliases": [
+      "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService$gcp:projects/iAMMember:IAMMember::full-stack-api-backend-log-writer",
+    ],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:full-stack-api-backend-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/logging.logWriter",
+    },
+    "name": "full-stack-api-backend-log-writer",
+    "parent": "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::full-stack-api-backend-identity",
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:projects/iAMMember:IAMMember::full-stack-api-backend-log-writer",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService$gcp:serviceaccount/account:Account::full-stack-api-backend-sa",
+      "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:serviceAccount/account:Account::full-stack-api-backend-sa",
+    ],
+    "custom": true,
+    "inputs": {
+      "accountId": "full-stack-api-backend-sa",
+      "description": "[full-stack-api-backend] Service account",
+    },
+    "name": "full-stack-api-backend-sa",
+    "parent": "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::full-stack-api-backend-identity",
+    "type": "gcp:serviceaccount/account:Account",
+    "urn": "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:serviceaccount/account:Account::full-stack-api-backend-sa",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "full-stack-api-backend-identity",
+    "parent": "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService::full-stack-api-backend",
+    "type": "Keeta:GCP:ServiceIdentity",
+    "urn": "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::full-stack-api-backend-identity",
+  },
+  {
+    "aliases": [
       "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService$gcp:cloudrun/service:Service$gcp:cloudrun/iamMember:IamMember::full-stack-api-backend-invoker",
     ],
     "custom": true,
@@ -631,33 +681,6 @@ exports[`component tree > snapshot > full-stack-app-without-frontend keeps its r
     "parent": "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService::full-stack-api-backend",
     "type": "gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup",
     "urn": "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService$gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup::full-stack-api-backend-neg",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "member": "serviceAccount:full-stack-api-backend-sa@mock.iam.gserviceaccount.com",
-      "project": "project-id",
-      "role": "roles/logging.logWriter",
-    },
-    "name": "full-stack-api-backend-log-writer",
-    "parent": "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService::full-stack-api-backend",
-    "type": "gcp:projects/iAMMember:IAMMember",
-    "urn": "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService$gcp:projects/iAMMember:IAMMember::full-stack-api-backend-log-writer",
-  },
-  {
-    "aliases": [
-      "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService$gcp:serviceAccount/account:Account::full-stack-api-backend-sa",
-    ],
-    "custom": true,
-    "inputs": {
-      "accountId": "full-stack-api-backend-sa",
-      "description": "[full-stack-api-backend] Service account",
-    },
-    "name": "full-stack-api-backend-sa",
-    "parent": "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService::full-stack-api-backend",
-    "type": "gcp:serviceaccount/account:Account",
-    "urn": "Keeta:GCP:FullStackApp$Keeta:GCP:CloudRunService$gcp:serviceaccount/account:Account::full-stack-api-backend-sa",
   },
   {
     "aliases": [],
@@ -1012,6 +1035,44 @@ exports[`component tree > snapshot > service-build-local keeps its resources, pa
   },
   {
     "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:projects/iAMMember:IAMMember::service-build-local-log-writer",
+    ],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:service-build-local-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/logging.logWriter",
+    },
+    "name": "service-build-local-log-writer",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-build-local-identity",
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:projects/iAMMember:IAMMember::service-build-local-log-writer",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:serviceaccount/account:Account::service-build-local-sa",
+      "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:serviceAccount/account:Account::service-build-local-sa",
+    ],
+    "custom": true,
+    "inputs": {
+      "accountId": "service-build-local-sa",
+      "description": "[service-build-local] Service account",
+    },
+    "name": "service-build-local-sa",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-build-local-identity",
+    "type": "gcp:serviceaccount/account:Account",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:serviceaccount/account:Account::service-build-local-sa",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "service-build-local-identity",
+    "parent": "Keeta:GCP:CloudRunService::service-build-local",
+    "type": "Keeta:GCP:ServiceIdentity",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-build-local-identity",
+  },
+  {
+    "aliases": [
       "Keeta:GCP:CloudRunService$gcp:cloudrun/service:Service$gcp:cloudrun/iamMember:IamMember::service-build-local-invoker",
     ],
     "custom": true,
@@ -1093,33 +1154,6 @@ exports[`component tree > snapshot > service-build-local keeps its resources, pa
     "parent": "Keeta:GCP:CloudRunService::service-build-local",
     "type": "gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup",
     "urn": "Keeta:GCP:CloudRunService$gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup::service-build-local-neg",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "member": "serviceAccount:service-build-local-sa@mock.iam.gserviceaccount.com",
-      "project": "project-id",
-      "role": "roles/logging.logWriter",
-    },
-    "name": "service-build-local-log-writer",
-    "parent": "Keeta:GCP:CloudRunService::service-build-local",
-    "type": "gcp:projects/iAMMember:IAMMember",
-    "urn": "Keeta:GCP:CloudRunService$gcp:projects/iAMMember:IAMMember::service-build-local-log-writer",
-  },
-  {
-    "aliases": [
-      "Keeta:GCP:CloudRunService$gcp:serviceAccount/account:Account::service-build-local-sa",
-    ],
-    "custom": true,
-    "inputs": {
-      "accountId": "service-build-local-sa",
-      "description": "[service-build-local] Service account",
-    },
-    "name": "service-build-local-sa",
-    "parent": "Keeta:GCP:CloudRunService::service-build-local",
-    "type": "gcp:serviceaccount/account:Account",
-    "urn": "Keeta:GCP:CloudRunService$gcp:serviceaccount/account:Account::service-build-local-sa",
   },
   {
     "aliases": [],
@@ -1253,6 +1287,44 @@ exports[`component tree > snapshot > service-build-remote keeps its resources, p
   },
   {
     "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:projects/iAMMember:IAMMember::service-build-remote-log-writer",
+    ],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:service-build-remote-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/logging.logWriter",
+    },
+    "name": "service-build-remote-log-writer",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-build-remote-identity",
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:projects/iAMMember:IAMMember::service-build-remote-log-writer",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:serviceaccount/account:Account::service-build-remote-sa",
+      "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:serviceAccount/account:Account::service-build-remote-sa",
+    ],
+    "custom": true,
+    "inputs": {
+      "accountId": "service-build-remote-sa",
+      "description": "[service-build-remote] Service account",
+    },
+    "name": "service-build-remote-sa",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-build-remote-identity",
+    "type": "gcp:serviceaccount/account:Account",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:serviceaccount/account:Account::service-build-remote-sa",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "service-build-remote-identity",
+    "parent": "Keeta:GCP:CloudRunService::service-build-remote",
+    "type": "Keeta:GCP:ServiceIdentity",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-build-remote-identity",
+  },
+  {
+    "aliases": [
       "Keeta:GCP:CloudRunService$gcp:cloudrun/service:Service$gcp:cloudrun/iamMember:IamMember::service-build-remote-invoker",
     ],
     "custom": true,
@@ -1336,19 +1408,6 @@ exports[`component tree > snapshot > service-build-remote keeps its resources, p
     "urn": "Keeta:GCP:CloudRunService$gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup::service-build-remote-neg",
   },
   {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "member": "serviceAccount:service-build-remote-sa@mock.iam.gserviceaccount.com",
-      "project": "project-id",
-      "role": "roles/logging.logWriter",
-    },
-    "name": "service-build-remote-log-writer",
-    "parent": "Keeta:GCP:CloudRunService::service-build-remote",
-    "type": "gcp:projects/iAMMember:IAMMember",
-    "urn": "Keeta:GCP:CloudRunService$gcp:projects/iAMMember:IAMMember::service-build-remote-log-writer",
-  },
-  {
     "aliases": [
       "Keeta:GCP:CloudRunService$gcp:serviceAccount/account:Account::service-build-remote-build-sa",
     ],
@@ -1360,20 +1419,6 @@ exports[`component tree > snapshot > service-build-remote keeps its resources, p
     "parent": "Keeta:GCP:CloudRunService::service-build-remote",
     "type": "gcp:serviceaccount/account:Account",
     "urn": "Keeta:GCP:CloudRunService$gcp:serviceaccount/account:Account::service-build-remote-build-sa",
-  },
-  {
-    "aliases": [
-      "Keeta:GCP:CloudRunService$gcp:serviceAccount/account:Account::service-build-remote-sa",
-    ],
-    "custom": true,
-    "inputs": {
-      "accountId": "service-build-remote-sa",
-      "description": "[service-build-remote] Service account",
-    },
-    "name": "service-build-remote-sa",
-    "parent": "Keeta:GCP:CloudRunService::service-build-remote",
-    "type": "gcp:serviceaccount/account:Account",
-    "urn": "Keeta:GCP:CloudRunService$gcp:serviceaccount/account:Account::service-build-remote-sa",
   },
   {
     "aliases": [],
@@ -1598,6 +1643,14 @@ exports[`component tree > snapshot > service-caller-resources keeps its resource
     "parent": "Keeta:GCP:CloudRunService::service-caller-resources",
     "type": "Keeta:GCP:PostgresCloudSQL",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL::service-caller-resources-db",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "service-caller-resources-identity",
+    "parent": "Keeta:GCP:CloudRunService::service-caller-resources",
+    "type": "Keeta:GCP:ServiceIdentity",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-caller-resources-identity",
   },
   {
     "aliases": [
@@ -1935,6 +1988,7 @@ exports[`component tree > snapshot > service-crwp keeps its resources, parents, 
     },
     "name": "service-crwp-crwp-iam-logging",
     "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun::service-crwp-crwp",
+    "retainOnDelete": true,
     "type": "gcp:projects/iAMMember:IAMMember",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun$gcp:projects/iAMMember:IAMMember::service-crwp-crwp-iam-logging",
   },
@@ -1948,6 +2002,7 @@ exports[`component tree > snapshot > service-crwp keeps its resources, parents, 
     },
     "name": "service-crwp-crwp-iam-metric",
     "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun::service-crwp-crwp",
+    "retainOnDelete": true,
     "type": "gcp:projects/iAMMember:IAMMember",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun$gcp:projects/iAMMember:IAMMember::service-crwp-crwp-iam-metric",
   },
@@ -1958,6 +2013,57 @@ exports[`component tree > snapshot > service-crwp keeps its resources, parents, 
     "parent": "Keeta:GCP:CloudRunService::service-crwp",
     "type": "Keeta:GCP:ContainerCloudRun",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerCloudRun::service-crwp-crwp",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:projects/iAMMember:IAMMember::service-crwp-log-writer",
+    ],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:service-crwp-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/logging.logWriter",
+    },
+    "name": "service-crwp-log-writer",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-crwp-identity",
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:projects/iAMMember:IAMMember::service-crwp-log-writer",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:service-crwp-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/monitoring.metricWriter",
+    },
+    "name": "service-crwp-metric-writer",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-crwp-identity",
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:projects/iAMMember:IAMMember::service-crwp-metric-writer",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:serviceaccount/account:Account::service-crwp-sa",
+      "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:serviceAccount/account:Account::service-crwp-sa",
+    ],
+    "custom": true,
+    "inputs": {
+      "accountId": "service-crwp-sa",
+      "description": "[service-crwp] Service account",
+    },
+    "name": "service-crwp-sa",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-crwp-identity",
+    "type": "gcp:serviceaccount/account:Account",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:serviceaccount/account:Account::service-crwp-sa",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "service-crwp-identity",
+    "parent": "Keeta:GCP:CloudRunService::service-crwp",
+    "type": "Keeta:GCP:ServiceIdentity",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-crwp-identity",
   },
   {
     "aliases": [
@@ -2087,33 +2193,6 @@ exports[`component tree > snapshot > service-crwp keeps its resources, parents, 
     "parent": "Keeta:GCP:CloudRunService::service-crwp",
     "type": "gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup",
     "urn": "Keeta:GCP:CloudRunService$gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup::service-crwp-neg",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "member": "serviceAccount:service-crwp-sa@mock.iam.gserviceaccount.com",
-      "project": "project-id",
-      "role": "roles/logging.logWriter",
-    },
-    "name": "service-crwp-log-writer",
-    "parent": "Keeta:GCP:CloudRunService::service-crwp",
-    "type": "gcp:projects/iAMMember:IAMMember",
-    "urn": "Keeta:GCP:CloudRunService$gcp:projects/iAMMember:IAMMember::service-crwp-log-writer",
-  },
-  {
-    "aliases": [
-      "Keeta:GCP:CloudRunService$gcp:serviceAccount/account:Account::service-crwp-sa",
-    ],
-    "custom": true,
-    "inputs": {
-      "accountId": "service-crwp-sa",
-      "description": "[service-crwp] Service account",
-    },
-    "name": "service-crwp-sa",
-    "parent": "Keeta:GCP:CloudRunService::service-crwp",
-    "type": "gcp:serviceaccount/account:Account",
-    "urn": "Keeta:GCP:CloudRunService$gcp:serviceaccount/account:Account::service-crwp-sa",
   },
   {
     "aliases": [],
@@ -2443,6 +2522,7 @@ exports[`component tree > snapshot > service-database keeps its resources, paren
     },
     "name": "service-database-migration-cloudsql-client",
     "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob::service-database-migration",
+    "retainOnDelete": true,
     "type": "gcp:projects/iAMMember:IAMMember",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$gcp:projects/iAMMember:IAMMember::service-database-migration-cloudsql-client",
   },
@@ -2472,19 +2552,6 @@ exports[`component tree > snapshot > service-database keeps its resources, paren
     "parent": "Keeta:GCP:CloudRunService::service-database",
     "type": "Keeta:GCP:MigrationJob",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob::service-database-migration",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "member": "serviceAccount:service-database-sa@mock.iam.gserviceaccount.com",
-      "project": "project-id",
-      "role": "roles/cloudsql.client",
-    },
-    "name": "service-database-cloudsql-client",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL::service-database-db",
-    "type": "gcp:projects/iAMMember:IAMMember",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL$gcp:projects/iAMMember:IAMMember::service-database-cloudsql-client",
   },
   {
     "aliases": [
@@ -2572,6 +2639,59 @@ exports[`component tree > snapshot > service-database keeps its resources, paren
     "parent": "Keeta:GCP:CloudRunService::service-database",
     "type": "Keeta:GCP:PostgresCloudSQL",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL::service-database-db",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL$gcp:projects/iAMMember:IAMMember::service-database-cloudsql-client",
+    ],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:service-database-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/cloudsql.client",
+    },
+    "name": "service-database-cloudsql-client",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-database-identity",
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:projects/iAMMember:IAMMember::service-database-cloudsql-client",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:projects/iAMMember:IAMMember::service-database-log-writer",
+    ],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:service-database-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/logging.logWriter",
+    },
+    "name": "service-database-log-writer",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-database-identity",
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:projects/iAMMember:IAMMember::service-database-log-writer",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:serviceaccount/account:Account::service-database-sa",
+      "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:serviceAccount/account:Account::service-database-sa",
+    ],
+    "custom": true,
+    "inputs": {
+      "accountId": "service-database-sa",
+      "description": "[service-database] Service account",
+    },
+    "name": "service-database-sa",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-database-identity",
+    "type": "gcp:serviceaccount/account:Account",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:serviceaccount/account:Account::service-database-sa",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "service-database-identity",
+    "parent": "Keeta:GCP:CloudRunService::service-database",
+    "type": "Keeta:GCP:ServiceIdentity",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-database-identity",
   },
   {
     "aliases": [
@@ -2781,33 +2901,6 @@ exports[`component tree > snapshot > service-database keeps its resources, paren
   },
   {
     "aliases": [],
-    "custom": true,
-    "inputs": {
-      "member": "serviceAccount:service-database-sa@mock.iam.gserviceaccount.com",
-      "project": "project-id",
-      "role": "roles/logging.logWriter",
-    },
-    "name": "service-database-log-writer",
-    "parent": "Keeta:GCP:CloudRunService::service-database",
-    "type": "gcp:projects/iAMMember:IAMMember",
-    "urn": "Keeta:GCP:CloudRunService$gcp:projects/iAMMember:IAMMember::service-database-log-writer",
-  },
-  {
-    "aliases": [
-      "Keeta:GCP:CloudRunService$gcp:serviceAccount/account:Account::service-database-sa",
-    ],
-    "custom": true,
-    "inputs": {
-      "accountId": "service-database-sa",
-      "description": "[service-database] Service account",
-    },
-    "name": "service-database-sa",
-    "parent": "Keeta:GCP:CloudRunService::service-database",
-    "type": "gcp:serviceaccount/account:Account",
-    "urn": "Keeta:GCP:CloudRunService$gcp:serviceaccount/account:Account::service-database-sa",
-  },
-  {
-    "aliases": [],
     "custom": false,
     "name": "service-database",
     "type": "Keeta:GCP:CloudRunService",
@@ -2890,6 +2983,44 @@ exports[`component tree > snapshot > service-environment keeps its resources, pa
     "parent": "Keeta:GCP:CloudRunService::service-environment",
     "type": "Keeta:GCP:CloudRunEnvManager",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::service-environment-env",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:projects/iAMMember:IAMMember::service-environment-log-writer",
+    ],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:service-environment-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/logging.logWriter",
+    },
+    "name": "service-environment-log-writer",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-environment-identity",
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:projects/iAMMember:IAMMember::service-environment-log-writer",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:serviceaccount/account:Account::service-environment-sa",
+      "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:serviceAccount/account:Account::service-environment-sa",
+    ],
+    "custom": true,
+    "inputs": {
+      "accountId": "service-environment-sa",
+      "description": "[service-environment] Service account",
+    },
+    "name": "service-environment-sa",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-environment-identity",
+    "type": "gcp:serviceaccount/account:Account",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:serviceaccount/account:Account::service-environment-sa",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "service-environment-identity",
+    "parent": "Keeta:GCP:CloudRunService::service-environment",
+    "type": "Keeta:GCP:ServiceIdentity",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-environment-identity",
   },
   {
     "aliases": [
@@ -3001,33 +3132,6 @@ exports[`component tree > snapshot > service-environment keeps its resources, pa
   },
   {
     "aliases": [],
-    "custom": true,
-    "inputs": {
-      "member": "serviceAccount:service-environment-sa@mock.iam.gserviceaccount.com",
-      "project": "project-id",
-      "role": "roles/logging.logWriter",
-    },
-    "name": "service-environment-log-writer",
-    "parent": "Keeta:GCP:CloudRunService::service-environment",
-    "type": "gcp:projects/iAMMember:IAMMember",
-    "urn": "Keeta:GCP:CloudRunService$gcp:projects/iAMMember:IAMMember::service-environment-log-writer",
-  },
-  {
-    "aliases": [
-      "Keeta:GCP:CloudRunService$gcp:serviceAccount/account:Account::service-environment-sa",
-    ],
-    "custom": true,
-    "inputs": {
-      "accountId": "service-environment-sa",
-      "description": "[service-environment] Service account",
-    },
-    "name": "service-environment-sa",
-    "parent": "Keeta:GCP:CloudRunService::service-environment",
-    "type": "gcp:serviceaccount/account:Account",
-    "urn": "Keeta:GCP:CloudRunService$gcp:serviceaccount/account:Account::service-environment-sa",
-  },
-  {
-    "aliases": [],
     "custom": false,
     "name": "service-environment",
     "type": "Keeta:GCP:CloudRunService",
@@ -3097,6 +3201,44 @@ exports[`component tree > snapshot > service-kv keeps its resources, parents, al
     "parent": "Keeta:GCP:CloudRunService::service-kv",
     "type": "Keeta:GCP:CloudRunEnvManager",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::service-kv-env",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:projects/iAMMember:IAMMember::service-kv-log-writer",
+    ],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:service-kv-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/logging.logWriter",
+    },
+    "name": "service-kv-log-writer",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-kv-identity",
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:projects/iAMMember:IAMMember::service-kv-log-writer",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:serviceaccount/account:Account::service-kv-sa",
+      "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:serviceAccount/account:Account::service-kv-sa",
+    ],
+    "custom": true,
+    "inputs": {
+      "accountId": "service-kv-sa",
+      "description": "[service-kv] Service account",
+    },
+    "name": "service-kv-sa",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-kv-identity",
+    "type": "gcp:serviceaccount/account:Account",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:serviceaccount/account:Account::service-kv-sa",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "service-kv-identity",
+    "parent": "Keeta:GCP:CloudRunService::service-kv",
+    "type": "Keeta:GCP:ServiceIdentity",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-kv-identity",
   },
   {
     "aliases": [
@@ -3274,19 +3416,6 @@ exports[`component tree > snapshot > service-kv keeps its resources, parents, al
     "aliases": [],
     "custom": true,
     "inputs": {
-      "member": "serviceAccount:service-kv-sa@mock.iam.gserviceaccount.com",
-      "project": "project-id",
-      "role": "roles/logging.logWriter",
-    },
-    "name": "service-kv-log-writer",
-    "parent": "Keeta:GCP:CloudRunService::service-kv",
-    "type": "gcp:projects/iAMMember:IAMMember",
-    "urn": "Keeta:GCP:CloudRunService$gcp:projects/iAMMember:IAMMember::service-kv-log-writer",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
       "authEnabled": true,
       "authorizedNetwork": "service-kv-vpc-id",
       "memorySizeGb": 1,
@@ -3296,20 +3425,6 @@ exports[`component tree > snapshot > service-kv keeps its resources, parents, al
     "parent": "Keeta:GCP:CloudRunService::service-kv",
     "type": "gcp:redis/instance:Instance",
     "urn": "Keeta:GCP:CloudRunService$gcp:redis/instance:Instance::service-kv-kv",
-  },
-  {
-    "aliases": [
-      "Keeta:GCP:CloudRunService$gcp:serviceAccount/account:Account::service-kv-sa",
-    ],
-    "custom": true,
-    "inputs": {
-      "accountId": "service-kv-sa",
-      "description": "[service-kv] Service account",
-    },
-    "name": "service-kv-sa",
-    "parent": "Keeta:GCP:CloudRunService::service-kv",
-    "type": "gcp:serviceaccount/account:Account",
-    "urn": "Keeta:GCP:CloudRunService$gcp:serviceaccount/account:Account::service-kv-sa",
   },
   {
     "aliases": [],
@@ -3443,6 +3558,7 @@ exports[`component tree > snapshot > service-mig keeps its resources, parents, a
     },
     "name": "service-mig-mig-iam-logging",
     "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerMIG::service-mig-mig",
+    "retainOnDelete": true,
     "type": "gcp:projects/iAMMember:IAMMember",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerMIG$gcp:projects/iAMMember:IAMMember::service-mig-mig-iam-logging",
   },
@@ -3456,6 +3572,7 @@ exports[`component tree > snapshot > service-mig keeps its resources, parents, a
     },
     "name": "service-mig-mig-iam-metric",
     "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerMIG::service-mig-mig",
+    "retainOnDelete": true,
     "type": "gcp:projects/iAMMember:IAMMember",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerMIG$gcp:projects/iAMMember:IAMMember::service-mig-mig-iam-metric",
   },
@@ -3466,6 +3583,57 @@ exports[`component tree > snapshot > service-mig keeps its resources, parents, a
     "parent": "Keeta:GCP:CloudRunService::service-mig",
     "type": "Keeta:GCP:ContainerMIG",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerMIG::service-mig-mig",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:projects/iAMMember:IAMMember::service-mig-log-writer",
+    ],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:service-mig-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/logging.logWriter",
+    },
+    "name": "service-mig-log-writer",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-mig-identity",
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:projects/iAMMember:IAMMember::service-mig-log-writer",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:service-mig-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/monitoring.metricWriter",
+    },
+    "name": "service-mig-metric-writer",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-mig-identity",
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:projects/iAMMember:IAMMember::service-mig-metric-writer",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:serviceaccount/account:Account::service-mig-sa",
+      "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:serviceAccount/account:Account::service-mig-sa",
+    ],
+    "custom": true,
+    "inputs": {
+      "accountId": "service-mig-sa",
+      "description": "[service-mig] Service account",
+    },
+    "name": "service-mig-sa",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-mig-identity",
+    "type": "gcp:serviceaccount/account:Account",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:serviceaccount/account:Account::service-mig-sa",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "service-mig-identity",
+    "parent": "Keeta:GCP:CloudRunService::service-mig",
+    "type": "Keeta:GCP:ServiceIdentity",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-mig-identity",
   },
   {
     "aliases": [
@@ -3642,33 +3810,6 @@ exports[`component tree > snapshot > service-mig keeps its resources, parents, a
   },
   {
     "aliases": [],
-    "custom": true,
-    "inputs": {
-      "member": "serviceAccount:service-mig-sa@mock.iam.gserviceaccount.com",
-      "project": "project-id",
-      "role": "roles/logging.logWriter",
-    },
-    "name": "service-mig-log-writer",
-    "parent": "Keeta:GCP:CloudRunService::service-mig",
-    "type": "gcp:projects/iAMMember:IAMMember",
-    "urn": "Keeta:GCP:CloudRunService$gcp:projects/iAMMember:IAMMember::service-mig-log-writer",
-  },
-  {
-    "aliases": [
-      "Keeta:GCP:CloudRunService$gcp:serviceAccount/account:Account::service-mig-sa",
-    ],
-    "custom": true,
-    "inputs": {
-      "accountId": "service-mig-sa",
-      "description": "[service-mig] Service account",
-    },
-    "name": "service-mig-sa",
-    "parent": "Keeta:GCP:CloudRunService::service-mig",
-    "type": "gcp:serviceaccount/account:Account",
-    "urn": "Keeta:GCP:CloudRunService$gcp:serviceaccount/account:Account::service-mig-sa",
-  },
-  {
-    "aliases": [],
     "custom": false,
     "name": "service-mig",
     "type": "Keeta:GCP:CloudRunService",
@@ -3679,6 +3820,44 @@ exports[`component tree > snapshot > service-mig keeps its resources, parents, a
 
 exports[`component tree > snapshot > service-plain keeps its resources, parents, aliases and key inputs 1`] = `
 [
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:projects/iAMMember:IAMMember::service-plain-log-writer",
+    ],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:service-plain-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/logging.logWriter",
+    },
+    "name": "service-plain-log-writer",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-plain-identity",
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:projects/iAMMember:IAMMember::service-plain-log-writer",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:serviceaccount/account:Account::service-plain-sa",
+      "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:serviceAccount/account:Account::service-plain-sa",
+    ],
+    "custom": true,
+    "inputs": {
+      "accountId": "service-plain-sa",
+      "description": "[service-plain] Service account",
+    },
+    "name": "service-plain-sa",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-plain-identity",
+    "type": "gcp:serviceaccount/account:Account",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:serviceaccount/account:Account::service-plain-sa",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "service-plain-identity",
+    "parent": "Keeta:GCP:CloudRunService::service-plain",
+    "type": "Keeta:GCP:ServiceIdentity",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-plain-identity",
+  },
   {
     "aliases": [
       "Keeta:GCP:CloudRunService$gcp:cloudrun/service:Service$gcp:cloudrun/iamMember:IamMember::service-plain-invoker",
@@ -3762,33 +3941,6 @@ exports[`component tree > snapshot > service-plain keeps its resources, parents,
     "parent": "Keeta:GCP:CloudRunService::service-plain",
     "type": "gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup",
     "urn": "Keeta:GCP:CloudRunService$gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup::service-plain-neg",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "member": "serviceAccount:service-plain-sa@mock.iam.gserviceaccount.com",
-      "project": "project-id",
-      "role": "roles/logging.logWriter",
-    },
-    "name": "service-plain-log-writer",
-    "parent": "Keeta:GCP:CloudRunService::service-plain",
-    "type": "gcp:projects/iAMMember:IAMMember",
-    "urn": "Keeta:GCP:CloudRunService$gcp:projects/iAMMember:IAMMember::service-plain-log-writer",
-  },
-  {
-    "aliases": [
-      "Keeta:GCP:CloudRunService$gcp:serviceAccount/account:Account::service-plain-sa",
-    ],
-    "custom": true,
-    "inputs": {
-      "accountId": "service-plain-sa",
-      "description": "[service-plain] Service account",
-    },
-    "name": "service-plain-sa",
-    "parent": "Keeta:GCP:CloudRunService::service-plain",
-    "type": "gcp:serviceaccount/account:Account",
-    "urn": "Keeta:GCP:CloudRunService$gcp:serviceaccount/account:Account::service-plain-sa",
   },
   {
     "aliases": [],
@@ -4252,6 +4404,7 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
     "name": "service-providers-mig-iam-logging",
     "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerMIG::service-providers-mig",
     "provider": "pulumi:providers:gcp::caller-provider",
+    "retainOnDelete": true,
     "type": "gcp:projects/iAMMember:IAMMember",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerMIG$gcp:projects/iAMMember:IAMMember::service-providers-mig-iam-logging",
   },
@@ -4266,6 +4419,7 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
     "name": "service-providers-mig-iam-metric",
     "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerMIG::service-providers-mig",
     "provider": "pulumi:providers:gcp::caller-provider",
+    "retainOnDelete": true,
     "type": "gcp:projects/iAMMember:IAMMember",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerMIG$gcp:projects/iAMMember:IAMMember::service-providers-mig-iam-metric",
   },
@@ -4671,6 +4825,7 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
     "name": "service-providers-migration-cloudsql-client",
     "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob::service-providers-migration",
     "provider": "pulumi:providers:gcp::caller-provider",
+    "retainOnDelete": true,
     "type": "gcp:projects/iAMMember:IAMMember",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$gcp:projects/iAMMember:IAMMember::service-providers-migration-cloudsql-client",
   },
@@ -4700,20 +4855,6 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
     "parent": "Keeta:GCP:CloudRunService::service-providers",
     "type": "Keeta:GCP:MigrationJob",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob::service-providers-migration",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "member": "serviceAccount:service-providers-sa@mock.iam.gserviceaccount.com",
-      "project": "project-id",
-      "role": "roles/cloudsql.client",
-    },
-    "name": "service-providers-cloudsql-client",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL::service-providers-db",
-    "provider": "pulumi:providers:gcp::caller-provider",
-    "type": "gcp:projects/iAMMember:IAMMember",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL$gcp:projects/iAMMember:IAMMember::service-providers-cloudsql-client",
   },
   {
     "aliases": [
@@ -4804,6 +4945,76 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
     "parent": "Keeta:GCP:CloudRunService::service-providers",
     "type": "Keeta:GCP:PostgresCloudSQL",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL::service-providers-db",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL$gcp:projects/iAMMember:IAMMember::service-providers-cloudsql-client",
+    ],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:service-providers-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/cloudsql.client",
+    },
+    "name": "service-providers-cloudsql-client",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-providers-identity",
+    "provider": "pulumi:providers:gcp::caller-provider",
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:projects/iAMMember:IAMMember::service-providers-cloudsql-client",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:projects/iAMMember:IAMMember::service-providers-log-writer",
+    ],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:service-providers-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/logging.logWriter",
+    },
+    "name": "service-providers-log-writer",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-providers-identity",
+    "provider": "pulumi:providers:gcp::caller-provider",
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:projects/iAMMember:IAMMember::service-providers-log-writer",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:service-providers-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/monitoring.metricWriter",
+    },
+    "name": "service-providers-metric-writer",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-providers-identity",
+    "provider": "pulumi:providers:gcp::caller-provider",
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:projects/iAMMember:IAMMember::service-providers-metric-writer",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:serviceaccount/account:Account::service-providers-sa",
+      "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:serviceAccount/account:Account::service-providers-sa",
+    ],
+    "custom": true,
+    "inputs": {
+      "accountId": "service-providers-sa",
+      "description": "[service-providers] Service account",
+    },
+    "name": "service-providers-sa",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-providers-identity",
+    "provider": "pulumi:providers:gcp::caller-provider",
+    "type": "gcp:serviceaccount/account:Account",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:serviceaccount/account:Account::service-providers-sa",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "service-providers-identity",
+    "parent": "Keeta:GCP:CloudRunService::service-providers",
+    "type": "Keeta:GCP:ServiceIdentity",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-providers-identity",
   },
   {
     "aliases": [
@@ -5026,20 +5237,6 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
     "urn": "Keeta:GCP:CloudRunService$gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup::service-providers-neg",
   },
   {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "member": "serviceAccount:service-providers-sa@mock.iam.gserviceaccount.com",
-      "project": "project-id",
-      "role": "roles/logging.logWriter",
-    },
-    "name": "service-providers-log-writer",
-    "parent": "Keeta:GCP:CloudRunService::service-providers",
-    "provider": "pulumi:providers:gcp::caller-provider",
-    "type": "gcp:projects/iAMMember:IAMMember",
-    "urn": "Keeta:GCP:CloudRunService$gcp:projects/iAMMember:IAMMember::service-providers-log-writer",
-  },
-  {
     "aliases": [
       "Keeta:GCP:CloudRunService$gcp:serviceAccount/account:Account::service-providers-build-sa",
     ],
@@ -5052,21 +5249,6 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
     "provider": "pulumi:providers:gcp::caller-provider",
     "type": "gcp:serviceaccount/account:Account",
     "urn": "Keeta:GCP:CloudRunService$gcp:serviceaccount/account:Account::service-providers-build-sa",
-  },
-  {
-    "aliases": [
-      "Keeta:GCP:CloudRunService$gcp:serviceAccount/account:Account::service-providers-sa",
-    ],
-    "custom": true,
-    "inputs": {
-      "accountId": "service-providers-sa",
-      "description": "[service-providers] Service account",
-    },
-    "name": "service-providers-sa",
-    "parent": "Keeta:GCP:CloudRunService::service-providers",
-    "provider": "pulumi:providers:gcp::caller-provider",
-    "type": "gcp:serviceaccount/account:Account",
-    "urn": "Keeta:GCP:CloudRunService$gcp:serviceaccount/account:Account::service-providers-sa",
   },
   {
     "aliases": [],
@@ -5217,19 +5399,6 @@ exports[`component tree > snapshot > service-replicas keeps its resources, paren
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager::service-replicas-env",
   },
   {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "member": "serviceAccount:service-replicas-sa@mock.iam.gserviceaccount.com",
-      "project": "project-id",
-      "role": "roles/cloudsql.client",
-    },
-    "name": "service-replicas-cloudsql-client",
-    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL::service-replicas-db",
-    "type": "gcp:projects/iAMMember:IAMMember",
-    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL$gcp:projects/iAMMember:IAMMember::service-replicas-cloudsql-client",
-  },
-  {
     "aliases": [
       "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL$gcp:sql/databaseInstance:DatabaseInstance$gcp:sql/database:Database::service-replicas-db-db",
     ],
@@ -5355,6 +5524,59 @@ exports[`component tree > snapshot > service-replicas keeps its resources, paren
     "parent": "Keeta:GCP:CloudRunService::service-replicas",
     "type": "Keeta:GCP:PostgresCloudSQL",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL::service-replicas-db",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL$gcp:projects/iAMMember:IAMMember::service-replicas-cloudsql-client",
+    ],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:service-replicas-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/cloudsql.client",
+    },
+    "name": "service-replicas-cloudsql-client",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-replicas-identity",
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:projects/iAMMember:IAMMember::service-replicas-cloudsql-client",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:projects/iAMMember:IAMMember::service-replicas-log-writer",
+    ],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:service-replicas-sa@mock.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/logging.logWriter",
+    },
+    "name": "service-replicas-log-writer",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-replicas-identity",
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:projects/iAMMember:IAMMember::service-replicas-log-writer",
+  },
+  {
+    "aliases": [
+      "Keeta:GCP:CloudRunService$gcp:serviceaccount/account:Account::service-replicas-sa",
+      "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:serviceAccount/account:Account::service-replicas-sa",
+    ],
+    "custom": true,
+    "inputs": {
+      "accountId": "service-replicas-sa",
+      "description": "[service-replicas] Service account",
+    },
+    "name": "service-replicas-sa",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-replicas-identity",
+    "type": "gcp:serviceaccount/account:Account",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity$gcp:serviceaccount/account:Account::service-replicas-sa",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "service-replicas-identity",
+    "parent": "Keeta:GCP:CloudRunService::service-replicas",
+    "type": "Keeta:GCP:ServiceIdentity",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ServiceIdentity::service-replicas-identity",
   },
   {
     "aliases": [
@@ -5557,33 +5779,6 @@ exports[`component tree > snapshot > service-replicas keeps its resources, paren
     "parent": "Keeta:GCP:CloudRunService::service-replicas",
     "type": "gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup",
     "urn": "Keeta:GCP:CloudRunService$gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup::service-replicas-neg",
-  },
-  {
-    "aliases": [],
-    "custom": true,
-    "inputs": {
-      "member": "serviceAccount:service-replicas-sa@mock.iam.gserviceaccount.com",
-      "project": "project-id",
-      "role": "roles/logging.logWriter",
-    },
-    "name": "service-replicas-log-writer",
-    "parent": "Keeta:GCP:CloudRunService::service-replicas",
-    "type": "gcp:projects/iAMMember:IAMMember",
-    "urn": "Keeta:GCP:CloudRunService$gcp:projects/iAMMember:IAMMember::service-replicas-log-writer",
-  },
-  {
-    "aliases": [
-      "Keeta:GCP:CloudRunService$gcp:serviceAccount/account:Account::service-replicas-sa",
-    ],
-    "custom": true,
-    "inputs": {
-      "accountId": "service-replicas-sa",
-      "description": "[service-replicas] Service account",
-    },
-    "name": "service-replicas-sa",
-    "parent": "Keeta:GCP:CloudRunService::service-replicas",
-    "type": "gcp:serviceaccount/account:Account",
-    "urn": "Keeta:GCP:CloudRunService$gcp:serviceaccount/account:Account::service-replicas-sa",
   },
   {
     "aliases": [],

@@ -10,6 +10,8 @@ import { buildDatabaseEnvVars } from './database-env';
 import { MIGRATION_DEFAULTS } from './defaults';
 import { movedFrom } from './aliases';
 import { callerOf } from './client-auth';
+import { identityGrantsRole } from './identity';
+import type { ServiceIdentityRef } from './identity';
 import { generateName } from '../../utils';
 
 /**
@@ -48,6 +50,15 @@ export interface MigrationJobArgs {
 	 * Region to deploy to
 	 */
 	region: GCPRegion;
+
+	/**
+	 * The identity of the app that this is part of. When it grants the Cloud
+	 * SQL client role to the service account, this does not (its own grant
+	 * stays as a retained tombstone, so the binding is never revoked).
+	 *
+	 * @internal Set by `CloudRunService`, which owns the identity; a component you build yourself grants for itself.
+	 */
+	identity?: ServiceIdentityRef;
 
 	/**
 	 * Database connection - either an existing PostgresCloudSQL instance or explicit credentials
@@ -178,14 +189,26 @@ export class MigrationJob extends pulumi.ComponentResource {
 		// Grant Cloud SQL Client role to service account
 		const cloudSqlClientMember = pulumi.interpolate`serviceAccount:${serviceAccount.email}`;
 		let cloudSqlClient: pulumi.Input<pulumi.Resource> | undefined;
+		/* A role that the identity of the app grants is not granted here */
+		const cloudSqlRole = 'roles/cloudsql.client';
+		const identityGrants = identityGrantsRole(args.identity, cloudSqlRole);
+
 		if (args.gcp.changeProjectIAMPolicy) {
-			cloudSqlClient = args.gcp.changeProjectIAMPolicy('roles/cloudsql.client', [cloudSqlClientMember]);
+			if (!identityGrants) {
+				cloudSqlClient = args.gcp.changeProjectIAMPolicy(cloudSqlRole, [cloudSqlClientMember]);
+			}
 		} else {
+			/* When the identity grants the role, this is a retained tombstone that keeps the binding and its 1.0.95 URN. Otherwise it is the grant. */
+			let retainOnDelete: boolean | undefined;
+			if (identityGrants) {
+				retainOnDelete = true;
+			}
+
 			cloudSqlClient = new gcp.projects.IAMMember(`${name}-cloudsql-client`, {
 				project: args.gcp.project,
-				role: 'roles/cloudsql.client',
+				role: cloudSqlRole,
 				member: cloudSqlClientMember
-			}, { parent: this });
+			}, { parent: this, retainOnDelete });
 		}
 
 		// Build environment variables
@@ -243,6 +266,11 @@ export class MigrationJob extends pulumi.ComponentResource {
 		const executionDeps: pulumi.Input<pulumi.Resource>[] = [this.job];
 		if (cloudSqlClient) {
 			executionDeps.push(cloudSqlClient);
+		}
+
+		/* The grants of the identity of the app: the execution needs the roles that it makes */
+		if (args.identity) {
+			executionDeps.push(...args.identity.grants);
 		}
 
 		this.execution = new CloudRunJobExecution(`${name}-exec`, {

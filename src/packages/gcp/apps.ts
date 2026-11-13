@@ -10,6 +10,7 @@ import { PostgresCloudSQL } from './sql';
 import type { ContainerGeneric } from './container';
 import { ContainerMIG, ContainerCloudRun } from './container';
 import { MigrationJob } from './migration';
+import { ServiceIdentity } from './identity';
 import { parseCloudRunServiceArgs } from './apps-args';
 import type { MIGWorkerArgs, CRWPWorkerArgs, LegacyMIGArgs, ParsedCloudRunServiceArgs, ParsedRemote } from './apps-args';
 export { CloudRunServiceArgsError } from './apps-args';
@@ -1059,61 +1060,17 @@ export class CloudRunService extends pulumi.ComponentResource {
 			imageUri = dockerImage.uri;
 		}
 
-		let serviceAccount: Pick<gcp.serviceaccount.Account, 'email'>;
-		if (parsed.identity.account) {
-			serviceAccount = parsed.identity.account;
-		} else {
-			const accountId = generateName(name, 'sa', 30);
+		const identity = new ServiceIdentity(name, {
+			gcp: parsed.gcp,
+			account: parsed.identity.account,
+			grantRoles: parsed.identity.grantRoles,
+			app: this,
+			database: db,
+			worker: parsedVpc?.worker !== undefined
+		}, { parent: this });
+		const serviceAccount = identity.account;
 
-			serviceAccount = new gcp.serviceaccount.Account(`${name}-sa`, {
-				description: `[${name}] Service account`,
-				accountId
-			}, { parent: this });
-		}
-
-		let serviceDependsOn: pulumi.Input<pulumi.Resource[]> | undefined = undefined;
-		const { grantRoles } = parsed.identity;
-		if (grantRoles) {
-			if (parsed.gcp.changeProjectIAMPolicy) {
-				const resource = parsed.gcp.changeProjectIAMPolicy('roles/logging.logWriter', [
-					pulumi.interpolate`serviceAccount:${serviceAccount.email}`
-				]);
-
-				if (resource) {
-					serviceDependsOn = pulumi.output(resource).apply(function(unwrappedResource) {
-						return([unwrappedResource]);
-					});
-				}
-			} else {
-				const resource = new gcp.projects.IAMMember(`${name}-log-writer`, {
-					project: parsed.gcp.project,
-					role: 'roles/logging.logWriter',
-					member: pulumi.interpolate`serviceAccount:${serviceAccount.email}`
-				}, { parent: this });
-				serviceDependsOn = [resource];
-			}
-		}
-
-		// Grant Cloud SQL client role if database is enabled
-		if (db && grantRoles) {
-			const cloudSqlClientMember = pulumi.interpolate`serviceAccount:${serviceAccount.email}`;
-			let cloudSqlClient: pulumi.Input<pulumi.Resource> | undefined;
-			if (parsed.gcp.changeProjectIAMPolicy) {
-				cloudSqlClient = parsed.gcp.changeProjectIAMPolicy('roles/cloudsql.client', [cloudSqlClientMember]);
-			} else {
-				cloudSqlClient = new gcp.projects.IAMMember(`${name}-cloudsql-client`, {
-					project: parsed.gcp.project,
-					role: 'roles/cloudsql.client',
-					member: cloudSqlClientMember
-				}, { parent: db });
-			}
-
-			if (cloudSqlClient) {
-				serviceDependsOn = pulumi.all([serviceDependsOn ?? [], cloudSqlClient]).apply(function([deps, dep]) {
-					return([...deps, dep]);
-				});
-			}
-		}
+		let serviceDependsOn: pulumi.Input<pulumi.Resource[]> | undefined = pulumi.all(identity.grants);
 
 		// Create migration job if enabled and database is configured
 		let migration: MigrationJob | undefined;
@@ -1132,6 +1089,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 				container: parsedMigration.container,
 				vpc: vpcConfig,
 				serviceAccount: serviceAccount,
+				identity,
 				cpuLimit: parsedMigration.cpuLimit,
 				memoryLimit: parsedMigration.memoryLimit,
 				taskTimeout: parsedMigration.taskTimeout,
@@ -1316,6 +1274,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 				mig = new ContainerMIG(`${name}-mig`, {
 					description: `[${name}] MIG worker for background tasks`,
 					serviceAccount: serviceAccount.email,
+					identity,
 					subnetwork: subnet,
 					machineType: worker.machineType,
 					cosImage: worker.cosImage,
@@ -1344,6 +1303,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 				mig = new ContainerCloudRun(`${name}-crwp`, {
 					description: `[${name}] Worker for background tasks`,
 					serviceAccount: serviceAccount.email,
+					identity,
 					subnetwork: subnet,
 					machineType: worker.machineType,
 					tags: worker.tags,
