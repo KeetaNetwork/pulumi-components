@@ -53,6 +53,14 @@ interface ContainerGenericOptions<SupportSecretRefEnvs extends boolean> {
 	description?: pulumi.Input<string>;
 
 	/**
+	 * Resources that must finish before the workers roll to a new version,
+	 * for example the migration job that changes the database schema for
+	 * the new image. The group of VMs (or the worker pool) depends on them.
+	 * The component itself does not, so its own place in the graph stays.
+	 */
+	rollAfter?: pulumi.Input<pulumi.Resource>[];
+
+	/**
 	 * Number of VMs/containers to run (default is 1)
 	 */
 	count?: pulumi.Input<number>;
@@ -474,8 +482,34 @@ function handleGenericOptions(name: string, options: ContainerGenericOptions<tru
 function registeredMIGOptions(options: ContainerMIGOptions): Omit<ContainerMIGBaseOptions, 'egress'> & { egress?: ContainerEgress } {
 	const registered = { ...options };
 	delete registered.natIps;
+	delete registered.rollAfter;
 
 	return(registered);
+}
+
+/**
+ * The options that a Cloud Run worker component registers: all of them but
+ * `rollAfter`, for the reason that `registeredMIGOptions` gives.
+ */
+function registeredCloudRunOptions(options: ContainerCloudRunOptions): ContainerCloudRunOptions {
+	const registered = { ...options };
+	delete registered.rollAfter;
+
+	return(registered);
+}
+
+/**
+ * Whether a VM of the template holds a fixed external address (a `natIp` in
+ * an access config). Only one VM at a time can hold it.
+ */
+function holdsFixedAddress(networkInterfaces: ContainerMIGBaseOptions['networkInterfaces']): pulumi.Output<boolean> {
+	return(pulumi.output(networkInterfaces).apply(function(interfaces) {
+		return((interfaces ?? []).some(function(networkInterface) {
+			return((networkInterface.accessConfigs ?? []).some(function(accessConfig) {
+				return(accessConfig.natIp !== undefined);
+			}));
+		}));
+	}));
 }
 
 export class ContainerMIG extends pulumi.ComponentResource {
@@ -661,6 +695,23 @@ export class ContainerMIG extends pulumi.ComponentResource {
 			waitArgs = { waitForInstances: true, waitForInstancesStatus: 'UPDATED' };
 		}
 
+		/*
+		 * By default the group creates the new VM before it deletes the old
+		 * one. A new VM cannot take a fixed external address that the old VM
+		 * still holds, so then the rollout stops. With a fixed address the
+		 * group deletes the old VM first and creates the new one with the
+		 * same name (RECREATE, which needs no surge).
+		 */
+		const fixedAddress = holdsFixedAddress(options.networkInterfaces);
+		const rolloutArgs = {
+			maxSurgeFixed: fixedAddress.apply(function(fixed) {
+				return(fixed ? 0 : undefined);
+			}),
+			replacementMethod: fixedAddress.apply(function(fixed) {
+				return(fixed ? 'RECREATE' : undefined);
+			})
+		};
+
 		const igmBaseArgs = {
 			...waitArgs,
 			baseInstanceName: baseInstanceName,
@@ -677,7 +728,8 @@ export class ContainerMIG extends pulumi.ComponentResource {
 				 * ensure that the disk does not fill up
 				 */
 				minimalAction: 'REPLACE',
-				type: 'PROACTIVE'
+				type: 'PROACTIVE',
+				...rolloutArgs
 			},
 			versions: [{
 				instanceTemplate: instanceTemplate.selfLink
@@ -706,7 +758,8 @@ export class ContainerMIG extends pulumi.ComponentResource {
 			}, {
 				parent: this,
 				dependsOn: [
-					...policyChangeToDependOn
+					...policyChangeToDependOn,
+					...(options.rollAfter ?? [])
 				]
 			});
 		} else {
@@ -723,7 +776,8 @@ export class ContainerMIG extends pulumi.ComponentResource {
 			}, {
 				parent: this,
 				dependsOn: [
-					...policyChangeToDependOn
+					...policyChangeToDependOn,
+					...(options.rollAfter ?? [])
 				]
 			});
 		}
@@ -760,7 +814,7 @@ export class ContainerCloudRun extends pulumi.ComponentResource {
 	readonly type = 'CloudRun' as const;
 
 	constructor(name: string, options: ContainerCloudRunOptions, args?: pulumi.ComponentResourceOptions) {
-		super('Keeta:GCP:ContainerCloudRun', name, options, args);
+		super('Keeta:GCP:ContainerCloudRun', name, registeredCloudRunOptions(options), args);
 
 		const {
 			subnetwork,
@@ -902,7 +956,7 @@ export class ContainerCloudRun extends pulumi.ComponentResource {
 			deletionPolicy: 'DELETE'
 		}, {
 			parent: this,
-			dependsOn: [...policyChangeToDependOn.splice(0), ...toDependOn.splice(0)]
+			dependsOn: [...policyChangeToDependOn.splice(0), ...toDependOn.splice(0), ...(options.rollAfter ?? [])]
 		});
 
 		this.workerPool = workerPool;
