@@ -432,8 +432,10 @@ export class LocalDockerImage extends BaseDockerImage {
  * Produce a Docker image using Google Cloud Build
  *
  * The service account supplied is used to push/pull the image to/from the
- * repository, to create the tarball in the specified Bucket, and to run the
- * Cloud Build job.
+ * repository, to read the source tarball from the specified Bucket, and to run
+ * the Cloud Build job.  The tarball itself is uploaded by the process that runs
+ * the deployment, using its Application Default Credentials, which need write
+ * access to the Bucket.
  *
  * It needs access to a few project-level resources to work:
  *     - roles/logging.logWriter - to write logs
