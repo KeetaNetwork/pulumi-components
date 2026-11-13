@@ -14,13 +14,13 @@ import type { ContainerMIGEgressOptions } from './container';
 import { MigrationJob } from './migration';
 import { AppNetwork } from './network';
 import { ServiceIdentity } from './identity';
-import { CloudRunServiceArgsError, parseCloudRunServiceArgs } from './apps-args';
+import { CloudRunServiceArgsError, MAX_SCALE_ANNOTATION, parseCloudRunServiceArgs } from './apps-args';
 import type { MIGWorkerArgs, CRWPWorkerArgs, LegacyMIGArgs, ParsedCloudRunServiceArgs, ParsedRemote } from './apps-args';
 export { CloudRunServiceArgsError } from './apps-args';
 export type { MIGWorkerArgs, CRWPWorkerArgs, LegacyMIGArgs } from './apps-args';
 import { CLOUD_RUN_SERVICE_DEFAULTS, ROUTING_DEFAULTS } from './defaults';
 import { callerOf } from './client-auth';
-import { buildDatabaseEnvVars, buildRedisEnvVars } from './database-env';
+import { DATABASE_POOL_SIZE_VARIABLE, buildDatabaseEnvVars, buildRedisEnvVars } from './database-env';
 import { buildRouteRules, createHTTPSFrontEnd, parseFrontEndConfig, resolveIPAddresses } from './https-frontend';
 import type { RouteRuleConfig } from './https-frontend';
 import { legacyUrn, movedFrom } from './aliases';
@@ -520,6 +520,18 @@ export interface CloudRunServiceArgs {
 		queryInsights?: boolean;
 
 		/**
+		 * Size of the connection pool of each instance of the service and of
+		 * the migration job, given to them as the plain variable
+		 * MC_PSQL_DB_POOL_SIZE. When it is given the constructor checks that
+		 * the pools fit in `flags.max_connections` (less a reserve of 10%):
+		 * `service.maxInstances` x this, plus the worker (`worker.instanceCount`
+		 * x its pool size, or this one).
+		 *
+		 * @throws ConnectionBudgetExceededError from the constructor when they do not fit
+		 */
+		poolSize?: number;
+
+		/**
 		 * Replication configuration for created database
 		 */
 		replication?: {
@@ -601,6 +613,14 @@ export interface CloudRunServiceArgs {
 		 * Additional metadata annotations
 		 */
 		annotations?: { [key: string]: pulumi.Input<string> };
+
+		/**
+		 * The most instances that Cloud Run starts: sets the
+		 * `autoscaling.knative.dev/maxScale` annotation. Without it no
+		 * annotation is set, and the connection budget counts the service
+		 * with the number of instances that Cloud Run scales to by default.
+		 */
+		maxInstances?: number;
 	};
 
 	/**
@@ -925,6 +945,10 @@ export class CloudRunService extends pulumi.ComponentResource {
 					caCertificate: hostInfo.caCertificate
 				});
 				Object.assign(variables, dbVars);
+
+				if (parsedVpc?.data?.database.poolSize !== undefined) {
+					variables[DATABASE_POOL_SIZE_VARIABLE] = String(parsedVpc.data.database.poolSize);
+				}
 			}
 
 			if (kv) {
@@ -983,6 +1007,10 @@ export class CloudRunService extends pulumi.ComponentResource {
 		const annotations: { [key: string]: pulumi.Input<string> } = {
 			...parsed.service.annotations
 		};
+
+		if (parsed.service.maxInstances !== undefined) {
+			annotations[MAX_SCALE_ANNOTATION] = String(parsed.service.maxInstances);
+		}
 
 		if (vpcConnector) {
 			annotations['run.googleapis.com/vpc-access-connector'] = vpcConnector.selfLink;
@@ -1065,7 +1093,13 @@ export class CloudRunService extends pulumi.ComponentResource {
 
 			// The worker reads the environment of the app, with its own overrides
 			// (an app without variables has no manager, and the view holds the overrides alone)
-			const workerEnv = envManager?.view(worker.environmentOverrides) ?? EnvView.ofOverrides(worker.environmentOverrides);
+			// (a pool size of its own is one of those overrides: the environment of the app keeps the one of the database)
+			const workerOverrides: { [key: string]: pulumi.Input<string> } = { ...worker.environmentOverrides };
+			if (worker.poolSize !== undefined) {
+				workerOverrides[DATABASE_POOL_SIZE_VARIABLE] = String(worker.poolSize);
+			}
+
+			const workerEnv = envManager?.view(workerOverrides) ?? EnvView.ofOverrides(workerOverrides);
 
 			if (worker.kind === 'mig') {
 				// Reserve the external IP if the worker egresses through a NAT

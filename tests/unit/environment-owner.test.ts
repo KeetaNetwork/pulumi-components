@@ -1,11 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import type * as apps from '../../src/packages/gcp/apps';
-import { expectString, optionalRecord } from '../helpers/narrow';
+import { optionalRecord } from '../helpers/narrow';
 import { matchLegacyUrns, useIsolatedHome } from './harness/pulumi-tree';
 import type { TreeResource, TreeSnapshot } from './harness/pulumi-tree';
-import { captureService } from './harness/service-builder';
-
+import { captureService, environmentOf } from './harness/service-builder';
 
 type ServiceArgs = ConstructorParameters<typeof apps.CloudRunService>[1];
 type WorkerKind = 'mig' | 'crwp';
@@ -38,62 +37,6 @@ function namesOfType(tree: TreeSnapshot, type: string) {
 	}).map(function(resource) {
 		return(resource.name);
 	}).sort());
-}
-
-/** The `envs` of the first container found in the inputs of a resource */
-function findEnvs(value: unknown): unknown[] {
-	if (Array.isArray(value)) {
-		const items: unknown[] = value;
-		for (const item of items) {
-			const found = findEnvs(item);
-			if (found.length > 0) {
-				return(found);
-			}
-		}
-
-		return([]);
-	}
-
-	const record = optionalRecord(value);
-	if (record === undefined) {
-		return([]);
-	}
-
-	if (Array.isArray(record.envs)) {
-		const envs: unknown[] = record.envs;
-
-		return(envs);
-	}
-
-	for (const nested of Object.values(record)) {
-		const found = findEnvs(nested);
-		if (found.length > 0) {
-			return(found);
-		}
-	}
-
-	return([]);
-}
-
-/** What a runtime is given for each variable: `value:<plain>`, or `secret:<name of the secret>` */
-function environmentOf(tree: TreeSnapshot, type: string) {
-	const resource = tree.resources.find(function(candidate) {
-		return(candidate.type === type);
-	});
-	const described: { [name: string]: string } = {};
-	for (const entry of findEnvs(resource?.inputs)) {
-		const record = optionalRecord(entry);
-		const reference = optionalRecord(optionalRecord(record?.valueFrom ?? record?.valueSource)?.secretKeyRef);
-		const secretName = reference?.name ?? reference?.secret;
-		const name = expectString(record?.name, 'the name of a variable');
-		if (typeof secretName === 'string') {
-			described[name] = `secret:${secretName}`;
-		} else if (typeof record?.value === 'string') {
-			described[name] = `value:${record.value}`;
-		}
-	}
-
-	return(described);
 }
 
 function secretOf(app: string, variable: string) {

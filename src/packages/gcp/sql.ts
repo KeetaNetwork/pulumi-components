@@ -4,6 +4,8 @@ import * as random from '@pulumi/random';
 import type { GCPRegion, PerGCPRegion } from './constants';
 import { POSTGRES_DEFAULTS } from './defaults';
 import { movedFrom } from './aliases';
+import { assertMaxConnectionsUnambiguous, connectionBudget, resolveMaxConnections } from './connection-budget';
+import type { ConnectionBudget } from './connection-budget';
 
 type VPCNetworkLike = Pick<gcp.compute.Network, 'id' | 'name'>;
 
@@ -166,6 +168,16 @@ export interface PostgresCloudSQLArgs {
 	flags?: DBFlags;
 
 	/**
+	 * Writes the `max_connections` flag. A number is the value; 'tier-default'
+	 * writes what Cloud SQL applies to the tier already, so that the value is
+	 * explicit in the state. Without it no flag is written. Giving it together
+	 * with `flags.max_connections` throws a `MaxConnectionsConflictError`.
+	 *
+	 * Adding the flag to an instance that had none restarts Cloud SQL once.
+	 */
+	maxConnections?: number | 'tier-default';
+
+	/**
 	 * TLS Options
 	 */
 	tls?: {
@@ -256,8 +268,21 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 	 */
 	readonly masterPort: pulumi.Output<string>;
 
+	/**
+	 * The connections that the instance has to share: the `max_connections`
+	 * that Cloud SQL applies (the explicit flag, else `maxConnections`, else the
+	 * default of the tier), less a reserve. Reading it writes nothing.
+	 *
+	 * @throws Error naming the tier when no `max_connections` is set and the tier is not one that the library knows
+	 */
+	get connectionBudget(): ConnectionBudget {
+		return(connectionBudget(this.#maxConnections()));
+	}
+
 	constructor(name: string, args: PostgresCloudSQLArgs, opts?: pulumi.ComponentResourceOptions) {
 		super('Keeta:GCP:PostgresCloudSQL', name, args, opts);
+
+		assertMaxConnectionsUnambiguous(args);
 
 		this.#prefix = args.prefix ?? name;
 		this.#options = args;
@@ -378,6 +403,14 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 	}
 
 	/**
+	 * The `max_connections` of the instance: the flag of the caller, else
+	 * `maxConnections` when it is a number, else the default of the tier
+	 */
+	#maxConnections(): number {
+		return(resolveMaxConnections({ flags: this.#options.flags, maxConnections: this.#options.maxConnections, tier: this.#options.tier }));
+	}
+
+	/**
 	 * Create a random string to be used as the postgres password
 	 */
 	#makePostgresPassword() {
@@ -442,6 +475,13 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 			databaseFlags.push({
 				name: key,
 				value: String(value)
+			});
+		}
+
+		if (this.#options.maxConnections !== undefined) {
+			databaseFlags.push({
+				name: 'max_connections',
+				value: String(this.#maxConnections())
 			});
 		}
 

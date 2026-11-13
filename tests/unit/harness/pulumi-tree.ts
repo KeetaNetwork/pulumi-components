@@ -45,6 +45,8 @@ export interface TreeResource {
 	retainOnDelete?: boolean;
 	/** Normalized inputs of a custom resource (components only echo their arguments, so none are kept) */
 	inputs?: unknown;
+	/** The same inputs with every secret unwrapped, for a test that must read what a secret holds (not part of a snapshot) */
+	revealed?: unknown;
 }
 
 export interface TreeSnapshot {
@@ -217,7 +219,7 @@ function compareURNs(a: TreeResource, b: TreeResource) {
 }
 
 /** Cuts a value that came over the wire down to what is worth keeping in a snapshot */
-function normalizeValue(value: unknown, roots: [string, string][]): unknown {
+function normalizeValue(value: unknown, roots: [string, string][], reveal = false): unknown {
 	if (typeof value === 'string') {
 		if (value === pulumi.runtime.unknownValue) {
 			return('<unknown>');
@@ -228,7 +230,7 @@ function normalizeValue(value: unknown, roots: [string, string][]): unknown {
 
 	if (Array.isArray(value)) {
 		return(value.map(function(item: unknown) {
-			return(normalizeValue(item, roots));
+			return(normalizeValue(item, roots, reveal));
 		}));
 	}
 
@@ -239,20 +241,24 @@ function normalizeValue(value: unknown, roots: [string, string][]): unknown {
 
 	switch (record[pulumi.runtime.specialSigKey]) {
 		case pulumi.runtime.specialSecretSig:
+			if (reveal) {
+				return(normalizeValue(record.value, roots, reveal));
+			}
+
 			return('<secret>');
 		case pulumi.runtime.specialAssetSig:
-			return({ asset: normalizeValue(record.path ?? record.text ?? record.uri, roots) });
+			return({ asset: normalizeValue(record.path ?? record.text ?? record.uri, roots, reveal) });
 		case pulumi.runtime.specialArchiveSig:
-			return({ archive: normalizeValue(record.path ?? record.assets ?? record.uri, roots) });
+			return({ archive: normalizeValue(record.path ?? record.assets ?? record.uri, roots, reveal) });
 		case pulumi.runtime.specialResourceSig:
-			return({ resource: normalizeValue(record.urn, roots) });
+			return({ resource: normalizeValue(record.urn, roots, reveal) });
 		default:
 			break;
 	}
 
 	const normalized: UnknownRecord = {};
 	for (const key of Object.keys(record).sort(compareStrings)) {
-		normalized[key] = normalizeValue(record[key], roots);
+		normalized[key] = normalizeValue(record[key], roots, reveal);
 	}
 
 	return(normalized);
@@ -353,6 +359,7 @@ async function recordRegistration(request: resourceProto.RegisterResourceRequest
 		}
 
 		resource.inputs = normalizeValue(inputs, roots);
+		resource.revealed = normalizeValue(inputs, roots, true);
 	}
 
 	state.resources.push(resource);
@@ -674,7 +681,7 @@ export function describeTree(tree: TreeSnapshot): unknown {
 	return(tree.resources.map(function(resource) {
 		/* The dependencies are checked on their own; they would put a second copy of every URN into each snapshot */
 		const kept = Object.entries(resource).filter(function([ key ]) {
-			return(key !== 'dependsOn');
+			return(key !== 'dependsOn' && key !== 'revealed');
 		});
 
 		return(normalizeValue(Object.fromEntries(kept), roots));
