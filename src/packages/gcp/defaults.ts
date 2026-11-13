@@ -25,7 +25,7 @@ function deepFreeze<const T extends object>(value: T): Readonly<T> {
 /** Defaults of the Cloud SQL instance (sql.ts) and of `CloudRunService.database` */
 export const POSTGRES_DEFAULTS = deepFreeze({
 	tier: 'db-f1-micro',
-	version: 'POSTGRES_14',
+	version: 'POSTGRES_18',
 	queryStringLength: 4500,
 	maxConnections: 25000,
 	deletionProtection: false,

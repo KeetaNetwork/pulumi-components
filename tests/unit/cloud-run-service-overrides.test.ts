@@ -99,7 +99,7 @@ const SETTINGS: Setting[] = [
 		type: DATABASE_INSTANCE,
 		nameEnding: '',
 		path: [ 'databaseVersion' ],
-		fallback: 'POSTGRES_14',
+		fallback: 'POSTGRES_18',
 		override: 'POSTGRES_15'
 	},
 	{
@@ -192,7 +192,7 @@ const SETTINGS: Setting[] = [
 		type: DATABASE_INSTANCE,
 		nameEnding: '',
 		path: [ 'databaseVersion' ],
-		fallback: 'POSTGRES_14',
+		fallback: 'POSTGRES_18',
 		override: 'POSTGRES_15'
 	}
 ];

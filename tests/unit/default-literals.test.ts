@@ -12,7 +12,7 @@ function literalsOf(source: string): unknown[] {
 	const found: unknown[] = [];
 
 	function visit(node: ts.Node) {
-		/* A literal type such as 'POSTGRES_14' in a union names a value, it does not choose one */
+		/* A literal type such as 'POSTGRES_18' in a union names a value, it does not choose one */
 		if (ts.isTypeNode(node)) {
 			return;
 		}
@@ -38,7 +38,7 @@ function literalsOf(source: string): unknown[] {
  */
 describe('default values have one home', function() {
 	/* A table of Cloud SQL tiers will name 'db-f1-micro': the row moves with it */
-	const literals: unknown[] = [ '10.97.35.0/24', '10.97.36.0/28', 'POSTGRES_14', 'E2_HIGHCPU_8', 'linux/amd64', 'db-f1-micro', '35.235.240.0/20', 25000, 4500, 28800 ];
+	const literals: unknown[] = [ '10.97.35.0/24', '10.97.36.0/28', 'POSTGRES_18', 'E2_HIGHCPU_8', 'linux/amd64', 'db-f1-micro', '35.235.240.0/20', 25000, 4500, 28800 ];
 
 	const sourceFiles = fs.readdirSync(SOURCE_DIRECTORY, { recursive: true, encoding: 'utf8' }).filter(function(file) {
 		return(file.endsWith('.ts') && !file.endsWith(DEFAULTS_FILE));

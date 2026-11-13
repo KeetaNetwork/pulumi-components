@@ -1971,12 +1971,16 @@ exports[`component tree > snapshot > postgres-peering keeps its resources, paren
   {
     "aliases": [],
     "custom": true,
+    "ignoreChanges": [
+      "databaseVersion",
+    ],
     "inputs": {
-      "databaseVersion": "POSTGRES_14",
+      "databaseVersion": "POSTGRES_18",
       "region": "us-central1",
       "settings": {
         "availabilityType": "ZONAL",
         "databaseFlags": [],
+        "edition": "ENTERPRISE",
         "insightsConfig": {
           "queryInsightsEnabled": false,
           "queryPlansPerMinute": 0,
@@ -2698,8 +2702,11 @@ exports[`component tree > snapshot > service-caller-resources keeps its resource
   {
     "aliases": [],
     "custom": true,
+    "ignoreChanges": [
+      "databaseVersion",
+    ],
     "inputs": {
-      "databaseVersion": "POSTGRES_14",
+      "databaseVersion": "POSTGRES_18",
       "deletionProtection": false,
       "region": "us-central1",
       "settings": {
@@ -2710,6 +2717,7 @@ exports[`component tree > snapshot > service-caller-resources keeps its resource
             "value": "25000",
           },
         ],
+        "edition": "ENTERPRISE",
         "insightsConfig": {
           "queryInsightsEnabled": false,
           "queryStringLength": 4500,
@@ -3618,8 +3626,11 @@ exports[`component tree > snapshot > service-database keeps its resources, paren
   {
     "aliases": [],
     "custom": true,
+    "ignoreChanges": [
+      "databaseVersion",
+    ],
     "inputs": {
-      "databaseVersion": "POSTGRES_14",
+      "databaseVersion": "POSTGRES_18",
       "deletionProtection": false,
       "region": "us-central1",
       "settings": {
@@ -3630,6 +3641,7 @@ exports[`component tree > snapshot > service-database keeps its resources, paren
             "value": "25000",
           },
         ],
+        "edition": "ENTERPRISE",
         "insightsConfig": {
           "queryInsightsEnabled": false,
           "queryStringLength": 4500,
@@ -5659,8 +5671,11 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
   {
     "aliases": [],
     "custom": true,
+    "ignoreChanges": [
+      "databaseVersion",
+    ],
     "inputs": {
-      "databaseVersion": "POSTGRES_14",
+      "databaseVersion": "POSTGRES_18",
       "deletionProtection": false,
       "region": "us-central1",
       "settings": {
@@ -5671,6 +5686,7 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
             "value": "25000",
           },
         ],
+        "edition": "ENTERPRISE",
         "insightsConfig": {
           "queryInsightsEnabled": false,
           "queryStringLength": 4500,
@@ -6213,8 +6229,11 @@ exports[`component tree > snapshot > service-replicas keeps its resources, paren
   {
     "aliases": [],
     "custom": true,
+    "ignoreChanges": [
+      "databaseVersion",
+    ],
     "inputs": {
-      "databaseVersion": "POSTGRES_14",
+      "databaseVersion": "POSTGRES_18",
       "deletionProtection": false,
       "region": "us-central1",
       "settings": {
@@ -6229,6 +6248,7 @@ exports[`component tree > snapshot > service-replicas keeps its resources, paren
             "value": "25000",
           },
         ],
+        "edition": "ENTERPRISE",
         "insightsConfig": {
           "queryInsightsEnabled": false,
           "queryStringLength": 4500,
@@ -6252,8 +6272,11 @@ exports[`component tree > snapshot > service-replicas keeps its resources, paren
       "Keeta:GCP:CloudRunService$Keeta:GCP:PostgresCloudSQL$gcp:sql/databaseInstance:DatabaseInstance$gcp:sql/databaseInstance:DatabaseInstance::service-replicas-db-us-east1-replica",
     ],
     "custom": true,
+    "ignoreChanges": [
+      "databaseVersion",
+    ],
     "inputs": {
-      "databaseVersion": "POSTGRES_14",
+      "databaseVersion": "POSTGRES_18",
       "deletionProtection": false,
       "masterInstanceName": "service-replicas-db-master",
       "region": "us-east1",
@@ -6265,6 +6288,7 @@ exports[`component tree > snapshot > service-replicas keeps its resources, paren
             "value": "25000",
           },
         ],
+        "edition": "ENTERPRISE",
         "insightsConfig": {
           "queryInsightsEnabled": false,
           "queryStringLength": 4500,

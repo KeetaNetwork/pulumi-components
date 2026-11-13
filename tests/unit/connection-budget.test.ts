@@ -1,15 +1,12 @@
-import * as gcp from '@pulumi/gcp';
 import { describe, expect, it } from 'vitest';
 
 import type * as budget from '../../src/packages/gcp/connection-budget';
-import type * as sql from '../../src/packages/gcp/sql';
-import { expectDefined, expectRecord } from '../helpers/narrow';
+import { expectRecord } from '../helpers/narrow';
 import { requireSource } from './harness/load-sources';
-import { captureTree, useIsolatedHome } from './harness/pulumi-tree';
-import { flagsOf } from './harness/service-builder';
+import { useIsolatedHome } from './harness/pulumi-tree';
+import { buildDatabase, flagsOf } from './harness/service-builder';
 
 const { parseCloudSQLTier, tierDefaultMaxConnections, resolveMaxConnections, connectionBudget, assertWithinBudget, ConnectionBudgetExceededError, MaxConnectionsConflictError } = requireSource<typeof budget>('src/packages/gcp/connection-budget.ts');
-const { PostgresCloudSQL } = requireSource<typeof sql>('src/packages/gcp/sql.ts');
 
 const MEGABYTES_PER_GIGABYTE = 1024;
 
@@ -19,16 +16,25 @@ describe('parseCloudSQLTier', function() {
 		{ tier: 'db-custom-16-61440', shape: { kind: 'custom', memoryMB: 61440 }},
 		{ tier: 'db-f1-micro', shape: { kind: 'shared', name: 'db-f1-micro', maxConnections: 25 }},
 		{ tier: 'db-g1-small', shape: { kind: 'shared', name: 'db-g1-small', maxConnections: 50 }},
-		{ tier: 'db-perf-optimized-N-8', shape: { kind: 'unknown', tier: 'db-perf-optimized-N-8' }},
+		{ tier: 'db-mystery-8', shape: { kind: 'unknown', tier: 'db-mystery-8' }},
 		{ tier: 'db-custom-2', shape: { kind: 'unknown', tier: 'db-custom-2' }},
 		{ tier: 'db-custom-two-7680', shape: { kind: 'unknown', tier: 'db-custom-two-7680' }},
 		{ tier: 'db-custom-2-7680-extra', shape: { kind: 'unknown', tier: 'db-custom-2-7680-extra' }},
 		{ tier: 'DB-F1-MICRO', shape: { kind: 'unknown', tier: 'DB-F1-MICRO' }},
+		{ tier: 'db-perf-optimized-N-', shape: { kind: 'unknown', tier: 'db-perf-optimized-N-' }},
+		{ tier: 'db-perf-optimized-2', shape: { kind: 'unknown', tier: 'db-perf-optimized-2' }},
+		{ tier: 'db-perf-optimized-N-x', shape: { kind: 'unknown', tier: 'db-perf-optimized-N-x' }},
+		{ tier: 'DB-PERF-OPTIMIZED-N-2', shape: { kind: 'unknown', tier: 'DB-PERF-OPTIMIZED-N-2' }},
 		{ tier: '', shape: { kind: 'unknown', tier: '' }}
 	];
 
 	it.each(tiers)('reads "$tier" as $shape.kind', function(testCase) {
 		expect(parseCloudSQLTier(testCase.tier)).toEqual(testCase.shape);
+	});
+
+	/* The tier of Enterprise Plus is a kind of its own, which is how the edition follows from the tier */
+	it.each([ 'db-perf-optimized-N-2', 'db-perf-optimized-N-8', 'db-perf-optimized-N-128' ])('reads "%s" as perf-optimized', function(tier) {
+		expect(parseCloudSQLTier(tier)).toMatchObject({ kind: 'perf-optimized' });
 	});
 });
 
@@ -67,12 +73,12 @@ describe('tierDefaultMaxConnections', function() {
 	});
 
 	it('does not throw for a tier it does not know until a default is asked for', function() {
-		const shape = parseCloudSQLTier('db-perf-optimized-N-8');
+		const shape = parseCloudSQLTier('db-mystery-8');
 
-		expect(shape).toEqual({ kind: 'unknown', tier: 'db-perf-optimized-N-8' });
+		expect(shape).toEqual({ kind: 'unknown', tier: 'db-mystery-8' });
 		expect(function() {
 			return(tierDefaultMaxConnections(shape));
-		}).toThrow('db-perf-optimized-N-8');
+		}).toThrow('db-mystery-8');
 	});
 });
 
@@ -177,26 +183,6 @@ describe('assertWithinBudget', function() {
 	});
 });
 
-/** Builds a component in a program and returns it with the tree it made */
-async function captureComponent<Value>(build: () => Value) {
-	const built: Value[] = [];
-	const tree = await captureTree(function() {
-		built.push(build());
-	});
-
-	return({ tree, value: expectDefined(built[0], 'the component') });
-}
-
-type DatabaseArgs = Partial<ConstructorParameters<typeof PostgresCloudSQL>[1]>;
-
-function buildDatabase(name: string, args: DatabaseArgs) {
-	return(captureComponent(function() {
-		const network = new gcp.compute.Network(`${name}-network`, { autoCreateSubnetworks: false });
-
-		return(new PostgresCloudSQL(name, { region: 'us-central1', tier: 'db-f1-micro', vpcNetwork: network, createPeering: true, ...args }));
-	}));
-}
-
 /*
  * The budget a PostgresCloudSQL reports is the one Cloud SQL applies:
  * reading it writes nothing. Only an explicit `maxConnections` writes the flag.
@@ -240,15 +226,15 @@ describe('PostgresCloudSQL.connectionBudget', function() {
 	});
 
 	it('builds with a tier it does not know, and fails only when the budget is read', async function() {
-		const { value } = await buildDatabase('budget-unknown', { tier: 'db-perf-optimized-N-8' });
+		const { value } = await buildDatabase('budget-unknown', { tier: 'db-mystery-8' });
 
 		expect(function() {
 			return(value.connectionBudget);
-		}).toThrow('db-perf-optimized-N-8');
+		}).toThrow('db-mystery-8');
 	});
 
 	it('reports the explicit flag of a tier it does not know', async function() {
-		const { value } = await buildDatabase('budget-unknown-flag', { tier: 'db-perf-optimized-N-8', flags: { max_connections: 300 }});
+		const { value } = await buildDatabase('budget-unknown-flag', { tier: 'db-mystery-8', flags: { max_connections: 300 }});
 
 		expect(value.connectionBudget).toEqual(connectionBudget(300));
 	});

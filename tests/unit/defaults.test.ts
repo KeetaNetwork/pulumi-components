@@ -66,7 +66,7 @@ describe('defaults module', function() {
 	/* [ object, value it holds, how many times it holds it ] */
 	const held: [ ExportName, unknown, number ][] = [
 		[ 'POSTGRES_DEFAULTS', 'db-f1-micro', 1 ],
-		[ 'POSTGRES_DEFAULTS', 'POSTGRES_14', 1 ],
+		[ 'POSTGRES_DEFAULTS', 'POSTGRES_18', 1 ],
 		[ 'POSTGRES_DEFAULTS', 4500, 1 ],
 		[ 'POSTGRES_DEFAULTS', 25000, 1 ],
 		[ 'BUILD_DEFAULTS', 'linux/amd64', 1 ],

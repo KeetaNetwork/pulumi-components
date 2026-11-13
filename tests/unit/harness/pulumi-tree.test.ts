@@ -190,3 +190,21 @@ describe('secrets in a captured tree', function() {
 		expect(JSON.stringify(describeTree(tree))).not.toContain('hunter2');
 	});
 });
+
+describe('ignoreChanges in a captured tree', function() {
+	it('are recorded when the resource names some, and absent otherwise', async function() {
+		const tree = await captureTree(function() {
+			leaf('ignores', { ignoreChanges: [ 'size' ] });
+			leaf('keeps');
+		});
+		const [ ignores, keeps ] = [ 'ignores', 'keeps' ].map(function(name) {
+			return(tree.resources.find(function(resource) {
+				return(resource.name === name);
+			}));
+		});
+
+		expect(ignores?.ignoreChanges).toEqual([ 'size' ]);
+		expect(keeps?.ignoreChanges).toBeUndefined();
+		expect(JSON.stringify(describeTree(tree))).toContain('"ignoreChanges"');
+	});
+});

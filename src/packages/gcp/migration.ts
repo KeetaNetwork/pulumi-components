@@ -66,7 +66,7 @@ export interface MigrationJobArgs {
 	database: DatabaseInstanceConfig | DatabaseCredentialsConfig;
 
 	/**
-	 * Container image to use for migrations (e.g., 'postgres:15-alpine')
+	 * Container image to use for migrations (e.g., 'postgres:18-alpine')
 	 */
 	image: pulumi.Input<string>;
 

@@ -361,7 +361,7 @@ describe('parseCloudRunServiceArgs defaults', function() {
 
 	/* [ description, arguments, section of the parsed value, values it holds, values it must not hold ] */
 	const rows: [ string, unknown, string[], unknown[], unknown[] ][] = [
-		[ 'the database', { database: {}}, [ 'vpc', 'data', 'database' ], [ 'db-f1-micro', 'POSTGRES_14', 4500, 25000 ], [] ],
+		[ 'the database', { database: {}}, [ 'vpc', 'data', 'database' ], [ 'db-f1-micro', 4500, 25000 ], [ 'POSTGRES_14', 'POSTGRES_18' ] ],
 		[ 'the network', { database: {}}, [ 'vpc', 'network' ], [ '10.97.35.0/24', '10.97.36.0/28', 2, 3, 16 ], [] ],
 		[ 'the service', {}, [ 'service' ], [ 1, 512 ], [] ],
 		[ 'the migration', { database: {}, migration: { enabled: true }}, [ 'vpc', 'data', 'migration' ], [ 1, 512, 600 ], [] ],
@@ -373,7 +373,7 @@ describe('parseCloudRunServiceArgs defaults', function() {
 			{ database: { tier: 'db-custom-2-7680', version: 'POSTGRES_15', queryStringLength: 2048, flags: { max_connections: 100 }}},
 			[ 'vpc', 'data', 'database' ],
 			[ 'db-custom-2-7680', 'POSTGRES_15', 2048, 100 ],
-			[ 'db-f1-micro', 'POSTGRES_14', 4500, 25000 ]
+			[ 'db-f1-micro', 'POSTGRES_14', 'POSTGRES_18', 4500, 25000 ]
 		],
 		[
 			'a network the caller sets',

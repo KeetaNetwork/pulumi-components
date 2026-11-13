@@ -5,7 +5,7 @@ import type { EnvironmentVariables } from './cloudrun';
 import type { GCPCommonOptions } from './common';
 import type { GCPRegion } from './constants';
 import type { AppNetwork } from './network';
-import { assertWithinBudget, connectionBudget, parseCloudSQLTier, resolveMaxConnections, tierDefaultMaxConnections } from './connection-budget';
+import { assertWithinBudget, connectionBudget, knowsMaxConnections, parseCloudSQLTier, resolveMaxConnections, tierDefaultMaxConnections } from './connection-budget';
 import type { ConnectionConsumer } from './connection-budget';
 import { DATABASE_POOL_SIZE_VARIABLE } from './database-env';
 import { resolveProfile } from './profiles';
@@ -188,7 +188,6 @@ export type ParsedImage = {
 
 export interface ParsedDatabase extends DatabaseArgs {
 	tier: string;
-	version: string;
 	deletionProtection: boolean;
 	queryInsights: boolean;
 	queryStringLength: number;
@@ -397,7 +396,6 @@ function parseDatabase(database: DatabaseArgs): ParsedDatabase {
 	return({
 		...database,
 		tier: database.tier ?? POSTGRES_DEFAULTS.tier,
-		version: database.version ?? POSTGRES_DEFAULTS.version,
 		deletionProtection: database.deletionProtection ?? POSTGRES_DEFAULTS.deletionProtection,
 		queryInsights: database.queryInsights ?? POSTGRES_DEFAULTS.queryInsights,
 		queryStringLength: database.queryStringLength ?? POSTGRES_DEFAULTS.queryStringLength,
@@ -565,7 +563,7 @@ function profileMaxConnections(database: NonNullable<CloudRunServiceArgs['databa
 	}
 
 	const shape = parseCloudSQLTier(database.tier);
-	if (shape.kind === 'unknown') {
+	if (!knowsMaxConnections(shape)) {
 		throw(new CloudRunServiceArgsError(`database.tier '${database.tier}' is not a tier that the profile knows the max_connections of: give database.flags.max_connections`));
 	}
 

@@ -1,11 +1,15 @@
+import * as gcp from '@pulumi/gcp';
+
 import type * as apps from '../../../src/packages/gcp/apps';
 import type * as defaults from '../../../src/packages/gcp/defaults';
-import { expectArray, expectRecord, expectString, optionalRecord, valueAt } from '../../helpers/narrow';
+import type * as sql from '../../../src/packages/gcp/sql';
+import { expectArray, expectDefined, expectRecord, expectString, optionalRecord, valueAt } from '../../helpers/narrow';
 import { requireSource } from './load-sources';
 import { captureTree, ofType } from './pulumi-tree';
 import type { TreeSnapshot } from './pulumi-tree';
 
 const { CloudRunService } = requireSource<typeof apps>('src/packages/gcp/apps.ts');
+const { PostgresCloudSQL } = requireSource<typeof sql>('src/packages/gcp/sql.ts');
 const { CLOUD_RUN_SERVICE_DEFAULTS } = requireSource<typeof defaults>('src/packages/gcp/defaults.ts');
 
 type ServiceArgs = ConstructorParameters<typeof CloudRunService>[1];
@@ -109,3 +113,24 @@ export function flagsOf(tree: TreeSnapshot) {
 		return([ String(record.name), String(record.value) ]);
 	})));
 }
+
+/** Builds a component in a program and returns it with the tree it made */
+export async function captureComponent<Value>(build: () => Value) {
+	const built: Value[] = [];
+	const tree = await captureTree(function() {
+		built.push(build());
+	});
+
+	return({ tree, value: expectDefined(built[0], 'the component') });
+}
+
+export type DatabaseArgs = Partial<ConstructorParameters<typeof PostgresCloudSQL>[1]>;
+
+export function buildDatabase(name: string, args: DatabaseArgs) {
+	return(captureComponent(function() {
+		const network = new gcp.compute.Network(`${name}-network`, { autoCreateSubnetworks: false });
+
+		return(new PostgresCloudSQL(name, { region: 'us-central1', tier: 'db-f1-micro', vpcNetwork: network, createPeering: true, ...args }));
+	}));
+}
+
