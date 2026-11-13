@@ -1369,12 +1369,12 @@ exports[`component tree > snapshot > service-caller-resources keeps its resource
     "aliases": [],
     "custom": true,
     "inputs": {
+      "deletionPolicy": "DISABLE",
       "secret": "service-caller-resources-env-mc-psql-db-password-id",
       "secretData": "<secret>",
     },
     "name": "service-caller-resources-env-mc-psql-db-password-version",
     "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-caller-resources-env-mc-psql-db-password",
-    "retainOnDelete": true,
     "type": "gcp:secretmanager/secretVersion:SecretVersion",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::service-caller-resources-env-mc-psql-db-password-version",
   },
@@ -1382,12 +1382,12 @@ exports[`component tree > snapshot > service-caller-resources keeps its resource
     "aliases": [],
     "custom": true,
     "inputs": {
+      "deletionPolicy": "DISABLE",
       "secret": "service-caller-resources-env-mc-psql-db-url-id",
       "secretData": "<secret>",
     },
     "name": "service-caller-resources-env-mc-psql-db-url-version",
     "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-caller-resources-env-mc-psql-db-url",
-    "retainOnDelete": true,
     "type": "gcp:secretmanager/secretVersion:SecretVersion",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::service-caller-resources-env-mc-psql-db-url-version",
   },
@@ -1592,7 +1592,7 @@ exports[`component tree > snapshot > service-caller-resources keeps its resource
                   "name": "MC_PSQL_DB_PASSWORD",
                   "valueFrom": {
                     "secretKeyRef": {
-                      "key": "latest",
+                      "key": "1",
                       "name": "service-caller-resources-env-mc-psql-db-password",
                     },
                   },
@@ -1621,7 +1621,7 @@ exports[`component tree > snapshot > service-caller-resources keeps its resource
                   "name": "MC_PSQL_DB_URL",
                   "valueFrom": {
                     "secretKeyRef": {
-                      "key": "latest",
+                      "key": "1",
                       "name": "service-caller-resources-env-mc-psql-db-url",
                     },
                   },
@@ -2066,12 +2066,12 @@ exports[`component tree > snapshot > service-database keeps its resources, paren
     "aliases": [],
     "custom": true,
     "inputs": {
+      "deletionPolicy": "DISABLE",
       "secret": "service-database-env-mc-psql-db-password-id",
       "secretData": "<secret>",
     },
     "name": "service-database-env-mc-psql-db-password-version",
     "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-database-env-mc-psql-db-password",
-    "retainOnDelete": true,
     "type": "gcp:secretmanager/secretVersion:SecretVersion",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::service-database-env-mc-psql-db-password-version",
   },
@@ -2079,12 +2079,12 @@ exports[`component tree > snapshot > service-database keeps its resources, paren
     "aliases": [],
     "custom": true,
     "inputs": {
+      "deletionPolicy": "DISABLE",
       "secret": "service-database-env-mc-psql-db-url-id",
       "secretData": "<secret>",
     },
     "name": "service-database-env-mc-psql-db-url-version",
     "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-database-env-mc-psql-db-url",
-    "retainOnDelete": true,
     "type": "gcp:secretmanager/secretVersion:SecretVersion",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::service-database-env-mc-psql-db-url-version",
   },
@@ -2166,12 +2166,12 @@ exports[`component tree > snapshot > service-database keeps its resources, paren
     "aliases": [],
     "custom": true,
     "inputs": {
+      "deletionPolicy": "DISABLE",
       "secret": "service-database-migration-env-mc-psql-db-password-id",
       "secretData": "<secret>",
     },
     "name": "service-database-migration-env-mc-psql-db-password-version",
     "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-database-migration-env-mc-psql-db-password",
-    "retainOnDelete": true,
     "type": "gcp:secretmanager/secretVersion:SecretVersion",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::service-database-migration-env-mc-psql-db-password-version",
   },
@@ -2179,12 +2179,12 @@ exports[`component tree > snapshot > service-database keeps its resources, paren
     "aliases": [],
     "custom": true,
     "inputs": {
+      "deletionPolicy": "DISABLE",
       "secret": "service-database-migration-env-mc-psql-db-url-id",
       "secretData": "<secret>",
     },
     "name": "service-database-migration-env-mc-psql-db-url-version",
     "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-database-migration-env-mc-psql-db-url",
-    "retainOnDelete": true,
     "type": "gcp:secretmanager/secretVersion:SecretVersion",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::service-database-migration-env-mc-psql-db-url-version",
   },
@@ -2270,7 +2270,7 @@ exports[`component tree > snapshot > service-database keeps its resources, paren
                   "valueSource": {
                     "secretKeyRef": {
                       "secret": "service-database-migration-env-mc-psql-db-password",
-                      "version": "latest",
+                      "version": "1",
                     },
                   },
                 },
@@ -2299,7 +2299,7 @@ exports[`component tree > snapshot > service-database keeps its resources, paren
                   "valueSource": {
                     "secretKeyRef": {
                       "secret": "service-database-migration-env-mc-psql-db-url",
-                      "version": "latest",
+                      "version": "1",
                     },
                   },
                 },
@@ -2519,7 +2519,7 @@ exports[`component tree > snapshot > service-database keeps its resources, paren
                   "name": "MC_PSQL_DB_PASSWORD",
                   "valueFrom": {
                     "secretKeyRef": {
-                      "key": "latest",
+                      "key": "1",
                       "name": "service-database-env-mc-psql-db-password",
                     },
                   },
@@ -2548,7 +2548,7 @@ exports[`component tree > snapshot > service-database keeps its resources, paren
                   "name": "MC_PSQL_DB_URL",
                   "valueFrom": {
                     "secretKeyRef": {
-                      "key": "latest",
+                      "key": "1",
                       "name": "service-database-env-mc-psql-db-url",
                     },
                   },
@@ -2704,12 +2704,12 @@ exports[`component tree > snapshot > service-environment keeps its resources, pa
     "aliases": [],
     "custom": true,
     "inputs": {
+      "deletionPolicy": "DISABLE",
       "secret": "service-environment-env-secret-id",
       "secretData": "<secret>",
     },
     "name": "service-environment-env-secret-version",
     "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-environment-env-secret",
-    "retainOnDelete": true,
     "type": "gcp:secretmanager/secretVersion:SecretVersion",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::service-environment-env-secret-version",
   },
@@ -2822,7 +2822,7 @@ exports[`component tree > snapshot > service-environment keeps its resources, pa
                   "name": "SECRET",
                   "valueFrom": {
                     "secretKeyRef": {
-                      "key": "latest",
+                      "key": "1",
                       "name": "service-environment-env-secret",
                     },
                   },
@@ -2911,12 +2911,12 @@ exports[`component tree > snapshot > service-kv keeps its resources, parents, al
     "aliases": [],
     "custom": true,
     "inputs": {
+      "deletionPolicy": "DISABLE",
       "secret": "service-kv-env-mc-redis-password-id",
       "secretData": "<secret>",
     },
     "name": "service-kv-env-mc-redis-password-version",
     "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-kv-env-mc-redis-password",
-    "retainOnDelete": true,
     "type": "gcp:secretmanager/secretVersion:SecretVersion",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::service-kv-env-mc-redis-password-version",
   },
@@ -3018,7 +3018,7 @@ exports[`component tree > snapshot > service-kv keeps its resources, parents, al
                   "name": "MC_REDIS_PASSWORD",
                   "valueFrom": {
                     "secretKeyRef": {
-                      "key": "latest",
+                      "key": "1",
                       "name": "service-kv-env-mc-redis-password",
                     },
                   },
@@ -3719,13 +3719,13 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
     "aliases": [],
     "custom": true,
     "inputs": {
+      "deletionPolicy": "DISABLE",
       "secret": "service-providers-env-mc-psql-db-password-id",
       "secretData": "<secret>",
     },
     "name": "service-providers-env-mc-psql-db-password-version",
     "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-providers-env-mc-psql-db-password",
     "provider": "pulumi:providers:gcp::caller-provider",
-    "retainOnDelete": true,
     "type": "gcp:secretmanager/secretVersion:SecretVersion",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::service-providers-env-mc-psql-db-password-version",
   },
@@ -3733,13 +3733,13 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
     "aliases": [],
     "custom": true,
     "inputs": {
+      "deletionPolicy": "DISABLE",
       "secret": "service-providers-env-mc-psql-db-url-id",
       "secretData": "<secret>",
     },
     "name": "service-providers-env-mc-psql-db-url-version",
     "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-providers-env-mc-psql-db-url",
     "provider": "pulumi:providers:gcp::caller-provider",
-    "retainOnDelete": true,
     "type": "gcp:secretmanager/secretVersion:SecretVersion",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::service-providers-env-mc-psql-db-url-version",
   },
@@ -3747,13 +3747,13 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
     "aliases": [],
     "custom": true,
     "inputs": {
+      "deletionPolicy": "DISABLE",
       "secret": "service-providers-env-secret-id",
       "secretData": "<secret>",
     },
     "name": "service-providers-env-secret-version",
     "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-providers-env-secret",
     "provider": "pulumi:providers:gcp::caller-provider",
-    "retainOnDelete": true,
     "type": "gcp:secretmanager/secretVersion:SecretVersion",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::service-providers-env-secret-version",
   },
@@ -3761,13 +3761,13 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
     "aliases": [],
     "custom": true,
     "inputs": {
+      "deletionPolicy": "DISABLE",
       "secret": "service-providers-mig-env-mc-psql-db-password-id",
       "secretData": "<secret>",
     },
     "name": "service-providers-mig-env-mc-psql-db-password-version",
     "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-providers-mig-env-mc-psql-db-password",
     "provider": "pulumi:providers:gcp::caller-provider",
-    "retainOnDelete": true,
     "type": "gcp:secretmanager/secretVersion:SecretVersion",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::service-providers-mig-env-mc-psql-db-password-version",
   },
@@ -3775,13 +3775,13 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
     "aliases": [],
     "custom": true,
     "inputs": {
+      "deletionPolicy": "DISABLE",
       "secret": "service-providers-mig-env-mc-psql-db-url-id",
       "secretData": "<secret>",
     },
     "name": "service-providers-mig-env-mc-psql-db-url-version",
     "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-providers-mig-env-mc-psql-db-url",
     "provider": "pulumi:providers:gcp::caller-provider",
-    "retainOnDelete": true,
     "type": "gcp:secretmanager/secretVersion:SecretVersion",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::service-providers-mig-env-mc-psql-db-url-version",
   },
@@ -3789,13 +3789,13 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
     "aliases": [],
     "custom": true,
     "inputs": {
+      "deletionPolicy": "DISABLE",
       "secret": "service-providers-mig-env-secret-id",
       "secretData": "<secret>",
     },
     "name": "service-providers-mig-env-secret-version",
     "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-providers-mig-env-secret",
     "provider": "pulumi:providers:gcp::caller-provider",
-    "retainOnDelete": true,
     "type": "gcp:secretmanager/secretVersion:SecretVersion",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::service-providers-mig-env-secret-version",
   },
@@ -4116,13 +4116,13 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
     "aliases": [],
     "custom": true,
     "inputs": {
+      "deletionPolicy": "DISABLE",
       "secret": "service-providers-migration-env-mc-psql-db-password-id",
       "secretData": "<secret>",
     },
     "name": "service-providers-migration-env-mc-psql-db-password-version",
     "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-providers-migration-env-mc-psql-db-password",
     "provider": "pulumi:providers:gcp::caller-provider",
-    "retainOnDelete": true,
     "type": "gcp:secretmanager/secretVersion:SecretVersion",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::service-providers-migration-env-mc-psql-db-password-version",
   },
@@ -4130,13 +4130,13 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
     "aliases": [],
     "custom": true,
     "inputs": {
+      "deletionPolicy": "DISABLE",
       "secret": "service-providers-migration-env-mc-psql-db-url-id",
       "secretData": "<secret>",
     },
     "name": "service-providers-migration-env-mc-psql-db-url-version",
     "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-providers-migration-env-mc-psql-db-url",
     "provider": "pulumi:providers:gcp::caller-provider",
-    "retainOnDelete": true,
     "type": "gcp:secretmanager/secretVersion:SecretVersion",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::service-providers-migration-env-mc-psql-db-url-version",
   },
@@ -4144,13 +4144,13 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
     "aliases": [],
     "custom": true,
     "inputs": {
+      "deletionPolicy": "DISABLE",
       "secret": "service-providers-migration-env-secret-id",
       "secretData": "<secret>",
     },
     "name": "service-providers-migration-env-secret-version",
     "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-providers-migration-env-secret",
     "provider": "pulumi:providers:gcp::caller-provider",
-    "retainOnDelete": true,
     "type": "gcp:secretmanager/secretVersion:SecretVersion",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::service-providers-migration-env-secret-version",
   },
@@ -4259,7 +4259,7 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
                   "valueSource": {
                     "secretKeyRef": {
                       "secret": "service-providers-migration-env-mc-psql-db-password",
-                      "version": "latest",
+                      "version": "1",
                     },
                   },
                 },
@@ -4288,7 +4288,7 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
                   "valueSource": {
                     "secretKeyRef": {
                       "secret": "service-providers-migration-env-mc-psql-db-url",
-                      "version": "latest",
+                      "version": "1",
                     },
                   },
                 },
@@ -4297,7 +4297,7 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
                   "valueSource": {
                     "secretKeyRef": {
                       "secret": "service-providers-migration-env-secret",
-                      "version": "latest",
+                      "version": "1",
                     },
                   },
                 },
@@ -4522,7 +4522,7 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
                   "name": "MC_PSQL_DB_PASSWORD",
                   "valueFrom": {
                     "secretKeyRef": {
-                      "key": "latest",
+                      "key": "1",
                       "name": "service-providers-env-mc-psql-db-password",
                     },
                   },
@@ -4551,7 +4551,7 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
                   "name": "MC_PSQL_DB_URL",
                   "valueFrom": {
                     "secretKeyRef": {
-                      "key": "latest",
+                      "key": "1",
                       "name": "service-providers-env-mc-psql-db-url",
                     },
                   },
@@ -4560,7 +4560,7 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
                   "name": "SECRET",
                   "valueFrom": {
                     "secretKeyRef": {
-                      "key": "latest",
+                      "key": "1",
                       "name": "service-providers-env-secret",
                     },
                   },
@@ -4895,12 +4895,12 @@ exports[`component tree > snapshot > service-replicas keeps its resources, paren
     "aliases": [],
     "custom": true,
     "inputs": {
+      "deletionPolicy": "DISABLE",
       "secret": "service-replicas-env-mc-psql-db-password-id",
       "secretData": "<secret>",
     },
     "name": "service-replicas-env-mc-psql-db-password-version",
     "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-replicas-env-mc-psql-db-password",
-    "retainOnDelete": true,
     "type": "gcp:secretmanager/secretVersion:SecretVersion",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::service-replicas-env-mc-psql-db-password-version",
   },
@@ -4908,12 +4908,12 @@ exports[`component tree > snapshot > service-replicas keeps its resources, paren
     "aliases": [],
     "custom": true,
     "inputs": {
+      "deletionPolicy": "DISABLE",
       "secret": "service-replicas-env-mc-psql-db-url-id",
       "secretData": "<secret>",
     },
     "name": "service-replicas-env-mc-psql-db-url-version",
     "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::service-replicas-env-mc-psql-db-url",
-    "retainOnDelete": true,
     "type": "gcp:secretmanager/secretVersion:SecretVersion",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::service-replicas-env-mc-psql-db-url-version",
   },
@@ -5169,7 +5169,7 @@ exports[`component tree > snapshot > service-replicas keeps its resources, paren
                   "name": "MC_PSQL_DB_PASSWORD",
                   "valueFrom": {
                     "secretKeyRef": {
-                      "key": "latest",
+                      "key": "1",
                       "name": "service-replicas-env-mc-psql-db-password",
                     },
                   },
@@ -5198,7 +5198,7 @@ exports[`component tree > snapshot > service-replicas keeps its resources, paren
                   "name": "MC_PSQL_DB_URL",
                   "valueFrom": {
                     "secretKeyRef": {
-                      "key": "latest",
+                      "key": "1",
                       "name": "service-replicas-env-mc-psql-db-url",
                     },
                   },
@@ -5625,12 +5625,12 @@ exports[`component tree > snapshot > standalone-migration-job keeps its resource
     "aliases": [],
     "custom": true,
     "inputs": {
+      "deletionPolicy": "DISABLE",
       "secret": "standalone-migration-env-mc-psql-db-password-id",
       "secretData": "<secret>",
     },
     "name": "standalone-migration-env-mc-psql-db-password-version",
     "parent": "Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::standalone-migration-env-mc-psql-db-password",
-    "retainOnDelete": true,
     "type": "gcp:secretmanager/secretVersion:SecretVersion",
     "urn": "Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::standalone-migration-env-mc-psql-db-password-version",
   },
@@ -5638,12 +5638,12 @@ exports[`component tree > snapshot > standalone-migration-job keeps its resource
     "aliases": [],
     "custom": true,
     "inputs": {
+      "deletionPolicy": "DISABLE",
       "secret": "standalone-migration-env-mc-psql-db-url-id",
       "secretData": "<secret>",
     },
     "name": "standalone-migration-env-mc-psql-db-url-version",
     "parent": "Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret::standalone-migration-env-mc-psql-db-url",
-    "retainOnDelete": true,
     "type": "gcp:secretmanager/secretVersion:SecretVersion",
     "urn": "Keeta:GCP:MigrationJob$Keeta:GCP:CloudRunEnvManager$gcp:secretmanager/secret:Secret$gcp:secretmanager/secretVersion:SecretVersion::standalone-migration-env-mc-psql-db-url-version",
   },
@@ -5729,7 +5729,7 @@ exports[`component tree > snapshot > standalone-migration-job keeps its resource
                   "valueSource": {
                     "secretKeyRef": {
                       "secret": "standalone-migration-env-mc-psql-db-password",
-                      "version": "latest",
+                      "version": "1",
                     },
                   },
                 },
@@ -5758,7 +5758,7 @@ exports[`component tree > snapshot > standalone-migration-job keeps its resource
                   "valueSource": {
                     "secretKeyRef": {
                       "secret": "standalone-migration-env-mc-psql-db-url",
-                      "version": "latest",
+                      "version": "1",
                     },
                   },
                 },
