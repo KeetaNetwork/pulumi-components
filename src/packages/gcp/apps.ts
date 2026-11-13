@@ -10,6 +10,11 @@ import { PostgresCloudSQL } from './sql';
 import type { ContainerGeneric } from './container';
 import { ContainerMIG, ContainerCloudRun } from './container';
 import { MigrationJob } from './migration';
+import { parseCloudRunServiceArgs } from './apps-args';
+import type { MIGWorkerArgs, CRWPWorkerArgs, LegacyMIGArgs, ParsedCloudRunServiceArgs, ParsedRemote } from './apps-args';
+export { CloudRunServiceArgsError } from './apps-args';
+export type { MIGWorkerArgs, CRWPWorkerArgs, LegacyMIGArgs } from './apps-args';
+import { CLOUD_RUN_SERVICE_DEFAULTS } from './defaults';
 import { buildDatabaseEnvVars, buildRedisEnvVars } from './database-env';
 import { createHttpRedirect } from './lb';
 import * as components from '../docker';
@@ -583,18 +588,22 @@ export interface CloudRunServiceArgs {
 	region: GCPRegion;
 
 	/**
-	 * Docker image configuration
+	 * Docker image configuration: either the URI of an image or a
+	 * configuration to build one (not both)
 	 */
 	image: {
 		/**
-		 * Docker image URI or configuration to build
+		 * Docker image URI
 		 */
-		uri?: pulumi.Input<string>;
+		uri: pulumi.Input<string>;
+		build?: never;
+	} | {
+		uri?: never;
 
 		/**
 		 * Build configuration (alternative to uri)
 		 */
-		build?: {
+		build: {
 			directory: string;
 			registryUrl?: pulumi.Input<string>;
 			imageName: string;
@@ -615,6 +624,12 @@ export interface CloudRunServiceArgs {
 				bucketConfig?: Partial<Pick<gcp.storage.BucketArgs, 'logging'>>;
 				bindPermissions?: boolean;
 				machineType?: string;
+
+				/**
+				 * Time that Cloud Build gives the build, in seconds
+				 * @default BUILD_DEFAULTS.timeoutSeconds
+				 */
+				timeoutSeconds?: number;
 			};
 		};
 	};
@@ -637,6 +652,18 @@ export interface CloudRunServiceArgs {
 		 * Tier for the database instance
 		 */
 		tier?: string;
+
+		/**
+		 * Database engine version
+		 * @default POSTGRES_DEFAULTS.version
+		 */
+		version?: string;
+
+		/**
+		 * Length of the query strings that query insights records
+		 * @default POSTGRES_DEFAULTS.queryStringLength
+		 */
+		queryStringLength?: number;
 
 		/**
 		 * Whether to enable deletion protection (default: false)
@@ -752,6 +779,22 @@ export interface CloudRunServiceArgs {
 		connectorCIDR?: string;
 
 		/**
+		 * Number of instances of the VPC connector
+		 * @default CLOUD_RUN_SERVICE_DEFAULTS.network.connector
+		 */
+		connector?: {
+			minInstances?: number;
+			maxInstances?: number;
+		};
+
+		/**
+		 * Prefix length of the private service access range that the
+		 * database is reached through
+		 * @default CLOUD_RUN_SERVICE_DEFAULTS.network.psaPrefixLength
+		 */
+		psaPrefixLength?: number;
+
+		/**
 		 * Subnet CIDR range (for database peering)
 		 */
 		subnetCIDR?: string;
@@ -765,65 +808,21 @@ export interface CloudRunServiceArgs {
 	};
 
 	/**
-	 * Managed Instance Group configuration (optional, for background workers/queue processors)
+	 * Worker for background tasks/queue processors (optional): a Managed
+	 * Instance Group of VMs (`kind: 'mig'`) or a Cloud Run Worker Pool
+	 * (`kind: 'crwp'`). Cannot be combined with `mig`.
 	 */
-	mig?: {
-		/**
-		 * Whether to enable the MIG worker
-		 */
-		enabled: boolean;
+	worker?: MIGWorkerArgs | CRWPWorkerArgs;
 
-		/**
-		 * Number of instances (default: 1)
-		 */
-		instanceCount?: number;
-
-		/**
-		 * Machine type (default: 'e2-micro')
-		 */
-		machineType?: string;
-
-		/**
-		 * Container OS image to use
-		 */
-		cosImage?: string;
-
-		/**
-		 * Whether to enable SSH via IAP
-		 */
-		enableSSH?: boolean;
-
-		/**
-		 * Additional tags for the instances
-		 */
-		tags?: string[];
-
-		/**
-		 * Type of external access
-		 *
-		 *   - vpc: No external IP, only VPC access (default)
-		 *   - vpc+direct: External IP automatically assigned for
-		 *                 internet access, VPC for private access
-		 *   - vpc+nat: Create a NAT for internet access, VPC for
-		 *              private access (this is the old
-		 *              "allocateExternalIP" option).  For CRWP
-		 *              this will create a NAT Router.
-		 */
-		egress?: 'vpc' | 'vpc+direct' | 'vpc+nat';
-
-		/**
-		 * Additional environment variables specific to the MIG worker
-		 * These are merged with the main environment variables
-		 */
-		environmentOverrides?: { [key: string]: pulumi.Input<string> };
-
-		/**
-		 * Kind of worker to create for this:
-		 *   - mig: Managed Instance Group (default)
-		 *   - crwp: Cloud Run Worker Pool (more modern -- does not support "cosImage", "enableSSH", or "allocateExternalIP")
-		 */
-		workerKind?: 'mig' | 'crwp';
-	};
+	/**
+	 * Worker configuration of 1.0.x (optional, for background workers/queue processors)
+	 *
+	 * Deprecated (the constructor warns): use `worker`. `mig: { enabled: true, workerKind: 'crwp', ... }`
+	 *             becomes `worker: { kind: 'crwp', ... }` (`workerKind`
+	 *             defaults to 'mig'), and `enabled: false` becomes no
+	 *             `worker` at all
+	 */
+	mig?: LegacyMIGArgs;
 
 	/**
 	 * Database migration configuration (optional)
@@ -857,17 +856,20 @@ export interface CloudRunServiceArgs {
 		environmentOverrides?: { [key: string]: pulumi.Input<string> };
 
 		/**
-		 * CPU limit for migration job (default: 1)
+		 * CPU limit for migration job
+		 * @default MIGRATION_DEFAULTS.cpuLimit
 		 */
 		cpuLimit?: number;
 
 		/**
-		 * Memory limit for migration job in MB (default: 512)
+		 * Memory limit for migration job in MB
+		 * @default MIGRATION_DEFAULTS.memoryLimit
 		 */
 		memoryLimit?: number;
 
 		/**
-		 * Task timeout in seconds (default: 600)
+		 * Task timeout in seconds
+		 * @default MIGRATION_DEFAULTS.taskTimeout
 		 */
 		taskTimeout?: number;
 	};
@@ -891,10 +893,8 @@ export class CloudRunService extends pulumi.ComponentResource {
 	readonly migration?: MigrationJob;
 
 	constructor(name: string, args: CloudRunServiceArgs, opts?: pulumi.ComponentResourceOptions) {
-		// Checked before the component registers, so a rejected configuration leaves nothing behind
-		if (args.migration?.enabled && !args.database) {
-			throw(new Error('migration.enabled requires database'));
-		}
+		// Parsed before the component registers, so a rejected configuration leaves nothing behind
+		const parsed = parseCloudRunServiceArgs(args);
 
 		super('Keeta:GCP:CloudRunService', name, args, opts);
 
@@ -904,37 +904,40 @@ export class CloudRunService extends pulumi.ComponentResource {
 		let db: PostgresCloudSQL | undefined;
 		let kv: gcp.redis.Instance | undefined;
 
-		if (args.database || args.kv || args.vpc || args.mig?.enabled) {
-			vpc = args.vpc?.network ?? new gcp.compute.Network(`${name}-vpc`, {
+		const parsedVpc = parsed.vpc;
+		if (parsedVpc !== undefined) {
+			const { network } = parsedVpc;
+
+			vpc = network.existing ?? new gcp.compute.Network(`${name}-vpc`, {
 				description: `[${name}] VPC network`,
 				autoCreateSubnetworks: false
 			}, { parent: this });
 
-			const subnetCIDR = args.vpc?.subnetCIDR ?? '10.97.35.0/24';
 			subnet = new gcp.compute.Subnetwork(`${name}-subnet`, {
 				description: `[${name}] Subnet`,
 				network: vpc.selfLink,
-				region: args.region,
-				ipCidrRange: subnetCIDR,
+				region: parsed.region,
+				ipCidrRange: network.subnetCIDR,
 				privateIpGoogleAccess: true
 			}, { parent: vpc });
 
-			const connectorCIDR = args.vpc?.connectorCIDR ?? '10.97.36.0/28';
 			const connectorName = generateName(name, 'vpc', 25);
 			vpcConnector = new gcp.vpcaccess.Connector(`${name}-vpc-connector`, {
 				name: connectorName,
-				ipCidrRange: connectorCIDR,
-				minInstances: 2,
-				maxInstances: 3,
+				ipCidrRange: network.connectorCIDR,
+				minInstances: network.connector.minInstances,
+				maxInstances: network.connector.maxInstances,
 				network: vpc.selfLink,
-				region: args.region
+				region: parsed.region
 			}, { parent: subnet });
 
-			if (args.database) {
+			if (parsedVpc.data) {
+				const { database } = parsedVpc.data;
+
 				const privateIpAlloc = new gcp.compute.GlobalAddress(`${name}-private-ip-alloc`, {
 					purpose: 'VPC_PEERING',
 					addressType: 'INTERNAL',
-					prefixLength: 16,
+					prefixLength: network.psaPrefixLength,
 					network: vpc.selfLink
 				}, { parent: vpc });
 
@@ -942,36 +945,34 @@ export class CloudRunService extends pulumi.ComponentResource {
 					network: vpc.selfLink,
 					service: 'servicenetworking.googleapis.com',
 					reservedPeeringRanges: [privateIpAlloc.name],
-					deletionPolicy: args.vpc?.servicePeeringDeletionPolicy
+					deletionPolicy: network.servicePeeringDeletionPolicy
 				}, { parent: privateIpAlloc });
 
 				db = new PostgresCloudSQL(`${name}-db`, {
-					region: args.region,
-					tier: args.database.tier ?? 'db-f1-micro',
-					deletionProtection: args.database.deletionProtection ?? false,
+					region: parsed.region,
+					tier: database.tier,
+					databaseVersion: database.version,
+					deletionProtection: database.deletionProtection,
 					vpcNetwork: vpc,
 					insightsConfig: {
-						queryInsightsEnabled: args.database.queryInsights ?? false,
-						queryStringLength: 4500
+						queryInsightsEnabled: database.queryInsights,
+						queryStringLength: database.queryStringLength
 					},
-					flags: {
-						max_connections: 25000,
-						...args.database.flags
-					},
-					replication: args.database.replication,
-					backups: args.database.backups
+					flags: database.flags,
+					replication: database.replication,
+					backups: database.backups
 				}, {
 					dependsOn: [svcNetworkingConnection],
 					parent: this
 				});
 			}
 
-			if (args.kv) {
+			if (parsedVpc.kv) {
 				kv = new gcp.redis.Instance(generateName(name, 'kv', 32), {
 					authEnabled: true,
 					authorizedNetwork: vpc.id,
-					region: args.region,
-					...args.kv
+					region: parsed.region,
+					...parsedVpc.kv
 				}, {
 					parent: this,
 					dependsOn: [ vpc, vpcConnector ]
@@ -995,17 +996,17 @@ export class CloudRunService extends pulumi.ComponentResource {
 						})
 					],
 					destinationRanges: [ pulumi.interpolate`${kv.host}/32` ],
-					priority: 850,
-					...args.gcp?.firewallConfig
+					priority: CLOUD_RUN_SERVICE_DEFAULTS.kv.firewallPriority,
+					...parsed.gcp.firewallConfig
 				}, { parent: vpc });
 			}
 		}
 
 		let imageUri: pulumi.Input<string>;
-		if (args.image.uri) {
-			imageUri = args.image.uri;
-		} else if (args.image.build) {
-			const build = args.image.build;
+		if (parsed.image.kind === 'uri') {
+			imageUri = parsed.image.uri;
+		} else {
+			const build = parsed.image.build;
 			const buildArgs: { [key: string]: pulumi.Input<string> } = { ...build.buildArgs };
 			if (build.nodeImage) {
 				buildArgs.NODE_IMAGE = build.nodeImage;
@@ -1020,8 +1021,8 @@ export class CloudRunService extends pulumi.ComponentResource {
 
 			let imageConfig: ConstructorParameters<typeof components.DockerImage>[1] = {
 				imageName: build.imageName,
-				registryUrl: build.registryUrl ?? pulumi.interpolate`${args.region}-docker.pkg.dev/${args.gcp.project}/keeta`,
-				platform: build.platform ?? 'linux/amd64',
+				registryUrl: build.registryUrl,
+				platform: build.platform,
 				buildArgs,
 				buildTarget: build.target,
 				buildDirectory: {
@@ -1033,23 +1034,17 @@ export class CloudRunService extends pulumi.ComponentResource {
 			};
 
 			if (build.remote) {
-				const remoteConfig = this.getRemoteConfig(name, args, build.remote);
+				const remoteConfig = this.getRemoteConfig(name, parsed, build.remote);
 				imageConfig = { ...imageConfig, ...remoteConfig };
 			}
 
 			const dockerImage = new components.DockerImage(`${name}-image`, imageConfig);
 			imageUri = dockerImage.uri;
-		} else {
-			throw(new Error('Either image.uri or image.build must be provided'));
 		}
 
 		let serviceAccount: Pick<gcp.serviceaccount.Account, 'email'>;
-		if (args.service?.serviceAccount) {
-			if (typeof args.service.serviceAccount === 'object' && args.service.serviceAccount !== null && 'email' in args.service.serviceAccount) {
-				serviceAccount = args.service.serviceAccount;
-			} else {
-				serviceAccount = { email: pulumi.output(args.service.serviceAccount) };
-			}
+		if (parsed.identity.account) {
+			serviceAccount = parsed.identity.account;
 		} else {
 			const accountId = generateName(name, 'sa', 30);
 
@@ -1060,9 +1055,10 @@ export class CloudRunService extends pulumi.ComponentResource {
 		}
 
 		let serviceDependsOn: pulumi.Input<pulumi.Resource[]> | undefined = undefined;
-		if (args.service?.grantIAMRoles !== false && !args.service?.serviceAccount) {
-			if (args.gcp.changeProjectIAMPolicy) {
-				const resource = args.gcp.changeProjectIAMPolicy('roles/logging.logWriter', [
+		const { grantRoles } = parsed.identity;
+		if (grantRoles) {
+			if (parsed.gcp.changeProjectIAMPolicy) {
+				const resource = parsed.gcp.changeProjectIAMPolicy('roles/logging.logWriter', [
 					pulumi.interpolate`serviceAccount:${serviceAccount.email}`
 				]);
 
@@ -1073,7 +1069,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 				}
 			} else {
 				const resource = new gcp.projects.IAMMember(`${name}-log-writer`, {
-					project: args.gcp.project,
+					project: parsed.gcp.project,
 					role: 'roles/logging.logWriter',
 					member: pulumi.interpolate`serviceAccount:${serviceAccount.email}`
 				}, { parent: this });
@@ -1082,14 +1078,14 @@ export class CloudRunService extends pulumi.ComponentResource {
 		}
 
 		// Grant Cloud SQL client role if database is enabled
-		if (db && args.service?.grantIAMRoles !== false && !args.service?.serviceAccount) {
+		if (db && grantRoles) {
 			const cloudSqlClientMember = pulumi.interpolate`serviceAccount:${serviceAccount.email}`;
 			let cloudSqlClient: pulumi.Input<pulumi.Resource> | undefined;
-			if (args.gcp.changeProjectIAMPolicy) {
-				cloudSqlClient = args.gcp.changeProjectIAMPolicy('roles/cloudsql.client', [cloudSqlClientMember]);
+			if (parsed.gcp.changeProjectIAMPolicy) {
+				cloudSqlClient = parsed.gcp.changeProjectIAMPolicy('roles/cloudsql.client', [cloudSqlClientMember]);
 			} else {
 				cloudSqlClient = new gcp.projects.IAMMember(`${name}-cloudsql-client`, {
-					project: args.gcp.project,
+					project: parsed.gcp.project,
 					role: 'roles/cloudsql.client',
 					member: cloudSqlClientMember
 				}, { parent: db });
@@ -1104,24 +1100,25 @@ export class CloudRunService extends pulumi.ComponentResource {
 
 		// Create migration job if enabled and database is configured
 		let migration: MigrationJob | undefined;
-		if (args.migration?.enabled && db) {
+		const parsedMigration = parsedVpc?.data?.migration;
+		if (parsedMigration && db) {
 			let vpcConfig: { connector: gcp.vpcaccess.Connector } | undefined;
 			if (vpcConnector) {
 				vpcConfig = { connector: vpcConnector };
 			}
 
 			migration = new MigrationJob(`${name}-migration`, {
-				gcp: args.gcp,
-				region: args.region,
+				gcp: parsed.gcp,
+				region: parsed.region,
 				database: { instance: db },
 				image: imageUri,
-				container: args.migration.container,
+				container: parsedMigration.container,
 				vpc: vpcConfig,
 				serviceAccount: serviceAccount,
-				cpuLimit: args.migration.cpuLimit,
-				memoryLimit: args.migration.memoryLimit,
-				taskTimeout: args.migration.taskTimeout,
-				environment: { ...args.environment, ...args.migration.environmentOverrides },
+				cpuLimit: parsedMigration.cpuLimit,
+				memoryLimit: parsedMigration.memoryLimit,
+				taskTimeout: parsedMigration.taskTimeout,
+				environment: { ...parsed.environment, ...parsedMigration.environmentOverrides },
 				trigger: imageUri // Re-run migration when image changes
 			}, { parent: this });
 
@@ -1134,11 +1131,11 @@ export class CloudRunService extends pulumi.ComponentResource {
 
 		let envManager: EnvManager | undefined;
 		// Create environment manager if we have environment variables OR a database (for auto-injected DB vars)
-		if (args.environment || db || kv) {
+		if (parsed.environment || db || kv) {
 			const variables: EnvironmentVariables = {};
 
 			if (db) {
-				const hostInfo = db.getHost(args.region);
+				const hostInfo = db.getHost(parsed.region);
 				const dbVars = buildDatabaseEnvVars({
 					host: hostInfo.host,
 					username: db.username,
@@ -1159,19 +1156,19 @@ export class CloudRunService extends pulumi.ComponentResource {
 				Object.assign(variables, kvVars);
 			}
 
-			if (args.environment) {
-				Object.assign(variables, args.environment);
+			if (parsed.environment) {
+				Object.assign(variables, parsed.environment);
 			}
 
 			envManager = new EnvManager(`${name}-env`, {
 				serviceAccount: pulumi.interpolate`serviceAccount:${serviceAccount.email}`,
-				secretRegionName: args.region,
+				secretRegionName: parsed.region,
 				variables
 			}, { parent: this });
 		}
 
 		const annotations: { [key: string]: pulumi.Input<string> } = {
-			...args.service?.annotations
+			...parsed.service.annotations
 		};
 
 		if (vpcConnector) {
@@ -1179,7 +1176,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 		}
 
 		const service = new gcp.cloudrun.Service(`${name}-api`, {
-			location: args.region,
+			location: parsed.region,
 			template: {
 				spec: {
 					serviceAccountName: serviceAccount.email,
@@ -1188,8 +1185,8 @@ export class CloudRunService extends pulumi.ComponentResource {
 						envs: envManager?.variableOutput,
 						resources: {
 							limits: {
-								cpu: String(args.service?.cpuLimit ?? 1),
-								memory: `${args.service?.memoryLimit ?? 512}Mi`
+								cpu: String(parsed.service.cpuLimit),
+								memory: `${parsed.service.memoryLimit}Mi`
 							}
 						}
 					}]
@@ -1214,7 +1211,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 		});
 
 		const neg = new gcp.compute.RegionNetworkEndpointGroup(`${name}-neg`, {
-			region: args.region,
+			region: parsed.region,
 			networkEndpointType: 'SERVERLESS',
 			cloudRun: {
 				service: service.name
@@ -1230,24 +1227,21 @@ export class CloudRunService extends pulumi.ComponentResource {
 		}, { parent: neg });
 
 		let mig: ContainerGeneric | undefined;
-		if (args.mig?.enabled && vpc && subnet) {
+		const worker = parsedVpc?.worker;
+		if (worker && vpc && subnet) {
 			// Enable SSH firewall if requested
-			if (args.mig.enableSSH) {
-				if (args.mig.workerKind === 'crwp') {
-					throw(new Error('enableSSH is not supported for Cloud Run Worker Pool (crwp)'));
-				}
-
+			if (worker.kind === 'mig' && worker.enableSSH) {
 				new gcp.compute.Firewall(`${name}-ssh-iap-firewall`, {
 					description: `[${name}] Allow SSH access to MIG instances via IAP`,
 					network: vpc.id,
 					direction: 'INGRESS',
-					sourceRanges: ['35.235.240.0/20'], // GCP IAP range
-					priority: 900,
+					sourceRanges: [CLOUD_RUN_SERVICE_DEFAULTS.worker.sshIAPRange], // GCP IAP range
+					priority: CLOUD_RUN_SERVICE_DEFAULTS.worker.sshIAPPriority,
 					allows: [{
 						protocol: 'tcp',
 						ports: ['22']
 					}],
-					...args.gcp.firewallConfig
+					...parsed.gcp.firewallConfig
 				}, { parent: vpc });
 			}
 
@@ -1255,7 +1249,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 			const migVariables: { [key: string]: pulumi.Input<string> | { value: pulumi.Input<string>; secret: boolean }} = {};
 
 			if (db) {
-				const hostInfo = db.getHost(args.region);
+				const hostInfo = db.getHost(parsed.region);
 				const dbVars = buildDatabaseEnvVars({
 					host: hostInfo.host,
 					username: db.username,
@@ -1266,49 +1260,47 @@ export class CloudRunService extends pulumi.ComponentResource {
 				Object.assign(migVariables, dbVars);
 			}
 
-			if (args.environment) {
-				Object.assign(migVariables, args.environment);
+			if (parsed.environment) {
+				Object.assign(migVariables, parsed.environment);
 			}
-			if (args.mig.environmentOverrides) {
-				Object.assign(migVariables, args.mig.environmentOverrides);
+			if (worker.environmentOverrides) {
+				Object.assign(migVariables, worker.environmentOverrides);
 			}
 
 			const migEnvManager = new EnvManager(`${name}-mig-env`, {
 				serviceAccount: pulumi.interpolate`serviceAccount:${serviceAccount.email}`,
-				secretRegionName: args.region,
+				secretRegionName: parsed.region,
 				variables: migVariables
 			}, { parent: this });
 
-			// Create external IP if requested
-			let extIP: gcp.compute.Address | undefined;
-			const crwpEgress: 'vpc' | 'vpc+direct' | 'vpc+nat' = args.mig.egress ?? 'vpc';
-			if (args.mig.egress === 'vpc+nat') {
-				if (args.mig.workerKind !== 'crwp') {
+			if (worker.kind === 'mig') {
+				// Create external IP if requested
+				let extIP: gcp.compute.Address | undefined;
+				if (worker.egress === 'vpc+nat') {
 					extIP = new gcp.compute.Address(`${name}-mig-ext-ip`, {
 						description: `[${name}] External IP for MIG`,
 						addressType: 'EXTERNAL',
-						region: args.region
+						region: parsed.region
 					}, { parent: this });
 				}
-			}
 
-			if (args.mig.workerKind !== 'crwp') {
 				mig = new ContainerMIG(`${name}-mig`, {
 					description: `[${name}] MIG worker for background tasks`,
 					serviceAccount: serviceAccount.email,
 					subnetwork: subnet,
-					machineType: args.mig.machineType ?? 'e2-micro',
-					cosImage: args.mig.cosImage,
-					tags: args.mig.tags,
-					enableVMSSH: args.mig.enableSSH,
-					count: args.mig.instanceCount,
+					machineType: worker.machineType,
+					cosImage: worker.cosImage,
+					tags: worker.tags,
+					enableVMSSH: worker.enableSSH,
+					count: worker.instanceCount,
+					diskSizeGb: worker.diskSizeGb,
 					networkInterfaces: extIP ? [{
 						accessConfigs: [{
 							natIp: extIP.address
 						}]
 					}] : undefined,
 					common: {
-						gcp: args.gcp
+						gcp: parsed.gcp
 					},
 					containerSpec: {
 						containers: [{
@@ -1320,24 +1312,16 @@ export class CloudRunService extends pulumi.ComponentResource {
 					}
 				}, { parent: this });
 			} else {
-				if (args.mig.enableSSH) {
-					throw(new Error('enableSSH is not supported for Cloud Run Worker Pool (crwp)'));
-				}
-
-				if (args.mig.cosImage !== undefined) {
-					throw(new Error('cosImage is not supported for Cloud Run Worker Pool (crwp)'));
-				}
-
 				mig = new ContainerCloudRun(`${name}-crwp`, {
 					description: `[${name}] Worker for background tasks`,
 					serviceAccount: serviceAccount.email,
 					subnetwork: subnet,
-					machineType: args.mig.machineType ?? 'e2-micro',
-					tags: args.mig.tags,
-					count: args.mig.instanceCount,
-					egress: crwpEgress,
+					machineType: worker.machineType,
+					tags: worker.tags,
+					count: worker.instanceCount,
+					egress: worker.egress,
 					common: {
-						gcp: args.gcp
+						gcp: parsed.gcp
 					},
 					containerSpec: {
 						containers: [{
@@ -1367,12 +1351,12 @@ export class CloudRunService extends pulumi.ComponentResource {
 
 	private getRemoteConfig(
 		name: string,
-		args: CloudRunServiceArgs,
-		remote: NonNullable<NonNullable<CloudRunServiceArgs['image']['build']>['remote']>
+		parsed: ParsedCloudRunServiceArgs,
+		remote: ParsedRemote
 	) {
 		const provider = new gcp.Provider(`${name}-build-provider`, {
-			project: args.gcp.project,
-			region: args.region
+			project: parsed.gcp.project,
+			region: parsed.region
 		}, { parent: this });
 
 		let { bindPermissions, serviceAccount, bucket } = remote;
@@ -1389,7 +1373,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 
 		if (!bucket) {
 			bucket = new gcp.storage.Bucket(generateName(name, 'docker', 55), {
-				location: args.region,
+				location: parsed.region,
 				forceDestroy: true,
 				uniformBucketLevelAccess: true,
 				...remote.bucketConfig
@@ -1401,7 +1385,8 @@ export class CloudRunService extends pulumi.ComponentResource {
 			bindPermissions,
 			serviceAccount,
 			bucket,
-			machineType: remote.machineType
+			machineType: remote.machineType,
+			timeoutSeconds: remote.timeoutSeconds
 		});
 	}
 }

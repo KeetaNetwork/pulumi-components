@@ -2,6 +2,7 @@ import * as pulumi from '@pulumi/pulumi';
 import * as gcp from '@pulumi/gcp';
 import * as random from '@pulumi/random';
 import type { GCPRegion, PerGCPRegion } from './constants';
+import { POSTGRES_DEFAULTS } from './defaults';
 
 type VPCNetworkLike = Pick<gcp.compute.Network, 'id' | 'name'>;
 
@@ -102,6 +103,12 @@ export interface PostgresCloudSQLArgs {
 	 * The database tier, specifying what instances it will be running
 	 */
 	tier: string;
+
+	/**
+	 * The database engine version (for example 'POSTGRES_15')
+	 * @default POSTGRES_DEFAULTS.version
+	 */
+	databaseVersion?: string;
 
 	/**
 	 * Replication configuration for created database
@@ -278,7 +285,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 			const privateIpAddress = new gcp.compute.GlobalAddress(`${this.#prefix}-postgres-private-ip`, {
 				purpose: 'VPC_PEERING',
 				addressType: 'INTERNAL',
-				prefixLength: 16,
+				prefixLength: POSTGRES_DEFAULTS.psaPrefixLength,
 				network: this.#vpcNetwork.id
 			}, { parent: this });
 
@@ -431,7 +438,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 
 		const instance = new gcp.sql.DatabaseInstance(name, {
 			region: region,
-			databaseVersion: 'POSTGRES_14',
+			databaseVersion: this.#options.databaseVersion ?? POSTGRES_DEFAULTS.version,
 			deletionProtection: deletionProtection,
 			masterInstanceName: masterInstance?.name,
 			settings: {

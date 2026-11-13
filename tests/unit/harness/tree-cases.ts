@@ -45,13 +45,13 @@ function serviceCase(name: string, overrides: Partial<ServiceArgs>, options?: Se
 }
 
 /** A container worker needs a subnetwork, which its caller creates */
-function workerSubnetwork(name: string) {
+export function workerSubnetwork(name: string) {
 	const network = new gcp.compute.Network(`${name}-network`, { autoCreateSubnetworks: false });
 
 	return(new gcp.compute.Subnetwork(`${name}-subnet`, { network: network.selfLink, region: REGION, ipCidrRange: '10.0.0.0/24' }));
 }
 
-const workerSpec: ConstructorParameters<typeof ContainerMIG>[1]['containerSpec'] = {
+export const workerSpec: ConstructorParameters<typeof ContainerMIG>[1]['containerSpec'] = {
 	containers: [ { image: IMAGE, name: 'worker', restartPolicy: 'Always' } ]
 };
 

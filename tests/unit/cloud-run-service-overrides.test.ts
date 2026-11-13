@@ -1,0 +1,269 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import * as gcp from '@pulumi/gcp';
+import { describe, expect, it } from 'vitest';
+
+import type * as apps from '../../src/packages/gcp/apps';
+import type * as container from '../../src/packages/gcp/container';
+import type * as sql from '../../src/packages/gcp/sql';
+import { expectAt, expectRecord } from '../helpers/narrow';
+import { requireSource } from './harness/load-sources';
+import { captureTree, useIsolatedHome } from './harness/pulumi-tree';
+import type { TreeSnapshot } from './harness/pulumi-tree';
+import { workerSpec, workerSubnetwork } from './harness/tree-cases';
+import { captureWarnings } from './harness/warnings';
+
+const { CloudRunService } = requireSource<typeof apps>('src/packages/gcp/apps.ts');
+const { ContainerMIG } = requireSource<typeof container>('src/packages/gcp/container.ts');
+const { PostgresCloudSQL } = requireSource<typeof sql>('src/packages/gcp/sql.ts');
+
+type ServiceArgs = ConstructorParameters<typeof CloudRunService>[1];
+type MigOptions = ConstructorParameters<typeof ContainerMIG>[1];
+type PostgresOptions = ConstructorParameters<typeof PostgresCloudSQL>[1];
+
+const APP_DIRECTORY = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../fixtures/app');
+const IMAGE = 'us-central1-docker.pkg.dev/project-id/keeta/app:1';
+const SERVICE: ServiceArgs = { gcp: { project: 'project-id' }, region: 'us-central1', image: { uri: IMAGE }};
+
+/** The inputs of the one resource of the type (and the name ending, when the type has several) */
+function inputsOf(tree: TreeSnapshot, type: string, nameEnding: string) {
+	const matches = tree.resources.filter(function(resource) {
+		return(resource.type === type && resource.name.endsWith(nameEnding));
+	});
+
+	if (matches.length !== 1) {
+		throw(new Error(`Expected one ${type} named *${nameEnding}, found ${matches.length}`));
+	}
+
+	return(expectRecord(matches[0]?.inputs, `the inputs of ${type}`));
+}
+
+/** A build of a service with the arguments of the caller, `changed` being what the row's setting turns into */
+function service(base: Partial<ServiceArgs>, changed: Partial<ServiceArgs>): Builds {
+	return({
+		fallback: function(name) {
+			return(new CloudRunService(name, { ...SERVICE, ...base }));
+		},
+		override: function(name) {
+			return(new CloudRunService(name, { ...SERVICE, ...changed }));
+		}
+	});
+}
+
+function buildMig(name: string, extra: Partial<MigOptions>) {
+	return(new ContainerMIG(name, {
+		serviceAccount: 'worker@project-id.iam.gserviceaccount.com',
+		subnetwork: workerSubnetwork(name),
+		common: { gcp: { project: 'project-id' }},
+		containerSpec: workerSpec,
+		...extra
+	}));
+}
+
+function buildPostgres(name: string, extra: Partial<PostgresOptions>) {
+	const network = new gcp.compute.Network(`${name}-network`, { autoCreateSubnetworks: false });
+
+	return(new PostgresCloudSQL(name, { region: 'us-central1', tier: 'db-f1-micro', vpcNetwork: network, createPeering: true, ...extra }));
+}
+
+interface Builds {
+	fallback: (name: string) => unknown;
+	override: (name: string) => unknown;
+}
+
+interface Setting {
+	description: string;
+	/** Creates the component, without the setting and with it */
+	build: Builds;
+	type: string;
+	/** The end of the name of the resource, for a type that has several */
+	nameEnding: string;
+	path: (string | number)[];
+	/** What the resource gets when the caller says nothing */
+	fallback: unknown;
+	/** What the resource gets when the caller sets it */
+	override: unknown;
+}
+
+/* The image URI is remembered for the life of the process, so every build names its own image */
+function remoteBuild(name: string, remote: NonNullable<NonNullable<ServiceArgs['image']['build']>['remote']>) {
+	return(new CloudRunService(name, { ...SERVICE, image: { build: { directory: APP_DIRECTORY, imageName: name, githubSha: 'sha-1', remote }}}));
+}
+
+const DATABASE_INSTANCE = 'gcp:sql/databaseInstance:DatabaseInstance';
+
+const SETTINGS: Setting[] = [
+	{
+		description: 'database.version',
+		build: service({ database: {}}, { database: { version: 'POSTGRES_15' }}),
+		type: DATABASE_INSTANCE,
+		nameEnding: '',
+		path: [ 'databaseVersion' ],
+		fallback: 'POSTGRES_14',
+		override: 'POSTGRES_15'
+	},
+	{
+		description: 'database.queryStringLength',
+		build: service({ database: {}}, { database: { queryStringLength: 2048 }}),
+		type: DATABASE_INSTANCE,
+		nameEnding: '',
+		path: [ 'settings', 'insightsConfig', 'queryStringLength' ],
+		fallback: 4500,
+		override: 2048
+	},
+	{
+		description: 'vpc.connector.maxInstances',
+		build: service({ vpc: {}}, { vpc: { connector: { maxInstances: 10 }}}),
+		type: 'gcp:vpcaccess/connector:Connector',
+		nameEnding: '',
+		path: [ 'maxInstances' ],
+		fallback: 3,
+		override: 10
+	},
+	{
+		description: 'vpc.connector.minInstances',
+		build: service({ vpc: {}}, { vpc: { connector: { minInstances: 4, maxInstances: 8 }}}),
+		type: 'gcp:vpcaccess/connector:Connector',
+		nameEnding: '',
+		path: [ 'minInstances' ],
+		fallback: 2,
+		override: 4
+	},
+	{
+		description: 'vpc.psaPrefixLength',
+		build: service({ database: {}}, { database: {}, vpc: { psaPrefixLength: 20 }}),
+		type: 'gcp:compute/globalAddress:GlobalAddress',
+		nameEnding: '-private-ip-alloc',
+		path: [ 'prefixLength' ],
+		fallback: 16,
+		override: 20
+	},
+	{
+		description: 'image.build.remote.timeoutSeconds',
+		build: {
+			fallback: function(name) {
+				return(remoteBuild(name, {}));
+			},
+			override: function(name) {
+				return(remoteBuild(name, { timeoutSeconds: 3600 }));
+			}
+		},
+		type: 'pulumi-nodejs:dynamic:Resource',
+		nameEnding: '-image-build',
+		path: [ 'build', 'timeout', 'seconds' ],
+		fallback: 28800,
+		override: 3600
+	},
+	{
+		description: 'worker.diskSizeGb',
+		build: service({ mig: { enabled: true }}, { worker: { kind: 'mig', diskSizeGb: 80 }}),
+		type: 'gcp:compute/instanceTemplate:InstanceTemplate',
+		nameEnding: '',
+		path: [ 'disks', 0, 'diskSizeGb' ],
+		fallback: 50,
+		override: 80
+	},
+	{
+		description: 'diskSizeGb of a ContainerMIG',
+		build: {
+			fallback: function(name) {
+				return(buildMig(name, {}));
+			},
+			override: function(name) {
+				return(buildMig(name, { diskSizeGb: 80 }));
+			}
+		},
+		type: 'gcp:compute/instanceTemplate:InstanceTemplate',
+		nameEnding: '',
+		path: [ 'disks', 0, 'diskSizeGb' ],
+		fallback: 50,
+		override: 80
+	},
+	{
+		description: 'databaseVersion of a PostgresCloudSQL',
+		build: {
+			fallback: function(name) {
+				return(buildPostgres(name, {}));
+			},
+			override: function(name) {
+				return(buildPostgres(name, { databaseVersion: 'POSTGRES_15' }));
+			}
+		},
+		type: DATABASE_INSTANCE,
+		nameEnding: '',
+		path: [ 'databaseVersion' ],
+		fallback: 'POSTGRES_14',
+		override: 'POSTGRES_15'
+	}
+];
+
+/*
+ * Each setting that can be overridden has a default (which the component
+ * tree snapshot pins for the cases it covers) and an override. These captures check the override on the input of the resource
+ * it is meant for.
+ */
+describe('settings that can be overridden', function() {
+	useIsolatedHome();
+
+	const rows = SETTINGS.map(function(setting): [ string, Setting ] {
+		return([ setting.description, setting ]);
+	});
+
+	async function read(setting: Setting, mode: keyof Builds) {
+		const name = `settings-${setting.description.replace(/[^a-z]+/gi, '-').toLowerCase()}-${mode}`;
+		const tree = await captureTree(function() {
+			return(setting.build[mode](name));
+		});
+
+		return(expectAt(inputsOf(tree, setting.type, setting.nameEnding), setting.path, `the ${setting.description} input`));
+	}
+
+	it.each(rows)('%s keeps its default when the caller says nothing', async function(_description, setting) {
+		expect(await read(setting, 'fallback')).toEqual(setting.fallback);
+	});
+
+	it.each(rows)('%s reaches the resource when the caller sets it', async function(_description, setting) {
+		expect(await read(setting, 'override')).toEqual(setting.override);
+	});
+});
+
+/*
+ * A caller that writes `zone: config.get('zone')` passes the key with no
+ * value. 1.0.95 built a zonal group for it, and a different resource type
+ * means a replacement, so the group stays zonal until 3.0 and the caller is
+ * told.
+ */
+describe('ContainerMIG zone', function() {
+	const ZONAL = 'gcp:compute/instanceGroupManager:InstanceGroupManager';
+	const REGIONAL = 'gcp:compute/regionInstanceGroupManager:RegionInstanceGroupManager';
+
+	/* [ description, options, resource type of the group, warnings ] */
+	const rows: [ string, Partial<MigOptions>, string, number ][] = [
+		[ 'regional when zone is absent', {}, REGIONAL, 0 ],
+		[ 'zonal when zone is given', { zone: 'us-central1-a' }, ZONAL, 0 ],
+		[ 'zonal, with one warning, when zone is undefined', { zone: undefined }, ZONAL, 1 ]
+	];
+
+	it.each(rows)('is %s', async function(description, options, type, warnings) {
+		const { result: tree, warnings: messages } = await captureWarnings(function() {
+			return(captureTree(function() {
+				return(buildMig(`zone-${description.replace(/[^a-z]+/g, '-')}`, options));
+			}));
+		});
+
+		expect(tree.resources.map(function(resource) {
+			return(resource.type);
+		})).toContain(type);
+		expect(messages).toHaveLength(warnings);
+	});
+
+	it('names the zone in the warning', async function() {
+		const { warnings } = await captureWarnings(function() {
+			return(captureTree(function() {
+				return(buildMig('zone-warning', { zone: undefined }));
+			}));
+		});
+
+		expect(warnings).toEqual([ expect.stringMatching(/zone/) ]);
+	});
+});

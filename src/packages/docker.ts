@@ -14,6 +14,7 @@ import * as Tarball from './tarball';
 import { fingerprintBuildContext, loadBuildContext } from './build-context';
 import type { BuildContext } from './build-context';
 import { GCP_COMPONENT_PREFIX } from './gcp/constants';
+import { BUILD_DEFAULTS } from './gcp/defaults';
 import LocalDockerImageBuilder from './localdocker';
 import type { google } from '@google-cloud/cloudbuild/build/protos/protos';
 
@@ -201,6 +202,12 @@ interface GCPDockerRemoteImageInput extends GCPDockerImageInput {
 	 * Machine Type information
 	 */
 	machineType?: keyof typeof google.devtools.cloudbuild.v1.BuildOptions.MachineType;
+
+	/**
+	 * Time that Cloud Build gives the build, in seconds
+	 * @default BUILD_DEFAULTS.timeoutSeconds
+	 */
+	timeoutSeconds?: number;
 }
 
 /**
@@ -678,13 +685,12 @@ export class RemoteDockerImage extends BaseDockerImage implements PublicInterfac
 				availableSecrets: availableSecrets,
 				images: allImages,
 				timeout: {
-					/* XXX:TODO: Make this configurable */
-					seconds: 8/* h */ * 60/* m */ * 60/* s */
+					seconds: input.timeoutSeconds ?? BUILD_DEFAULTS.timeoutSeconds
 				},
 				steps: allResolvedForSteps,
 				options: {
 					logging: 'CLOUD_LOGGING_ONLY',
-					machineType: input.machineType ?? 'E2_HIGHCPU_8',
+					machineType: input.machineType ?? BUILD_DEFAULTS.machineType,
 					requestedVerifyOption: 'VERIFIED',
 					sourceProvenanceHash: [
 						CloudBuild.HashType.SHA256
