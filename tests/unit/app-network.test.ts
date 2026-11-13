@@ -14,7 +14,6 @@ const APP_NETWORK = 'Keeta:GCP:AppNetwork';
 const CONNECTION = 'gcp:servicenetworking/connection:Connection';
 const NETWORK = 'gcp:compute/network:Network';
 
-
 const NETWORK_RESOURCES = [ '-vpc', '-subnet', '-vpc-connector', '-private-ip-alloc', '-svc-networking' ];
 
 /*

@@ -15,6 +15,7 @@ import { MigrationJob } from './migration';
 import { AppNetwork } from './network';
 import { ServiceIdentity } from './identity';
 import { CloudRunServiceArgsError, MAX_SCALE_ANNOTATION, parseCloudRunServiceArgs } from './apps-args';
+import type { DeploymentProfile } from './profiles';
 import type { MIGWorkerArgs, CRWPWorkerArgs, LegacyMIGArgs, ParsedCloudRunServiceArgs, ParsedRemote } from './apps-args';
 export { CloudRunServiceArgsError } from './apps-args';
 export type { MIGWorkerArgs, CRWPWorkerArgs, LegacyMIGArgs } from './apps-args';
@@ -583,7 +584,24 @@ export interface CloudRunServiceArgs {
 	 */
 	kv?: ({
 		type?: 'redis';
-	} & Omit<gcp.redis.InstanceArgs, 'region' | 'authorizedNetwork' | 'authEnabled'>)
+
+		/**
+		 * Memory of the store, in GB. Required unless `profile` gives it.
+		 */
+		memorySizeGb?: pulumi.Input<number>;
+	} & Omit<gcp.redis.InstanceArgs, 'region' | 'authorizedNetwork' | 'authEnabled' | 'memorySizeGb'>)
+
+	/**
+	 * Environment and size profile (optional). It fills in what the
+	 * arguments leave out: an explicit argument beats the profile, which
+	 * beats the default of the library. It applies to `database` (tier,
+	 * `flags.max_connections`, `poolSize`, deletion protection, backups, query
+	 * insights), `service.maxInstances`, `worker.poolSize`, the VPC connector
+	 * and `kv.memorySizeGb`, where the app has them. The connection budget is
+	 * checked with its numbers. `profiles` (`gcp.profiles`) holds the same
+	 * values to spread yourself.
+	 */
+	profile?: DeploymentProfile;
 
 	/**
 	 * Cloud Run service configuration

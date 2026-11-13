@@ -73,7 +73,8 @@ The Pulumi packages are peer dependencies now, so your program and this library 
   - `PostgresCloudSQL` has a `connectionBudget` getter: `{ maxConnections, reserve, available }`, where `maxConnections` is `flags.max_connections` when you set it, else `maxConnections`, else the default of the tier (`db-f1-micro` 25, `db-g1-small` 50, and for `db-custom-<cpus>-<MB>` by memory: 3.75 GB 100, 6 GB 200, 7.5 GB 400, 15 GB 500, 30 GB 600, 60 GB 800, 120 GB or more 1000), and `reserve` is 10% of it rounded up to whole connections. Reading it writes nothing. For a tier the library does not know (for example `db-perf-optimized-N-8`) the instance builds as before and reading the getter throws an error that names the tier, unless you set `flags.max_connections` or `maxConnections`. `gcp` exports `ConnectionBudgetExceededError`, `MaxConnectionsConflictError` and the `ConnectionBudget` type.
   - `PostgresCloudSQL` has a new optional argument `maxConnections: number | 'tier-default'`. It writes the `max_connections` flag, and only when you give it (`'tier-default'` writes the default of the tier, so that the value is explicit in your state). Giving it together with `flags.max_connections` throws a `MaxConnectionsConflictError` (one value, one place). **Adding the flag to an existing instance restarts Cloud SQL once** (Cloud SQL restarts when `max_connections` changes), so choose the time of the first `pulumi up` that adopts it. Leave it out and the flags are the ones you have today.
   - `CloudRunService` has three new optional arguments: `service.maxInstances` (sets the `autoscaling.knative.dev/maxScale` annotation of the service, and no annotation when it is left out), `database.poolSize` (adds the plain, non-secret variable `MC_PSQL_DB_POOL_SIZE` to the service and the migration job) and `worker.poolSize` (the same variable for the worker alone, replacing the one of the database; it is never added to `<name>-env`, and needs `database.poolSize` too, because the service connects to the database as well and the budget must count it; without it the constructor throws a `CloudRunServiceArgsError`). Adding `maxInstances` changes the annotations of the service and so creates a new revision; `poolSize` adds a variable, which does the same.
-  - When a pool size is given, the `CloudRunService` constructor throws a `ConnectionBudgetExceededError` if the pools do not fit: `service.maxInstances` x `database.poolSize` (a service without `maxInstances` counts with 100, the number of instances that Cloud Run scales to by default), plus `worker.instanceCount` (1 by default) x the pool size of the worker (or the one of the database), must not pass `database.flags.max_connections` (25000 unless you set it) less 10%. The message lists the share of each consumer, the total and what is available. The migration job is not counted as a consumer, but it reads the same pool size and opens its pool while the old revision still serves with full pools, so its connections come out of the 10% reserve: when `migration.enabled` and `database.poolSize` is more than the reserve, the constructor logs a warning (on `db-g1-small` the reserve is 5, so a pool of 10 overruns it). With the default `flags.max_connections` of 25000 the check only fails above a pool of 225 for each of 100 instances. With no pool size nothing is checked.
+  - When a pool size is given, the `CloudRunService` constructor throws a `ConnectionBudgetExceededError` if the pools do not fit: `service.maxInstances` x `database.poolSize` (a service without `maxInstances` counts with 100, the number of instances that Cloud Run scales to by default), plus `worker.instanceCount` (1 by default) x the pool size of the worker (or the one of the database), must not pass `database.flags.max_connections` (25000 unless you set it) less 10%. The message lists the share of each consumer, the total and what is available. The migration job is not counted: it is one task that ends before the service takes traffic. With no pool size nothing is checked.
+- Profiles. `CloudRunService` takes an optional `profile: { environment: 'development' | 'test' | 'production', size: 'small' | 'medium' | 'large' }`, and nothing changes for an app that does not give one (a `FullStackApp` takes it as `backend.profile`). See "Profiles" below.
 
 ## GCP
 
@@ -115,6 +116,34 @@ const backend = new keetapulumi.gcp.apps.CloudRunService('my-backend', {
 	service: { cpuLimit: 1, memoryLimit: 512 }
 });
 ```
+
+### Profiles
+A profile fills in the settings of a deployment that depend on its environment and its size. The two choices are independent (a test deployment can be large; a small production app still has deletion protection and backups). An explicit argument always beats the profile, and the profile beats the default of the library.
+```js
+const backend = new keetapulumi.gcp.apps.CloudRunService('my-backend', {
+	gcp: { project: 'my-project' },
+	region: 'us-central1',
+	image: { uri: 'us-central1-docker.pkg.dev/my-project/my-repo/app:1' },
+	database: {},
+	worker: { kind: 'crwp' },
+	profile: { environment: 'production', size: 'small' },
+
+	// Beats the profile: db-custom-1-3840 instead of db-g1-small
+	// database: { tier: 'db-custom-1-3840' }
+});
+```
+- `environment` sets `database.deletionProtection` (true for `production`), `database.backups` (none for `development`; daily with 3 kept for `test`; point-in-time recovery with 14 kept and 7 days of logs for `production`) and `database.queryInsights` (off for `development`).
+- `size` sets the database `tier` and `flags.max_connections`, `service.maxInstances`, `database.poolSize`, `worker.poolSize`, the VPC connector range and `kv.memorySizeGb` (a profile makes `kv.memorySizeGb` optional; without a profile it is still required, and leaving it out throws a `CloudRunServiceArgsError`). Each part applies only where the app has it: a profile adds no database, worker, key-value store or network. It does not touch an `AppNetwork` that you pass as `network`.
+
+| size | tier | `max_connections` | web instances x pool | worker pool |
+|---|---|---|---|---|
+| small | `db-g1-small` | 75 | 12 x 5 | 7 |
+| medium | `db-custom-1-3840` | 155 | 12 x 10 | 16 |
+| large | `db-custom-4-15360` | 850 | 70 x 10 | 64 |
+
+Each size fits its own connection budget (the pools of the service and the worker within `max_connections` less 10%). An explicit `database.tier` brings the default `max_connections` of that tier (not the one of the profile) unless you give `database.flags.max_connections`; for a tier the library does not know, give the flag (without it the constructor throws a `CloudRunServiceArgsError`). A plain whole-number `autoscaling.knative.dev/maxScale` annotation in `service.annotations` counts as `service.maxInstances` for the connection budget. A profile with a database runs the connection budget check, so changing one number without the others (for example a larger `database.poolSize`) can throw a `ConnectionBudgetExceededError`. Adding a profile to an existing app changes its tier and `max_connections` (a restart of Cloud SQL), its deletion protection and backups: read `pulumi preview` first.
+
+`keetapulumi.gcp.profiles.profiles[environment][size]` (and `keetapulumi.gcp.profiles.resolveProfile(profile)`) holds the same values as arguments, to spread yourself: `{ ...keetapulumi.gcp.profiles.profiles.production.small }`. They are `database`, `service`, `worker`, `vpc` (the connector; leave it out when you pass a `network`) and `kv` (`memorySizeGb` only; leave it out unless the app has a key-value store, because `kv` adds one).
 
 ### FullStackApp
 A `StaticWebApp` frontend and a `CloudRunService` backend behind one HTTPS load balancer. Requests under `routing.apiPrefix` (default `/api`) go to the backend, the static paths go to the bucket. Pass `frontend: null` for a backend only.

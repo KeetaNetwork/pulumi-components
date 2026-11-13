@@ -1,3 +1,4 @@
+import * as pulumi from '@pulumi/pulumi';
 import { describe, expect, it } from 'vitest';
 
 import type * as apps from '../../src/packages/gcp/apps';
@@ -6,7 +7,7 @@ import { expectArray, expectDefined, expectRecord, expectString, valueAt } from 
 import { requireSource } from './harness/load-sources';
 import { ofType, useIsolatedHome } from './harness/pulumi-tree';
 import type { TreeSnapshot } from './harness/pulumi-tree';
-import { captureService, environmentOf } from './harness/service-builder';
+import { annotationsOf, captureService, databaseInput, environmentOf } from './harness/service-builder';
 import { captureWarnings } from './harness/warnings';
 
 const { ConnectionBudgetExceededError } = requireSource<typeof budget>('src/packages/gcp/connection-budget.ts');
@@ -19,15 +20,8 @@ const JOB_TYPE = 'gcp:cloudrunv2/job:Job';
 const POOL_TYPE = 'gcp:cloudrunv2/workerPool:WorkerPool';
 const INSTANCE_TEMPLATE = 'gcp:compute/instanceTemplate:InstanceTemplate';
 const SECRET = 'gcp:secretmanager/secret:Secret';
-const DATABASE_INSTANCE = 'gcp:sql/databaseInstance:DatabaseInstance';
 const MAX_SCALE = 'autoscaling.knative.dev/maxScale';
 const POOL_SIZE = 'MC_PSQL_DB_POOL_SIZE';
-
-function annotationsOf(tree: TreeSnapshot) {
-	const [ service ] = ofType(tree, SERVICE_TYPE);
-
-	return(expectRecord(valueAt(service?.inputs, [ 'template', 'metadata', 'annotations' ]) ?? {}, 'the annotations of the service'));
-}
 
 /** The variables of the container that a virtual machine worker runs: its template holds them in a declaration that is a secret once the database password is in it */
 function templateEnvironment(tree: TreeSnapshot) {
@@ -127,9 +121,7 @@ describe('the pool size of a database connection', function() {
 
 	it('keeps the max_connections of the library (25000) when the database has a pool size', async function() {
 		const tree = await captureService('pool-flag', appWith({ database: { poolSize: 5 }}));
-		const flags = valueAt(expectDefined(ofType(tree, DATABASE_INSTANCE)[0], 'the database instance').inputs, [ 'settings', 'databaseFlags' ]);
-
-		expect(JSON.stringify(flags)).toContain('25000');
+		expect(JSON.stringify(databaseInput(tree, [ 'settings', 'databaseFlags' ]))).toContain('25000');
 	});
 });
 
@@ -242,6 +234,25 @@ describe('the connection budget of a service', function() {
 		});
 
 		expect(warnings).toContainEqual(expect.stringMatching(/database\.poolSize 11 is more than the 10 connections kept in reserve.*MC_PSQL_DB_POOL_SIZE/));
+	});
+
+	/* The annotation of 1.0.95 caps scaling too: a plain whole number counts as maxInstances, anything else as the 100 that Cloud Run scales to */
+	const crwp = { kind: 'crwp', instanceCount: 3, poolSize: 20 } as const;
+	const counted: { title: string; annotations: { [key: string]: pulumi.Input<string> }}[] = [
+		{ title: 'counts a maxScale annotation of 7 as 7 instances', annotations: { [MAX_SCALE]: '7' }},
+		{ title: 'counts an annotation that is not a plain number as 100 instances', annotations: { [MAX_SCALE]: '6.5' }},
+		{ title: 'counts an annotation that is an Output as 100 instances', annotations: { [MAX_SCALE]: pulumi.output('6') }},
+		{ title: 'counts a service with neither as 100 instances', annotations: {}}
+	];
+
+	it('counts a maxScale annotation of 6 as 6 instances, and fits', async function() {
+		const tree = await captureService('budget-annotation-fits', budgeted({ service: { annotations: { [MAX_SCALE]: '6' }}, worker: crwp }));
+
+		expect(annotationsOf(tree)[MAX_SCALE]).toBe('6');
+	});
+
+	it.each(counted)('$title, and rejects', async function(row) {
+		await expect(captureService('budget-annotation', budgeted({ service: { annotations: row.annotations }, worker: crwp }))).rejects.toBeInstanceOf(ConnectionBudgetExceededError);
 	});
 
 	it('does not run the check when no pool size is given, however many instances there are', async function() {

@@ -3,15 +3,14 @@ import { describe, expect, it } from 'vitest';
 
 import type * as budget from '../../src/packages/gcp/connection-budget';
 import type * as sql from '../../src/packages/gcp/sql';
-import { expectArray, expectDefined, expectRecord, valueAt } from '../helpers/narrow';
+import { expectDefined, expectRecord } from '../helpers/narrow';
 import { requireSource } from './harness/load-sources';
-import { captureTree, ofType, useIsolatedHome } from './harness/pulumi-tree';
-import type { TreeSnapshot } from './harness/pulumi-tree';
+import { captureTree, useIsolatedHome } from './harness/pulumi-tree';
+import { flagsOf } from './harness/service-builder';
 
 const { parseCloudSQLTier, tierDefaultMaxConnections, resolveMaxConnections, connectionBudget, assertWithinBudget, ConnectionBudgetExceededError, MaxConnectionsConflictError } = requireSource<typeof budget>('src/packages/gcp/connection-budget.ts');
 const { PostgresCloudSQL } = requireSource<typeof sql>('src/packages/gcp/sql.ts');
 
-const DATABASE_INSTANCE = 'gcp:sql/databaseInstance:DatabaseInstance';
 const MEGABYTES_PER_GIGABYTE = 1024;
 
 describe('parseCloudSQLTier', function() {
@@ -186,17 +185,6 @@ async function captureComponent<Value>(build: () => Value) {
 	});
 
 	return({ tree, value: expectDefined(built[0], 'the component') });
-}
-
-function flagsOf(tree: TreeSnapshot) {
-	const [ instance ] = ofType(tree, DATABASE_INSTANCE);
-	const flags = expectArray(valueAt(instance?.inputs, [ 'settings', 'databaseFlags' ]) ?? [], 'the database flags');
-
-	return(Object.fromEntries(flags.map(function(flag) {
-		const record = expectRecord(flag, 'a database flag');
-
-		return([ String(record.name), String(record.value) ]);
-	})));
 }
 
 type DatabaseArgs = Partial<ConstructorParameters<typeof PostgresCloudSQL>[1]>;

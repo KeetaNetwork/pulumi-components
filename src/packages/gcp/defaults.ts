@@ -106,6 +106,62 @@ export const CLOUD_RUN_SERVICE_DEFAULTS = deepFreeze({
 	}
 });
 
+/**
+ * The presets of the deployment profiles (`profiles.ts`), in the shape of the
+ * arguments of `CloudRunService`. The two axes are independent:
+ * `environment` sets safety and visibility, `size` sets capacity.
+ *
+ * Each size fits its own connection budget: `max_connections` less the
+ * reserve of 10% holds every instance of the service with its pool, and the
+ * worker with its pool. Small (75 connections on a `db-g1-small`) leaves 67
+ * for 12 x 5 + 7. Medium (155) leaves 139 for 12 x 10 + 16. Large (850)
+ * leaves 765 for 70 x 10 + 64.
+ */
+export const PROFILE_PRESETS = deepFreeze({
+	environment: {
+		development: {
+			database: { deletionProtection: false, queryInsights: false, backups: undefined }
+		},
+		test: {
+			database: {
+				deletionProtection: false,
+				queryInsights: true,
+				backups: { pointInTimeRecovery: false, retentionSettings: { retainCount: 3, transactionLogRetentionDays: undefined }}
+			}
+		},
+		production: {
+			database: {
+				deletionProtection: true,
+				queryInsights: true,
+				backups: { pointInTimeRecovery: true, retentionSettings: { retainCount: 14, transactionLogRetentionDays: 7 }}
+			}
+		}
+	},
+	size: {
+		small: {
+			database: { tier: 'db-g1-small', flags: { max_connections: 75 }, poolSize: 5 },
+			service: { maxInstances: 12 },
+			worker: { poolSize: 7 },
+			vpc: { connector: { minInstances: 2, maxInstances: 3 }},
+			kv: { memorySizeGb: 1 }
+		},
+		medium: {
+			database: { tier: 'db-custom-1-3840', flags: { max_connections: 155 }, poolSize: 10 },
+			service: { maxInstances: 12 },
+			worker: { poolSize: 16 },
+			vpc: { connector: { minInstances: 2, maxInstances: 5 }},
+			kv: { memorySizeGb: 2 }
+		},
+		large: {
+			database: { tier: 'db-custom-4-15360', flags: { max_connections: 850 }, poolSize: 10 },
+			service: { maxInstances: 70 },
+			worker: { poolSize: 64 },
+			vpc: { connector: { minInstances: 3, maxInstances: 10 }},
+			kv: { memorySizeGb: 5 }
+		}
+	}
+});
+
 /** Defaults of the image build (docker.ts) and of `CloudRunService.image.build` */
 export const BUILD_DEFAULTS = deepFreeze({
 	platform: 'linux/amd64',

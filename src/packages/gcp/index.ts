@@ -13,5 +13,6 @@ export * as lb from './lb';
 export * as common from './common';
 export * as bucket from './bucket';
 export * as apps from './apps';
+export * as profiles from './profiles';
 export { ConnectionBudgetExceededError, MaxConnectionsConflictError } from './connection-budget';
 export type { ConnectionBudget } from './connection-budget';
