@@ -2,7 +2,7 @@ import * as pulumi from '@pulumi/pulumi';
 import { randomUUID } from 'node:crypto';
 
 import type { DeepInput, DeepOutput } from '../../types';
-import { clientAuthInputs, googleAuthFrom } from './client-auth';
+import { clientAuthInputs, googleAuthForClient } from './client-auth';
 import type { ClientAuthInputs, ClientAuthProvider } from './client-auth';
 import type * as runTypes from '@google-cloud/run';
 
@@ -47,13 +47,8 @@ async function runJob(inputs: CloudRunJobExecutionInputs): Promise<ExecutionOutp
 	// eslint-disable-next-line @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-require-imports
 	const { JobsClient } = require('@google-cloud/run') as typeof runTypes;
 
-	/* Without `auth` the client finds the credentials of the environment itself */
-	let clientOptions: ConstructorParameters<typeof JobsClient>[0];
-	if (inputs.auth !== undefined) {
-		clientOptions = { auth: await googleAuthFrom(inputs.auth) };
-	}
-
-	const client = new JobsClient(clientOptions);
+	/* Without an account to impersonate the client finds the credentials of the environment itself */
+	const client = new JobsClient({ auth: await googleAuthForClient('@google-cloud/run', inputs.auth) });
 
 	// Run the job and wait for completion
 	const [operation] = await client.runJob({ name: jobPathOf(inputs) });

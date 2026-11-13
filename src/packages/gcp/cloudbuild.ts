@@ -8,7 +8,7 @@ import type * as fsTypeImport from 'fs';
 import type * as utilTypeImport from 'util';
 
 import type { DeepInput, DeepOutput } from '../../types';
-import { clientAuthInputs, googleAuthFrom } from './client-auth';
+import { clientAuthInputs, googleAuthForClient, googleAuthFrom } from './client-auth';
 import type { ClientAuthInputs, ClientAuthProvider } from './client-auth';
 
 export type IBuild = cloudbuildTypeImport.protos.google.devtools.cloudbuild.v1.IBuild;
@@ -117,14 +117,9 @@ async function createBuild(inputs: CloudBuildInputs) {
 
 	const projectId = inputs.projectId;
 
-	/* Without `auth` the clients find the credentials of the environment themselves */
-	let gcpClientConfig: { projectId: string | undefined; auth?: googleAuth.GoogleAuth } = { projectId };
-	if (inputs.auth !== undefined) {
-		gcpClientConfig = { projectId, auth: await googleAuthFrom(inputs.auth) };
-	}
-
-	const secretClient = new secretManager.SecretManagerServiceClient(gcpClientConfig);
-	const client = new cloudbuild.CloudBuildClient(gcpClientConfig);
+	/* Without an account to impersonate the clients find the credentials of the environment themselves */
+	const secretClient = new secretManager.SecretManagerServiceClient({ projectId, auth: await googleAuthForClient('@google-cloud/secret-manager', inputs.auth) });
+	const client = new cloudbuild.CloudBuildClient({ projectId, auth: await googleAuthForClient('@google-cloud/cloudbuild', inputs.auth) });
 
 	const cleanupFunctions = [];
 

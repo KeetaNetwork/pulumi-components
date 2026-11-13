@@ -162,7 +162,9 @@ async function createBuild(inputs: LocalBuildInputs) {
 		await promisifyExec('docker', [ 'image', 'push', inputs.imageURI ], pushEnv);
 
 		/**
-		 * Add the additional tags and push them
+		 * Add the additional tags and push them, one at a time: the pushes
+		 * share one docker client and one registry login, and a failure then
+		 * names the first tag that could not be pushed
 		 */
 		for (const taggedImage of inputs.tags ?? []) {
 			await promisifyExec('docker', [ 'tag', inputs.imageURI, taggedImage ]);
