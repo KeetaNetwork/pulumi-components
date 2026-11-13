@@ -1119,6 +1119,12 @@ export class CloudRunService extends pulumi.ComponentResource {
 
 			const workerEnv = envManager?.view(workerOverrides) ?? EnvView.ofOverrides(workerOverrides);
 
+			/* The workers run the new image only after the migration job has migrated the database for it, as the service does */
+			let rollAfter: { rollAfter?: pulumi.Resource[] } = {};
+			if (migration !== undefined) {
+				rollAfter = { rollAfter: [migration] };
+			}
+
 			if (worker.kind === 'mig') {
 				// Reserve the external IP if the worker egresses through a NAT
 				let egress: ContainerMIGEgressOptions = { egress: worker.egress === 'vpc+direct' ? 'vpc+direct' : 'vpc' };
@@ -1144,6 +1150,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 					count: worker.instanceCount,
 					diskSizeGb: worker.diskSizeGb,
 					...egress,
+					...rollAfter,
 					common: {
 						gcp: parsed.gcp
 					},
@@ -1166,6 +1173,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 					tags: worker.tags,
 					count: worker.instanceCount,
 					egress: worker.egress,
+					...rollAfter,
 					common: {
 						gcp: parsed.gcp
 					},
