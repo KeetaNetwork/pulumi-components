@@ -516,7 +516,8 @@ export interface CloudRunServiceArgs {
 		flags?: { [key: string]: number };
 
 		/**
-		 * Whether query insights should be enabled
+		 * Whether Query Insights is on. Set `false` to turn it off.
+		 * @default true
 		 */
 		queryInsights?: boolean;
 

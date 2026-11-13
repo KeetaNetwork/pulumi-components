@@ -1982,9 +1982,8 @@ exports[`component tree > snapshot > postgres-peering keeps its resources, paren
         "databaseFlags": [],
         "edition": "ENTERPRISE",
         "insightsConfig": {
-          "queryInsightsEnabled": false,
-          "queryPlansPerMinute": 0,
-          "queryStringLength": 0,
+          "queryInsightsEnabled": true,
+          "queryStringLength": 4500,
           "recordApplicationTags": false,
           "recordClientAddress": false,
         },
@@ -2719,7 +2718,7 @@ exports[`component tree > snapshot > service-caller-resources keeps its resource
         ],
         "edition": "ENTERPRISE",
         "insightsConfig": {
-          "queryInsightsEnabled": false,
+          "queryInsightsEnabled": true,
           "queryStringLength": 4500,
         },
         "ipConfiguration": {
@@ -3643,7 +3642,7 @@ exports[`component tree > snapshot > service-database keeps its resources, paren
         ],
         "edition": "ENTERPRISE",
         "insightsConfig": {
-          "queryInsightsEnabled": false,
+          "queryInsightsEnabled": true,
           "queryStringLength": 4500,
         },
         "ipConfiguration": {
@@ -5688,7 +5687,7 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
         ],
         "edition": "ENTERPRISE",
         "insightsConfig": {
-          "queryInsightsEnabled": false,
+          "queryInsightsEnabled": true,
           "queryStringLength": 4500,
         },
         "ipConfiguration": {
@@ -6250,7 +6249,7 @@ exports[`component tree > snapshot > service-replicas keeps its resources, paren
         ],
         "edition": "ENTERPRISE",
         "insightsConfig": {
-          "queryInsightsEnabled": false,
+          "queryInsightsEnabled": true,
           "queryStringLength": 4500,
         },
         "ipConfiguration": {
@@ -6290,7 +6289,7 @@ exports[`component tree > snapshot > service-replicas keeps its resources, paren
         ],
         "edition": "ENTERPRISE",
         "insightsConfig": {
-          "queryInsightsEnabled": false,
+          "queryInsightsEnabled": true,
           "queryStringLength": 4500,
         },
         "ipConfiguration": {

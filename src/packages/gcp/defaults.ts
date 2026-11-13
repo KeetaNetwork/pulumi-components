@@ -29,7 +29,7 @@ export const POSTGRES_DEFAULTS = deepFreeze({
 	queryStringLength: 4500,
 	maxConnections: 25000,
 	deletionProtection: false,
-	queryInsights: false,
+	queryInsights: true,
 
 	/** Prefix length of the private service access range that the instance is reached through */
 	psaPrefixLength: 16
@@ -120,7 +120,7 @@ export const CLOUD_RUN_SERVICE_DEFAULTS = deepFreeze({
 export const PROFILE_PRESETS = deepFreeze({
 	environment: {
 		development: {
-			database: { deletionProtection: false, queryInsights: false, backups: undefined }
+			database: { deletionProtection: false, queryInsights: true, backups: undefined }
 		},
 		test: {
 			database: {
