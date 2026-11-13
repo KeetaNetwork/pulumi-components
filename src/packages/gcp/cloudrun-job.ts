@@ -23,16 +23,29 @@ interface ExecutionOutput {
 
 type PulumiExecutionOutput = DeepOutput<ExecutionOutput>;
 
+/** The full resource name of the job, which holds its project and region */
+function jobPathOf(inputs: Partial<CloudRunJobExecutionInputs>): string {
+	return(`projects/${inputs.projectId}/locations/${inputs.region}/jobs/${inputs.jobName}`);
+}
+
+/**
+ * The state of an execution: its inputs and the result of the run. The
+ * state holds the inputs because `diff` receives the old state, not the
+ * old inputs.
+ */
+function executionStateOf(inputs: CloudRunJobExecutionInputs, output: ExecutionOutput): CloudRunJobExecutionInputs & ExecutionOutput {
+	return({ ...inputs, ...output });
+}
+
 async function runJob(inputs: CloudRunJobExecutionInputs): Promise<ExecutionOutput> {
 	// Dynamic import to avoid issues with Pulumi serialization
 	// eslint-disable-next-line @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-require-imports
 	const { JobsClient } = require('@google-cloud/run') as typeof runTypes;
 
 	const client = new JobsClient();
-	const jobPath = `projects/${inputs.projectId}/locations/${inputs.region}/jobs/${inputs.jobName}`;
 
 	// Run the job and wait for completion
-	const [operation] = await client.runJob({ name: jobPath });
+	const [operation] = await client.runJob({ name: jobPathOf(inputs) });
 	const [execution] = await operation.promise();
 
 	// Extract completion status from conditions
@@ -63,20 +76,38 @@ async function runJob(inputs: CloudRunJobExecutionInputs): Promise<ExecutionOutp
 	});
 }
 
+/**
+ * Whether the job has to run again: the trigger changed, or the job is
+ * another job. The full resource name identifies the job, so a job of the
+ * same name in another project or region runs again.
+ */
+function jobExecutionHasChanges(olds: Partial<CloudRunJobExecutionInputs>, news: Partial<CloudRunJobExecutionInputs>) {
+	return(olds.trigger !== news.trigger || jobPathOf(olds) !== jobPathOf(news));
+}
+
+export const _Testing = {
+	executionStateOf,
+	jobExecutionHasChanges
+};
+
 const cloudRunJobExecutionProvider: pulumi.dynamic.ResourceProvider = {
 	async check(_ignore_oldInput: CloudRunJobExecutionInputs, newInput: CloudRunJobExecutionInputs) {
 		return({ inputs: { ...newInput }});
 	},
 
+	diff(_ignore_id: string, olds: CloudRunJobExecutionInputs, news: CloudRunJobExecutionInputs) {
+		return(Promise.resolve({ changes: jobExecutionHasChanges(olds, news) }));
+	},
+
 	async create(inputs: CloudRunJobExecutionInputs) {
 		const id = randomUUID();
 		const output = await runJob(inputs);
-		return({ id, outs: output });
+		return({ id, outs: executionStateOf(inputs, output) });
 	},
 
 	async update(_ignore_id: string, _ignore_oldInput: CloudRunJobExecutionInputs, newInput: CloudRunJobExecutionInputs) {
 		const output = await runJob(newInput);
-		return({ outs: output });
+		return({ outs: executionStateOf(newInput, output) });
 	},
 
 	async delete() {
