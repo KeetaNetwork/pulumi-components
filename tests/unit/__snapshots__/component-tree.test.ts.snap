@@ -314,10 +314,9 @@ exports[`component tree > snapshot > external-load-balancer-mig keeps its resour
       "machineType": "e2-medium",
       "metadata": {
         "block-project-ssh-keys": "TRUE",
-        "gce-container-declaration": "{"spec":{"containers":[{"image":"us-central1-docker.pkg.dev/project-id/keeta/app:1","name":"worker","restartPolicy":"Always"}]}}",
         "google-logging-enabled": "true",
         "user-data": "#cloud-config
-{"runcmd":["mount --bind /dev/null /usr/sbin/sshd","systemctl disable sshd","systemctl stop sshd","pkill -9 -x sshd"]}",
+{"write_files":[{"path":"/var/lib/container/run.sh","permissions":"0755","content":"#!/bin/sh\\nset -e\\n/usr/bin/docker-credential-gcr configure-docker --registries=us-central1-docker.pkg.dev\\n/usr/bin/docker pull 'us-central1-docker.pkg.dev/project-id/keeta/app:1'\\nexec /usr/bin/docker run \\\\\\n\\t--rm \\\\\\n\\t--name='worker' \\\\\\n\\t--network=host \\\\\\n\\t--log-driver=gcplogs \\\\\\n\\t'us-central1-docker.pkg.dev/project-id/keeta/app:1'\\n"},{"path":"/etc/systemd/system/container.service","permissions":"0644","content":"[Unit]\\nDescription=Container from instance metadata (ContainerMIG)\\nAfter=docker.service network-online.target\\nRequires=docker.service\\n\\n[Service]\\nEnvironment=HOME=/var/lib/container\\nEnvironment=DOCKER_CONFIG=/var/lib/container/.docker\\nStandardOutput=journal+console\\nStandardError=journal+console\\nExecStartPre=-/usr/bin/docker rm -f worker\\nExecStart=/bin/sh /var/lib/container/run.sh\\nExecStop=-/usr/bin/docker stop worker\\nRestart=always\\nRestartSec=5\\n"}],"runcmd":["mount --bind /dev/null /usr/sbin/sshd","systemctl disable sshd","systemctl stop sshd","pkill -9 -x sshd","iptables -w -A INPUT -p tcp -j ACCEPT","iptables -w -A FORWARD -p tcp -j ACCEPT","iptables -w -A INPUT -p udp -j ACCEPT","iptables -w -A FORWARD -p udp -j ACCEPT","iptables -w -A INPUT -p icmp -j ACCEPT","iptables -w -A FORWARD -p icmp -j ACCEPT","systemctl daemon-reload","systemctl start container.service"]}",
       },
       "networkInterfaces": [
         {
@@ -1570,10 +1569,9 @@ exports[`component tree > snapshot > internal-load-balancer keeps its resources,
       "machineType": "e2-medium",
       "metadata": {
         "block-project-ssh-keys": "TRUE",
-        "gce-container-declaration": "{"spec":{"containers":[{"image":"us-central1-docker.pkg.dev/project-id/keeta/app:1","name":"worker","restartPolicy":"Always"}]}}",
         "google-logging-enabled": "true",
         "user-data": "#cloud-config
-{"runcmd":["mount --bind /dev/null /usr/sbin/sshd","systemctl disable sshd","systemctl stop sshd","pkill -9 -x sshd"]}",
+{"write_files":[{"path":"/var/lib/container/run.sh","permissions":"0755","content":"#!/bin/sh\\nset -e\\n/usr/bin/docker-credential-gcr configure-docker --registries=us-central1-docker.pkg.dev\\n/usr/bin/docker pull 'us-central1-docker.pkg.dev/project-id/keeta/app:1'\\nexec /usr/bin/docker run \\\\\\n\\t--rm \\\\\\n\\t--name='worker' \\\\\\n\\t--network=host \\\\\\n\\t--log-driver=gcplogs \\\\\\n\\t'us-central1-docker.pkg.dev/project-id/keeta/app:1'\\n"},{"path":"/etc/systemd/system/container.service","permissions":"0644","content":"[Unit]\\nDescription=Container from instance metadata (ContainerMIG)\\nAfter=docker.service network-online.target\\nRequires=docker.service\\n\\n[Service]\\nEnvironment=HOME=/var/lib/container\\nEnvironment=DOCKER_CONFIG=/var/lib/container/.docker\\nStandardOutput=journal+console\\nStandardError=journal+console\\nExecStartPre=-/usr/bin/docker rm -f worker\\nExecStart=/bin/sh /var/lib/container/run.sh\\nExecStop=-/usr/bin/docker stop worker\\nRestart=always\\nRestartSec=5\\n"}],"runcmd":["mount --bind /dev/null /usr/sbin/sshd","systemctl disable sshd","systemctl stop sshd","pkill -9 -x sshd","iptables -w -A INPUT -p tcp -j ACCEPT","iptables -w -A FORWARD -p tcp -j ACCEPT","iptables -w -A INPUT -p udp -j ACCEPT","iptables -w -A FORWARD -p udp -j ACCEPT","iptables -w -A INPUT -p icmp -j ACCEPT","iptables -w -A FORWARD -p icmp -j ACCEPT","systemctl daemon-reload","systemctl start container.service"]}",
       },
       "networkInterfaces": [
         {
@@ -4561,10 +4559,9 @@ exports[`component tree > snapshot > service-mig keeps its resources, parents, a
       "machineType": "e2-micro",
       "metadata": {
         "block-project-ssh-keys": "TRUE",
-        "gce-container-declaration": "{"spec":{"containers":[{"image":"us-central1-docker.pkg.dev/project-id/keeta/app:1","name":"service-mig-worker","restartPolicy":"Always","env":[{"name":"MODE","value":"worker"}]}]}}",
         "google-logging-enabled": "true",
         "user-data": "#cloud-config
-{"runcmd":[]}",
+{"write_files":[{"path":"/var/lib/container/run.sh","permissions":"0755","content":"#!/bin/sh\\nset -e\\n/usr/bin/docker-credential-gcr configure-docker --registries=us-central1-docker.pkg.dev\\n/usr/bin/docker pull 'us-central1-docker.pkg.dev/project-id/keeta/app:1'\\nexec /usr/bin/docker run \\\\\\n\\t--rm \\\\\\n\\t--name='service-mig-worker' \\\\\\n\\t--network=host \\\\\\n\\t--log-driver=gcplogs \\\\\\n\\t-e 'MODE=worker' \\\\\\n\\t'us-central1-docker.pkg.dev/project-id/keeta/app:1'\\n"},{"path":"/etc/systemd/system/container.service","permissions":"0644","content":"[Unit]\\nDescription=Container from instance metadata (ContainerMIG)\\nAfter=docker.service network-online.target\\nRequires=docker.service\\n\\n[Service]\\nEnvironment=HOME=/var/lib/container\\nEnvironment=DOCKER_CONFIG=/var/lib/container/.docker\\nStandardOutput=journal+console\\nStandardError=journal+console\\nExecStartPre=-/usr/bin/docker rm -f service-mig-worker\\nExecStart=/bin/sh /var/lib/container/run.sh\\nExecStop=-/usr/bin/docker stop service-mig-worker\\nRestart=always\\nRestartSec=5\\n"}],"runcmd":["iptables -w -A INPUT -p tcp -j ACCEPT","iptables -w -A FORWARD -p tcp -j ACCEPT","iptables -w -A INPUT -p udp -j ACCEPT","iptables -w -A FORWARD -p udp -j ACCEPT","iptables -w -A INPUT -p icmp -j ACCEPT","iptables -w -A FORWARD -p icmp -j ACCEPT","systemctl daemon-reload","systemctl start container.service"]}",
       },
       "networkInterfaces": [
         {
@@ -5298,10 +5295,8 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
       "machineType": "e2-micro",
       "metadata": {
         "block-project-ssh-keys": "TRUE",
-        "gce-container-declaration": "<secret>",
         "google-logging-enabled": "true",
-        "user-data": "#cloud-config
-{"runcmd":["mount --bind /dev/null /usr/sbin/sshd","systemctl disable sshd","systemctl stop sshd","pkill -9 -x sshd"]}",
+        "user-data": "<secret>",
       },
       "networkInterfaces": [
         {
@@ -6681,10 +6676,9 @@ exports[`component tree > snapshot > standalone-mig keeps its resources, parents
       "machineType": "e2-medium",
       "metadata": {
         "block-project-ssh-keys": "TRUE",
-        "gce-container-declaration": "{"spec":{"containers":[{"image":"us-central1-docker.pkg.dev/project-id/keeta/app:1","name":"worker","restartPolicy":"Always"}]}}",
         "google-logging-enabled": "true",
         "user-data": "#cloud-config
-{"runcmd":["mount --bind /dev/null /usr/sbin/sshd","systemctl disable sshd","systemctl stop sshd","pkill -9 -x sshd"]}",
+{"write_files":[{"path":"/var/lib/container/run.sh","permissions":"0755","content":"#!/bin/sh\\nset -e\\n/usr/bin/docker-credential-gcr configure-docker --registries=us-central1-docker.pkg.dev\\n/usr/bin/docker pull 'us-central1-docker.pkg.dev/project-id/keeta/app:1'\\nexec /usr/bin/docker run \\\\\\n\\t--rm \\\\\\n\\t--name='worker' \\\\\\n\\t--network=host \\\\\\n\\t--log-driver=gcplogs \\\\\\n\\t'us-central1-docker.pkg.dev/project-id/keeta/app:1'\\n"},{"path":"/etc/systemd/system/container.service","permissions":"0644","content":"[Unit]\\nDescription=Container from instance metadata (ContainerMIG)\\nAfter=docker.service network-online.target\\nRequires=docker.service\\n\\n[Service]\\nEnvironment=HOME=/var/lib/container\\nEnvironment=DOCKER_CONFIG=/var/lib/container/.docker\\nStandardOutput=journal+console\\nStandardError=journal+console\\nExecStartPre=-/usr/bin/docker rm -f worker\\nExecStart=/bin/sh /var/lib/container/run.sh\\nExecStop=-/usr/bin/docker stop worker\\nRestart=always\\nRestartSec=5\\n"}],"runcmd":["mount --bind /dev/null /usr/sbin/sshd","systemctl disable sshd","systemctl stop sshd","pkill -9 -x sshd","iptables -w -A INPUT -p tcp -j ACCEPT","iptables -w -A FORWARD -p tcp -j ACCEPT","iptables -w -A INPUT -p udp -j ACCEPT","iptables -w -A FORWARD -p udp -j ACCEPT","iptables -w -A INPUT -p icmp -j ACCEPT","iptables -w -A FORWARD -p icmp -j ACCEPT","systemctl daemon-reload","systemctl start container.service"]}",
       },
       "networkInterfaces": [
         {
