@@ -365,7 +365,12 @@ function parseWorkerArgs(args: CloudRunServiceArgs): ParsedWorker | undefined {
 		return(undefined);
 	}
 
-	return(parseWorker(worker));
+	const parsed = parseWorker(worker);
+	if (parsed.kind === 'mig' && parsed.egress === 'vpc+direct') {
+		void pulumi.log.warn('CloudRunService: worker.egress \'vpc+direct\' on a mig worker used to be ignored, and now gives every VM an external IP address. Set egress \'vpc\' if you did not mean that');
+	}
+
+	return(parsed);
 }
 
 function parseDatabase(database: DatabaseArgs): ParsedDatabase {

@@ -3492,11 +3492,7 @@ exports[`component tree > snapshot > service-mig keeps its resources, parents, a
       },
       "networkInterfaces": [
         {
-          "accessConfigs": [
-            {
-              "natIp": "address.service-mig-mig-ext-ip",
-            },
-          ],
+          "accessConfigs": [],
           "network": "self-link.service-mig-vpc",
           "subnetwork": "service-mig-subnet-id",
         },
@@ -3544,11 +3540,51 @@ exports[`component tree > snapshot > service-mig keeps its resources, parents, a
           "instanceTemplate": "self-link.service-mig-mig-mig-template",
         },
       ],
+      "waitForInstances": true,
+      "waitForInstancesStatus": "UPDATED",
     },
     "name": "service-mig-mig-mig",
     "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerMIG::service-mig-mig",
     "type": "gcp:compute/regionInstanceGroupManager:RegionInstanceGroupManager",
     "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerMIG$gcp:compute/regionInstanceGroupManager:RegionInstanceGroupManager::service-mig-mig-mig",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "description": "[service-mig-mig] Cloud NAT router for the container VMs",
+      "network": "self-link.service-mig-vpc",
+      "region": "us-central1",
+    },
+    "name": "service-mig-mig-cloudnat-router",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerMIG::service-mig-mig",
+    "type": "gcp:compute/router:Router",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerMIG$gcp:compute/router:Router::service-mig-mig-cloudnat-router",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "natIpAllocateOption": "MANUAL_ONLY",
+      "natIps": [
+        "self-link.service-mig-mig-ext-ip",
+      ],
+      "region": "us-central1",
+      "router": "service-mig-mig-cloudnat-router",
+      "sourceSubnetworkIpRangesToNat": "LIST_OF_SUBNETWORKS",
+      "subnetworks": [
+        {
+          "name": "service-mig-subnet-id",
+          "sourceIpRangesToNats": [
+            "ALL_IP_RANGES",
+          ],
+        },
+      ],
+    },
+    "name": "service-mig-mig-cloudnat",
+    "parent": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerMIG::service-mig-mig",
+    "type": "gcp:compute/routerNat:RouterNat",
+    "urn": "Keeta:GCP:CloudRunService$Keeta:GCP:ContainerMIG$gcp:compute/routerNat:RouterNat::service-mig-mig-cloudnat",
   },
   {
     "aliases": [],

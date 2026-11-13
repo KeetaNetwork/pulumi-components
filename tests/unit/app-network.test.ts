@@ -1,24 +1,19 @@
 import * as gcp from '@pulumi/gcp';
 import { describe, expect, it } from 'vitest';
 
-import type * as defaults from '../../src/packages/gcp/defaults';
 import type * as network from '../../src/packages/gcp/network';
 import { expectDefined } from '../helpers/narrow';
 import { requireSource } from './harness/load-sources';
 import { captureTree, moveAliases, ofType, useIsolatedHome } from './harness/pulumi-tree';
-import { buildService } from './harness/service-builder';
+import { appNetworkArgs, buildService } from './harness/service-builder';
 import { captureWarnings } from './harness/warnings';
 
-const { CLOUD_RUN_SERVICE_DEFAULTS } = requireSource<typeof defaults>('src/packages/gcp/defaults.ts');
 const { AppNetwork } = requireSource<typeof network>('src/packages/gcp/network.ts');
 
 const APP_NETWORK = 'Keeta:GCP:AppNetwork';
 const CONNECTION = 'gcp:servicenetworking/connection:Connection';
 const NETWORK = 'gcp:compute/network:Network';
 
-function appNetworkArgs() {
-	return({ region: 'us-central1' as const, ...CLOUD_RUN_SERVICE_DEFAULTS.network });
-}
 
 const NETWORK_RESOURCES = [ '-vpc', '-subnet', '-vpc-connector', '-private-ip-alloc', '-svc-networking' ];
 

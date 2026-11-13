@@ -10,10 +10,11 @@ import type { ReplacedEnvironment } from './cloudrun';
 import { PostgresCloudSQL } from './sql';
 import type { ContainerGeneric } from './container';
 import { ContainerMIG, ContainerCloudRun } from './container';
+import type { ContainerMIGEgressOptions } from './container';
 import { MigrationJob } from './migration';
 import { AppNetwork } from './network';
 import { ServiceIdentity } from './identity';
-import { parseCloudRunServiceArgs } from './apps-args';
+import { CloudRunServiceArgsError, parseCloudRunServiceArgs } from './apps-args';
 import type { MIGWorkerArgs, CRWPWorkerArgs, LegacyMIGArgs, ParsedCloudRunServiceArgs, ParsedRemote } from './apps-args';
 export { CloudRunServiceArgsError } from './apps-args';
 export type { MIGWorkerArgs, CRWPWorkerArgs, LegacyMIGArgs } from './apps-args';
@@ -955,6 +956,9 @@ export class CloudRunService extends pulumi.ComponentResource {
 				}, { parent: this });
 			} else {
 				appNetwork = parsedVpc.appNetwork;
+				if (parsedVpc.worker?.egress === 'vpc+nat' && !appNetwork.claimNatWorker()) {
+					throw(new CloudRunServiceArgsError('worker.egress \'vpc+nat\' is already used by another worker on this AppNetwork: a network has one Cloud NAT worker, so give the second worker egress \'vpc\' or its own AppNetwork'));
+				}
 			}
 
 			vpc = appNetwork.network;
@@ -1242,14 +1246,16 @@ export class CloudRunService extends pulumi.ComponentResource {
 			const workerEnv = envManager?.view(worker.environmentOverrides) ?? EnvView.ofOverrides(worker.environmentOverrides);
 
 			if (worker.kind === 'mig') {
-				// Create external IP if requested
-				let extIP: gcp.compute.Address | undefined;
+				// Reserve the external IP if the worker egresses through a NAT
+				let egress: ContainerMIGEgressOptions = { egress: worker.egress === 'vpc+direct' ? 'vpc+direct' : 'vpc' };
 				if (worker.egress === 'vpc+nat') {
-					extIP = new gcp.compute.Address(`${name}-mig-ext-ip`, {
+					// The reserved address (and so the IP that peers allow) stays; the NAT of the worker uses it
+					const extIP = new gcp.compute.Address(`${name}-mig-ext-ip`, {
 						description: `[${name}] External IP for MIG`,
 						addressType: 'EXTERNAL',
 						region: parsed.region
 					}, { parent: this });
+					egress = { egress: 'vpc+nat', natIps: [extIP.selfLink] };
 				}
 
 				mig = new ContainerMIG(`${name}-mig`, {
@@ -1263,11 +1269,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 					enableVMSSH: worker.enableSSH,
 					count: worker.instanceCount,
 					diskSizeGb: worker.diskSizeGb,
-					networkInterfaces: extIP ? [{
-						accessConfigs: [{
-							natIp: extIP.address
-						}]
-					}] : undefined,
+					...egress,
 					common: {
 						gcp: parsed.gcp
 					},
