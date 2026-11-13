@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type * as localdocker from '../../src/packages/localdocker';
 import { requireSource } from './harness/load-sources';
 
-const { pickRepoDigest } = requireSource<typeof localdocker>('src/packages/localdocker.ts')._Testing;
+const { pickRepoDigest, localBuildHasChanges } = requireSource<typeof localdocker>('src/packages/localdocker.ts')._Testing;
 
 const SHA_A = 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const SHA_B = 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
@@ -65,5 +65,45 @@ describe('pickRepoDigest', function() {
 		expect(function() {
 			pickRepoDigest(repoDigests, imageURI);
 		}).toThrow();
+	});
+});
+
+/*
+ * The directory a build runs in is a fresh temp directory each time, and the
+ * secrets are only read by the build. Neither says the image is different.
+ */
+describe('localBuildHasChanges', function() {
+	const build = {
+		imageURI: 'registry.example/project/repo:tag',
+		buildDirectory: '/tmp/docker-build-aaaaaa',
+		buildArgs: [ '--platform', 'linux/amd64' ],
+		imageCache: 'registry.example/project/repo:cache',
+		tags: [ 'registry.example/project/repo:latest' ],
+		secretContents: 'TOKEN=one',
+		cleanBuildDirectory: false
+	};
+
+	const unchanged: [ string, Partial<typeof build> ][] = [
+		[ 'nothing differs', {} ],
+		[ 'only the temporary build directory differs', { buildDirectory: '/tmp/docker-build-bbbbbb' } ],
+		[ 'only the secret contents differ', { secretContents: 'TOKEN=two' } ],
+		[ 'only cleanBuildDirectory differs', { cleanBuildDirectory: true } ],
+		[ 'all three of those differ', { buildDirectory: '/tmp/docker-build-bbbbbb', secretContents: 'TOKEN=two', cleanBuildDirectory: true } ]
+	];
+
+	it.each(unchanged)('is not a change when %s', function(_description, overrides) {
+		expect(localBuildHasChanges(build, { ...build, ...overrides })).toBe(false);
+	});
+
+	const changed: [ string, Partial<typeof build> ][] = [
+		[ 'imageURI', { imageURI: 'registry.example/project/repo:other' } ],
+		[ 'buildArgs', { buildArgs: [ '--platform', 'linux/arm64' ] } ],
+		[ 'imageCache', { imageCache: 'registry.example/project/repo:other-cache' } ],
+		[ 'tags', { tags: [ 'registry.example/project/repo:v2' ] } ],
+		[ 'imageURI together with the temporary build directory', { imageURI: 'registry.example/project/repo:other', buildDirectory: '/tmp/docker-build-bbbbbb' } ]
+	];
+
+	it.each(changed)('is a change when %s differs', function(_description, overrides) {
+		expect(localBuildHasChanges(build, { ...build, ...overrides })).toBe(true);
 	});
 });

@@ -1053,7 +1053,7 @@ exports[`component tree > snapshot > service-build-local keeps its resources, pa
       ],
       "buildDirectory": "<tmp>/docker-build-<random>",
       "cleanBuildDirectory": false,
-      "imageURI": "us-central1-docker.pkg.dev/project-id/keeta/service-build-local:hash_5211353d4305ac00fe51bdaf7b474a40cf59644c",
+      "imageURI": "us-central1-docker.pkg.dev/project-id/keeta/service-build-local:hash_cefd7fce6bdfd50409c82287c054f5f3ecf8e3aae58901ddbf99b527bc8760c2",
       "tags": [],
     },
     "name": "service-build-local-image-docker-builder",
@@ -1319,7 +1319,7 @@ exports[`component tree > snapshot > service-build-remote keeps its resources, p
       "sourceUpload": {
         "bucket": "service-build-remote-docker",
         "object": "service-build-remote/sha-1.tar.gz",
-        "path": "<home>/.cache/pulumi-tarballs/<directory-hash>-9fb3ca2b398803708f828c8433418969.tar.gz",
+        "path": "<home>/.cache/pulumi-tarballs/<directory-hash>-cefd7fce6bdfd50409c82287c054f5f3ecf8e3aae58901ddbf99b527bc8760c2.tar.gz",
       },
     },
     "name": "service-build-remote-image-build",
@@ -4835,7 +4835,7 @@ exports[`component tree > snapshot > service-providers keeps its resources, pare
       "sourceUpload": {
         "bucket": "service-providers-docker",
         "object": "service-providers/sha-2.tar.gz",
-        "path": "<home>/.cache/pulumi-tarballs/<directory-hash>-b31896f5634e419c041f99cefd35c644.tar.gz",
+        "path": "<home>/.cache/pulumi-tarballs/<directory-hash>-cefd7fce6bdfd50409c82287c054f5f3ecf8e3aae58901ddbf99b527bc8760c2.tar.gz",
       },
     },
     "name": "service-providers-image-build",

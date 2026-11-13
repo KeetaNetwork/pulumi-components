@@ -4,22 +4,103 @@ import * as os from 'os';
 import * as child_process from 'child_process';
 import * as path from 'path';
 import * as process from 'process';
-import * as crypto from 'crypto';
 
 import * as utils from '../utils';
+import { fingerprintBuildContext, loadBuildContext } from './build-context';
+import type { BuildContext } from './build-context';
+
+/** The environment for `tar`: the caller's, with a fixed locale so file names are read the same everywhere */
+function tarEnvironment(): NodeJS.ProcessEnv {
+	return({
+		...process.env,
+		LC_ALL: 'C',
+		LANG: 'C'
+	});
+}
+
+/* Fixed system directories only, so a writable directory early in PATH cannot supply its own "tar" */
+const TAR_DIRECTORIES = [ '/usr/bin', '/bin', '/usr/local/bin', '/opt/homebrew/bin' ];
+
+/** The absolute path of the system `tar` */
+function tarCommand(): string {
+	for (const directory of TAR_DIRECTORIES) {
+		const candidate = path.join(directory, 'tar');
+		if (fs.existsSync(candidate)) {
+			return(candidate);
+		}
+	}
+
+	throw(new Error(`tar was not found in ${TAR_DIRECTORIES.join(', ')}`));
+}
 
 /**
- * Create a tarball from a directory, caching it in the home directory
- * and returning the path to the tarball.  If a cacheID is provided, it
- * will be used to cache the tarball.
+ * Write the tarball of the build context in `runDir`, check it, and move
+ * it to `tarballPath`. The rename is atomic, so a reader sees no tarball
+ * or a complete one.
  */
-function createTarballFromDir(directory: string, cacheID?: string, excludePatterns: string[] = []): { file: string, uniqueID: string, shouldClean: boolean } {
-	let shouldClean = false;
-	if (cacheID === undefined) {
-		cacheID = crypto.randomUUID();
+function writeTarball(context: BuildContext, runDir: string, tarballPath: string) {
+	const tarballTmpPath = path.join(runDir, 'tarball.tar.gz');
+	const fileListPath = path.join(runDir, 'files.list');
 
-		shouldClean = true;
+	/**
+	 * Create the tarball from the list of files, which is NUL separated
+	 * so that no file name is read as an option
+	 * --no-xattrs will remove macOS added extended attributes
+	 */
+	fs.writeFileSync(fileListPath, context.files.map(function(file) {
+		return(`${file}\0`);
+	}).join(''));
+
+	const createResults = child_process.spawnSync(tarCommand(), [
+		'-C', context.root,
+		'--no-xattrs',
+		'--null',
+		'-T', fileListPath,
+		'-zcf',
+		tarballTmpPath
+	], { env: tarEnvironment() });
+	if (createResults.status !== 0) {
+		throw(new Error(`tar failed: ${createResults.stderr.toString()}`));
 	}
+
+	/**
+	 * Verify that the created tarball is valid
+	 */
+	const checkResults = child_process.spawnSync(tarCommand(), [ '-ztf', tarballTmpPath ], { env: tarEnvironment() });
+	if (checkResults.status !== 0) {
+		throw(new Error(`tar failed: ${checkResults.stderr.toString()}`));
+	}
+
+	fs.renameSync(tarballTmpPath, tarballPath);
+}
+
+export interface DirTarballOptions {
+	/**
+	 * Patterns for files to leave out on top of ".dockerignore"
+	 */
+	excludePatterns?: string[];
+
+	/**
+	 * Dockerfile relative to the directory, which is always archived
+	 */
+	dockerfilePath?: string;
+
+	/**
+	 * The build context of the directory, loaded with the same options.
+	 * When given, the directory is not read again.
+	 */
+	context?: BuildContext;
+}
+
+/**
+ * Create a tarball of the build context of a directory, cache it in the
+ * home directory, and return the path to the tarball. The tarball holds
+ * exactly the files of the context (the ones its fingerprint is made from).
+ * Its path follows that fingerprint, so a changed source gets a tarball of
+ * its own.
+ */
+function createTarballFromDir(directory: string, options: DirTarballOptions): { file: string, uniqueID: string } {
+	const context = options.context ?? loadBuildContext(directory, { excludePatterns: options.excludePatterns, dockerfilePath: options.dockerfilePath });
 
 	const tarballDir = path.join(os.homedir(), '.cache', 'pulumi-tarballs');
 	fs.mkdirSync(tarballDir, {
@@ -28,66 +109,29 @@ function createTarballFromDir(directory: string, cacheID?: string, excludePatter
 
 	const canonicalDir = fs.realpathSync(directory);
 	const dirHash = utils.hash(canonicalDir, 32);
-	cacheID = utils.hash(cacheID, 32);
 
-	const uniqueID = `${dirHash}-${cacheID}`;
+	const uniqueID = `${dirHash}-${fingerprintBuildContext(context)}`;
 
 	const tarballPath = path.join(tarballDir, `${uniqueID}.tar.gz`);
-	const tarballTmpPath = `${tarballPath}.new`;
 
 	if (fs.existsSync(tarballPath)) {
 		return({
 			uniqueID: uniqueID,
-			file: tarballPath,
-
-			/* If we didn't create this tarball, we shouldn't clean it up */
-			shouldClean: false
+			file: tarballPath
 		});
 	}
 
-	/**
-	 * Create a list of files to exclude from the tarball
-	 */
-	const excludeFlags = excludePatterns.map(function(pattern) {
-		return(`--exclude=${pattern}`);
-	});
-
-	/**
-	 * Create the tarball
-	 * --no-xattrs will remove macOS added extended attributes
-	 */
-	const createResults = child_process.spawnSync('tar', [
-		'-C', directory,
-		...excludeFlags,
-		'--no-xattrs',
-		'-zcf',
-		tarballTmpPath,
-		'.'
-	], {
-		env: {
-			...process.env,
-			LC_ALL: 'C',
-			LANG: 'C'
-		}
-	});
-	if (createResults.status !== 0) {
-		throw(new Error(`tar failed: ${createResults.stderr.toString()}`));
+	/* Each run writes its file list and tarball in a directory of its own, so concurrent deploys of one directory do not share them */
+	const runDir = fs.mkdtempSync(path.join(tarballDir, 'run-'));
+	try {
+		writeTarball(context, runDir, tarballPath);
+	} finally {
+		fs.rmSync(runDir, { recursive: true, force: true });
 	}
-
-	/**
-	 * Verify that the created tarball is valid
-	 */
-	const checkResults = child_process.spawnSync('bash', ['-c', `tar -ztf ${tarballTmpPath} > /dev/null`]);
-	if (checkResults.status !== 0) {
-		throw(new Error(`tar failed: ${checkResults.stderr.toString()}`));
-	}
-
-	fs.renameSync(tarballTmpPath, tarballPath);
 
 	return({
 		uniqueID: uniqueID,
-		file: tarballPath,
-		shouldClean: shouldClean
+		file: tarballPath
 	});
 }
 
@@ -213,51 +257,35 @@ export class GitTarballArchive extends pulumi.asset.FileAsset {
 }
 
 /**
- * Create a tarball from a directory
+ * Create a tarball from a directory. The tarball is cached by the build
+ * context's fingerprint and kept for reuse.
  */
 export class DirTarballArchive extends pulumi.asset.FileAsset {
 	/**
-	 * Unique ID for the tarball, based on the cacheID and the directory
-	 * it was created from
+	 * Unique ID for the tarball, based on the build context and the
+	 * directory it was created from
 	 */
 	readonly uniqueID: string;
 
 	/**
-	 * Should the generated archive be cleaned up because there is no
-	 * value in caching it because no cache ID was supplied ?
+	 * @param dir Directory to archive (".dockerignore" is applied to it)
+	 * @param options What to leave out, the Dockerfile, and the build context if already loaded
 	 */
-	private shouldClean: boolean;
-
-	/**
-	 * Path of generated tarball
-	 */
-	private _path: string;
-
-	constructor(dir: string, cacheID?: string, excludePatterns?: string[]) {
-		const { file, uniqueID, shouldClean } = createTarballFromDir(dir, cacheID, excludePatterns);
+	constructor(dir: string, options: DirTarballOptions = {}) {
+		const { file, uniqueID } = createTarballFromDir(dir, options);
 
 		super(file);
 		this.uniqueID = uniqueID;
-		this.shouldClean = shouldClean;
-		this._path = file;
 	}
 
-	/**
-	 * Clean up the generated tarball if it is not cachable
-	 */
 	clean() {
-		if (!this.shouldClean) {
-			return;
-		}
-
-		try {
-			fs.unlinkSync(this._path);
-		} catch {
-			/* Ignore errors */
-		}
-
-		this.shouldClean = false;
+		/* Do nothing: the tarball is cached for the next deploy, and this keeps the interface of GitTarballArchive */
 	}
 }
+
+/** @internal */
+export const _Testing = {
+	tarCommand
+};
 
 export default GitTarballArchive;
