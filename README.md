@@ -16,7 +16,6 @@ The Pulumi packages are peer dependencies now, so your program and this library 
 ### Removed or changed in 2.0
 
 - `OutputWrapped<T>` is removed from the package root (`import { OutputWrapped } from '@keetanetwork/pulumi-components'`). Use `pulumi.Input<T>` (or `pulumi.Output<T> | T`) instead.
-- `src/hosts.ts` is deleted. Its `addSubjectAlternativeToHosts` was never exported from the package root; only a deep import of `dist/hosts` could reach it, and that import stops working. The function appended entries to `/etc/hosts`.
 - `CloudBuild` no longer has an `accessToken` input (it was always `undefined` and unused).
 - `EnvManager.resolvedVariableOutput` throws for a variable that references an existing secret (`{ name, version }`) and names that variable. Before, it left the variable out and the container started without it. A `CloudRunService` with a MIG worker (`workerKind: 'mig'`) therefore fails when `environment` holds an existing-secret variable. Give the worker a plain value through `mig.environmentOverrides`, or use `workerKind: 'crwp'`, which reads Secret Manager. CRWP workers are not affected.
 - `CloudRunService` throws a `CloudRunServiceArgsError` (`migration.enabled requires database`) when `migration.enabled` is true without `database`. Before, the migration was silently skipped.
