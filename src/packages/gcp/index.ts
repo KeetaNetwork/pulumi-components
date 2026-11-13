@@ -8,6 +8,7 @@ export * as regions from './regions';
 export * as policy from './policy';
 export * as sql from './sql';
 export * as vpc from './vpc';
+export * as network from './network';
 export * as lb from './lb';
 export * as common from './common';
 export * as bucket from './bucket';

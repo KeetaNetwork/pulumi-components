@@ -12,17 +12,16 @@ import { requireSource } from './harness/load-sources';
 import { captureTree, useIsolatedHome } from './harness/pulumi-tree';
 import type { TreeResource, TreeSnapshot } from './harness/pulumi-tree';
 import { workerSpec, workerSubnetwork } from './harness/tree-cases';
+import { IMAGE, captureService } from './harness/service-builder';
 
-const { CloudRunService } = requireSource<typeof apps>('src/packages/gcp/apps.ts');
 const { ContainerCloudRun, ContainerMIG } = requireSource<typeof container>('src/packages/gcp/container.ts');
 const { MigrationJob } = requireSource<typeof migration>('src/packages/gcp/migration.ts');
 
-type ServiceArgs = ConstructorParameters<typeof CloudRunService>[1];
+type ServiceArgs = ConstructorParameters<typeof apps.CloudRunService>[1];
 type PolicyHook = GCPCommonOptions['changeProjectIAMPolicy'];
 type IdentityRef = identityModule.ServiceIdentityRef;
 
 const PROJECT_GRANT = 'gcp:projects/iAMMember:IAMMember';
-const IMAGE = 'us-central1-docker.pkg.dev/project-id/keeta/app:1';
 const ACCOUNT = 'worker@project-id.iam.gserviceaccount.com';
 
 const LOG_WRITER = 'roles/logging.logWriter';
@@ -53,12 +52,6 @@ function roleOf(grant: TreeResource) {
 
 function liveRolesOf(resources: TreeResource[]) {
 	return(liveGrantsOf(resources).map(roleOf).sort());
-}
-
-function buildApp(name: string, overrides: Partial<ServiceArgs>) {
-	return(captureTree(function() {
-		return(new CloudRunService(name, { gcp: { project: 'project-id' }, region: 'us-central1', image: { uri: IMAGE }, ...overrides }));
-	}));
 }
 
 /** `gcp` options of a component, with the hook only when there is one */
@@ -116,7 +109,7 @@ describe('project roles of an app', function() {
 	];
 
 	it.each(rows)('grants %s exactly once', async function(description, overrides, roles) {
-		const tree = await buildApp(`roles-${description.replace(/[^a-z]+/gi, '-').toLowerCase()}`, overrides);
+		const tree = await captureService(`roles-${description.replace(/[^a-z]+/gi, '-').toLowerCase()}`, overrides);
 
 		expect(liveRolesOf(tree.resources)).toEqual(roles);
 	});
@@ -135,7 +128,7 @@ describe('project roles of an app', function() {
 	}
 
 	it.each(rows)('gives each retained grant of %s a live twin of the same project, role and member', async function(description, overrides) {
-		const tree = await buildApp(`twins-${description.replace(/[^a-z]+/gi, '-').toLowerCase()}`, overrides);
+		const tree = await captureService(`twins-${description.replace(/[^a-z]+/gi, '-').toLowerCase()}`, overrides);
 		const live = new Set(liveGrantsOf(tree.resources).map(tupleOf));
 		const alone = retainedGrantsOf(tree.resources).filter(function(grant) {
 			return(!live.has(tupleOf(grant)));
@@ -147,7 +140,7 @@ describe('project roles of an app', function() {
 	});
 
 	it.each([ 'mig', 'crwp' ] as const)('keeps retained grants for a %s worker and a migration, so that the twin check above is not empty', async function(kind) {
-		const tree = await buildApp(`twins-present-${kind}`, { ...everything, worker: { kind }});
+		const tree = await captureService(`twins-present-${kind}`, { ...everything, worker: { kind }});
 
 		expect(retainedGrantsOf(tree.resources).length).toBeGreaterThan(0);
 	});
@@ -175,7 +168,7 @@ describe('project roles of an app', function() {
 
 	it.each(liveChildren)('keeps the live grants of the worker and the migration at their 1.0.95 URN with %s', async function(description, overrides, kind, type, suffix) {
 		const name = `children-${description.replace(/[^a-z]+/gi, '-').toLowerCase()}`;
-		const tree = await buildApp(name, { ...migrationApp, ...overrides, worker: { kind }});
+		const tree = await captureService(name, { ...migrationApp, ...overrides, worker: { kind }});
 		const service = `Keeta:GCP:CloudRunService$${type}$${PROJECT_GRANT}`;
 		const job = `Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob$${PROJECT_GRANT}`;
 
@@ -208,7 +201,7 @@ describe('project roles of an app', function() {
 
 	it.each(hookRows)('asks changeProjectIAMPolicy for each role once, with %s, and creates no grant of its own', async function(description, overrides, roles) {
 		const asked: string[] = [];
-		const tree = await buildApp(`policy-${description.replace(/[^a-z]+/gi, '-').toLowerCase()}`, { ...overrides, gcp: { project: 'project-id', changeProjectIAMPolicy: recordingHook(asked) }});
+		const tree = await captureService(`policy-${description.replace(/[^a-z]+/gi, '-').toLowerCase()}`, { ...overrides, gcp: { project: 'project-id', changeProjectIAMPolicy: recordingHook(asked) }});
 
 		expect(asked.sort()).toEqual(roles);
 		expect(liveRolesOf(tree.resources)).toEqual([]);
@@ -270,7 +263,7 @@ describe('project roles of an app', function() {
 
 	it.each(workerTypes)('makes the service, the %s worker and the migration job wait for what the hook returns', async function(kind, workerType) {
 		const name = `waits-${kind}`;
-		const tree = await buildApp(name, { ...everything, worker: { kind }, gcp: { project: 'project-id', changeProjectIAMPolicy: resourceHook() }});
+		const tree = await captureService(name, { ...everything, worker: { kind }, gcp: { project: 'project-id', changeProjectIAMPolicy: resourceHook() }});
 		const { service, services, worker, migration } = targetsOf(tree, name, workerType);
 		const roles = [ CLOUD_SQL_CLIENT, LOG_WRITER, METRIC_WRITER ];
 
@@ -282,7 +275,7 @@ describe('project roles of an app', function() {
 
 	it.each(workerTypes)('makes the %s worker and the migration job wait for what the hook returns when the account is the caller\'s', async function(kind, workerType) {
 		const name = `waits-caller-${kind}`;
-		const tree = await buildApp(name, { ...everything, worker: { kind }, service: { serviceAccount: ACCOUNT }, gcp: { project: 'project-id', changeProjectIAMPolicy: resourceHook() }});
+		const tree = await captureService(name, { ...everything, worker: { kind }, service: { serviceAccount: ACCOUNT }, gcp: { project: 'project-id', changeProjectIAMPolicy: resourceHook() }});
 		const { worker, migration } = targetsOf(tree, name, workerType);
 
 		waitsFor(tree, worker, [ LOG_WRITER, METRIC_WRITER ]);

@@ -4,23 +4,14 @@ import { describe, expect, it } from 'vitest';
 
 import type * as apps from '../../src/packages/gcp/apps';
 import { expectArray, expectRecord, expectString } from '../helpers/narrow';
-import { requireSource } from './harness/load-sources';
-import { captureTree, useIsolatedHome } from './harness/pulumi-tree';
+import { useIsolatedHome } from './harness/pulumi-tree';
 import type { TreeSnapshot } from './harness/pulumi-tree';
+import { captureService } from './harness/service-builder';
 
-const { CloudRunService } = requireSource<typeof apps>('src/packages/gcp/apps.ts');
 
-type ServiceArgs = ConstructorParameters<typeof CloudRunService>[1];
+type ServiceArgs = ConstructorParameters<typeof apps.CloudRunService>[1];
 
 const APP_DIRECTORY = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../fixtures/app');
-const IMAGE = 'us-central1-docker.pkg.dev/project-id/keeta/app:1';
-
-function buildService(name: string, overrides: Partial<ServiceArgs>) {
-	return(captureTree(function() {
-		return(new CloudRunService(name, { gcp: { project: 'project-id' }, region: 'us-central1', image: { uri: IMAGE }, ...overrides }));
-	}));
-}
-
 describe('CloudRunService migration', function() {
 	const rejected: [ string, Partial<ServiceArgs> ][] = [
 		[ 'enabled without a database', { migration: { enabled: true }} ],
@@ -28,7 +19,7 @@ describe('CloudRunService migration', function() {
 	];
 
 	it.each(rejected)('throws when migration is %s', async function(description, overrides) {
-		await expect(buildService(`migration-${description.replace(/ /g, '-')}`, overrides)).rejects.toThrow(/migration\.enabled/);
+		await expect(captureService(`migration-${description.replace(/ /g, '-')}`, overrides)).rejects.toThrow(/migration\.enabled/);
 	});
 
 	const accepted: [ string, Partial<ServiceArgs>, number ][] = [
@@ -39,7 +30,7 @@ describe('CloudRunService migration', function() {
 	];
 
 	it.each(accepted)('accepts it when it is %s', async function(description, overrides, jobs) {
-		const tree = await buildService(`migration-ok-${description.replace(/ /g, '-')}`, overrides);
+		const tree = await captureService(`migration-ok-${description.replace(/ /g, '-')}`, overrides);
 		const migrationJobs = tree.resources.filter(function(resource) {
 			return(resource.type === 'Keeta:GCP:MigrationJob');
 		});
@@ -73,7 +64,7 @@ describe('remote build secret file', function() {
 	useIsolatedHome();
 
 	function buildRemote(name: string, secrets: { [key: string]: string } | undefined) {
-		return(buildService(name, {
+		return(captureService(name, {
 			image: { build: { directory: APP_DIRECTORY, imageName: name, githubSha: 'sha-1', remote: {}, secrets }}
 		}));
 	}
@@ -111,7 +102,7 @@ describe('CloudRunService worker with an existing secret', function() {
 	const environment = { EXISTING: { name: 'existing-secret', version: '3' }};
 
 	it('builds a Cloud Run worker pool whose environment references the secret', async function() {
-		const tree = await buildService('worker-crwp-existing-secret', {
+		const tree = await captureService('worker-crwp-existing-secret', {
 			mig: { enabled: true, workerKind: 'crwp' },
 			environment
 		});
@@ -123,14 +114,14 @@ describe('CloudRunService worker with an existing secret', function() {
 	});
 
 	it('throws, naming the variable, for a managed instance group', async function() {
-		await expect(buildService('worker-mig-existing-secret', {
+		await expect(captureService('worker-mig-existing-secret', {
 			mig: { enabled: true, workerKind: 'mig' },
 			environment
 		})).rejects.toThrow('EXISTING');
 	});
 
 	it('builds a managed instance group when the secret is not in the environment', async function() {
-		const tree = await buildService('worker-mig-plain', { mig: { enabled: true, workerKind: 'mig' }, environment: { MODE: 'worker' }});
+		const tree = await captureService('worker-mig-plain', { mig: { enabled: true, workerKind: 'mig' }, environment: { MODE: 'worker' }});
 
 		expect(tree.resources.some(function(resource) {
 			return(resource.type === 'Keeta:GCP:ContainerMIG');

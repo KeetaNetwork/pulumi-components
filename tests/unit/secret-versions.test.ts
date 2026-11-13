@@ -1,17 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import type * as apps from '../../src/packages/gcp/apps';
 import type * as migration from '../../src/packages/gcp/migration';
 import { expectArray, expectRecord } from '../helpers/narrow';
 import { requireSource } from './harness/load-sources';
 import { captureTree } from './harness/pulumi-tree';
 import type { TreeSnapshot } from './harness/pulumi-tree';
+import { IMAGE, buildService } from './harness/service-builder';
 
-const { CloudRunService } = requireSource<typeof apps>('src/packages/gcp/apps.ts');
 const { MigrationJob } = requireSource<typeof migration>('src/packages/gcp/migration.ts');
 
 const SECRET_VERSION = 'gcp:secretmanager/secretVersion:SecretVersion';
-const IMAGE = 'us-central1-docker.pkg.dev/project-id/keeta/app:1';
 
 /** A secret variable, a plain variable, and a reference to a secret somebody else owns */
 function environment(secretValue: string) {
@@ -51,7 +49,7 @@ const paths: SecretPath[] = [
 	{
 		description: 'a Cloud Run service',
 		build: function(name, secretValue) {
-			return(new CloudRunService(name, { gcp: { project: 'project-id' }, region: 'us-central1', image: { uri: IMAGE }, environment: environment(secretValue) }));
+			return(buildService(name, { environment: environment(secretValue) }));
 		},
 		environmentOf: function(tree) {
 			const spec = expectRecord(expectRecord(resourceInputs(tree, 'gcp:cloudrun/service:Service').template, 'the service template').spec, 'the service spec');
@@ -85,13 +83,7 @@ const paths: SecretPath[] = [
 	{
 		description: 'a Cloud Run worker pool',
 		build: function(name, secretValue) {
-			return(new CloudRunService(name, {
-				gcp: { project: 'project-id' },
-				region: 'us-central1',
-				image: { uri: IMAGE },
-				mig: { enabled: true, workerKind: 'crwp' },
-				environment: environment(secretValue)
-			}));
+			return(buildService(name, { mig: { enabled: true, workerKind: 'crwp' }, environment: environment(secretValue) }));
 		},
 		environmentOf: function(tree) {
 			const template = expectRecord(resourceInputs(tree, 'gcp:cloudrunv2/workerPool:WorkerPool').template, 'the worker pool template');

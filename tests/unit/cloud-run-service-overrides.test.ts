@@ -11,19 +11,17 @@ import { requireSource } from './harness/load-sources';
 import { captureTree, useIsolatedHome } from './harness/pulumi-tree';
 import type { TreeSnapshot } from './harness/pulumi-tree';
 import { workerSpec, workerSubnetwork } from './harness/tree-cases';
+import { buildService } from './harness/service-builder';
 import { captureWarnings } from './harness/warnings';
 
-const { CloudRunService } = requireSource<typeof apps>('src/packages/gcp/apps.ts');
 const { ContainerMIG } = requireSource<typeof container>('src/packages/gcp/container.ts');
 const { PostgresCloudSQL } = requireSource<typeof sql>('src/packages/gcp/sql.ts');
 
-type ServiceArgs = ConstructorParameters<typeof CloudRunService>[1];
+type ServiceArgs = ConstructorParameters<typeof apps.CloudRunService>[1];
 type MigOptions = ConstructorParameters<typeof ContainerMIG>[1];
 type PostgresOptions = ConstructorParameters<typeof PostgresCloudSQL>[1];
 
 const APP_DIRECTORY = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../fixtures/app');
-const IMAGE = 'us-central1-docker.pkg.dev/project-id/keeta/app:1';
-const SERVICE: ServiceArgs = { gcp: { project: 'project-id' }, region: 'us-central1', image: { uri: IMAGE }};
 
 /** The inputs of the one resource of the type (and the name ending, when the type has several) */
 function inputsOf(tree: TreeSnapshot, type: string, nameEnding: string) {
@@ -42,10 +40,10 @@ function inputsOf(tree: TreeSnapshot, type: string, nameEnding: string) {
 function service(base: Partial<ServiceArgs>, changed: Partial<ServiceArgs>): Builds {
 	return({
 		fallback: function(name) {
-			return(new CloudRunService(name, { ...SERVICE, ...base }));
+			return(buildService(name, base));
 		},
 		override: function(name) {
-			return(new CloudRunService(name, { ...SERVICE, ...changed }));
+			return(buildService(name, changed));
 		}
 	});
 }
@@ -87,7 +85,7 @@ interface Setting {
 
 /* The image URI is remembered for the life of the process, so every build names its own image */
 function remoteBuild(name: string, remote: NonNullable<NonNullable<ServiceArgs['image']['build']>['remote']>) {
-	return(new CloudRunService(name, { ...SERVICE, image: { build: { directory: APP_DIRECTORY, imageName: name, githubSha: 'sha-1', remote }}}));
+	return(buildService(name, { image: { build: { directory: APP_DIRECTORY, imageName: name, githubSha: 'sha-1', remote }}}));
 }
 
 const DATABASE_INSTANCE = 'gcp:sql/databaseInstance:DatabaseInstance';

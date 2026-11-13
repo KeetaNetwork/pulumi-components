@@ -11,6 +11,7 @@ import { PostgresCloudSQL } from './sql';
 import type { ContainerGeneric } from './container';
 import { ContainerMIG, ContainerCloudRun } from './container';
 import { MigrationJob } from './migration';
+import { AppNetwork } from './network';
 import { ServiceIdentity } from './identity';
 import { parseCloudRunServiceArgs } from './apps-args';
 import type { MIGWorkerArgs, CRWPWorkerArgs, LegacyMIGArgs, ParsedCloudRunServiceArgs, ParsedRemote } from './apps-args';
@@ -780,7 +781,18 @@ export interface CloudRunServiceArgs {
 	};
 
 	/**
-	 * VPC configuration (optional, created automatically if database is enabled)
+	 * The network of the service: the VPC, the subnet, the VPC connector and
+	 * the one private service access connection that a VPC may have. Services
+	 * that share a VPC receive the same `AppNetwork`, so the connection is made
+	 * once. When it is given the service creates no network resource, and
+	 * `vpc` cannot be given (the `AppNetwork` holds those settings).
+	 */
+	network?: AppNetwork;
+
+	/**
+	 * VPC configuration (optional, created automatically if database is enabled).
+	 * Giving `vpc.network` builds an `AppNetwork` around that VPC for this service
+	 * alone (and warns): services that share a VPC should share an `AppNetwork`.
 	 */
 	vpc?: {
 		/**
@@ -899,6 +911,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 	readonly service: gcp.cloudrun.Service;
 	readonly database?: PostgresCloudSQL;
 	readonly kv?: gcp.redis.Instance;
+	readonly network?: AppNetwork;
 	readonly vpc?: gcp.compute.Network;
 	readonly subnet?: gcp.compute.Subnetwork;
 	readonly vpcConnector?: gcp.vpcaccess.Connector;
@@ -916,52 +929,41 @@ export class CloudRunService extends pulumi.ComponentResource {
 		let vpc: gcp.compute.Network | undefined;
 		let subnet: gcp.compute.Subnetwork | undefined;
 		let vpcConnector: gcp.vpcaccess.Connector | undefined;
+		let appNetwork: AppNetwork | undefined;
 		let db: PostgresCloudSQL | undefined;
 		let kv: gcp.redis.Instance | undefined;
 
 		const parsedVpc = parsed.vpc;
 		if (parsedVpc !== undefined) {
-			const { network } = parsedVpc;
+			/*
+			 * The network is an AppNetwork: the caller's when it is given, else one
+			 * that this service builds for itself (around the VPC of the caller,
+			 * if there is one). It owns the VPC, the subnet, the connector and the
+			 * one private service access connection.
+			 */
+			if (parsedVpc.appNetwork === undefined) {
+				const own = parsedVpc.network;
+				appNetwork = new AppNetwork(name, {
+					region: parsed.region,
+					network: own.existing,
+					subnetCIDR: own.subnetCIDR,
+					connectorCIDR: own.connectorCIDR,
+					connector: own.connector,
+					psaPrefixLength: own.psaPrefixLength,
+					servicePeeringDeletionPolicy: own.servicePeeringDeletionPolicy,
+					movedFrom: this.urn
+				}, { parent: this });
+			} else {
+				appNetwork = parsedVpc.appNetwork;
+			}
 
-			vpc = network.existing ?? new gcp.compute.Network(`${name}-vpc`, {
-				description: `[${name}] VPC network`,
-				autoCreateSubnetworks: false
-			}, { parent: this });
-
-			subnet = new gcp.compute.Subnetwork(`${name}-subnet`, {
-				description: `[${name}] Subnet`,
-				network: vpc.selfLink,
-				region: parsed.region,
-				ipCidrRange: network.subnetCIDR,
-				privateIpGoogleAccess: true
-			}, { parent: vpc });
-
-			const connectorName = generateName(name, 'vpc', 25);
-			vpcConnector = new gcp.vpcaccess.Connector(`${name}-vpc-connector`, {
-				name: connectorName,
-				ipCidrRange: network.connectorCIDR,
-				minInstances: network.connector.minInstances,
-				maxInstances: network.connector.maxInstances,
-				network: vpc.selfLink,
-				region: parsed.region
-			}, { parent: subnet });
+			vpc = appNetwork.network;
+			subnet = appNetwork.subnet;
+			vpcConnector = appNetwork.connector;
 
 			if (parsedVpc.data) {
 				const { database } = parsedVpc.data;
-
-				const privateIpAlloc = new gcp.compute.GlobalAddress(`${name}-private-ip-alloc`, {
-					purpose: 'VPC_PEERING',
-					addressType: 'INTERNAL',
-					prefixLength: network.psaPrefixLength,
-					network: vpc.selfLink
-				}, { parent: vpc });
-
-				const svcNetworkingConnection = new gcp.servicenetworking.Connection(`${name}-svc-networking`, {
-					network: vpc.selfLink,
-					service: 'servicenetworking.googleapis.com',
-					reservedPeeringRanges: [privateIpAlloc.name],
-					deletionPolicy: network.servicePeeringDeletionPolicy
-				}, { parent: privateIpAlloc });
+				const svcNetworkingConnection = appNetwork.privateServiceAccess();
 
 				db = new PostgresCloudSQL(`${name}-db`, {
 					region: parsed.region,
@@ -993,27 +995,12 @@ export class CloudRunService extends pulumi.ComponentResource {
 					dependsOn: [ vpc, vpcConnector ]
 				});
 
-				new gcp.compute.Firewall(`${name}-kv-firewall`, {
-					description: `Allow VPC connector for to access KV (Redis)`,
-					network: vpc.id,
-					direction: 'EGRESS',
-					allows: [{
-						protocol: 'tcp',
-						ports: [ pulumi.interpolate`${kv.port}` ]
-					}],
-					sourceRanges: [
-						vpcConnector.ipCidrRange.apply(function(cidr) {
-							if (!cidr) {
-								throw(new Error('VPC connector does not have a CIDR range'));
-							}
-
-							return(cidr);
-						})
-					],
-					destinationRanges: [ pulumi.interpolate`${kv.host}/32` ],
+				appNetwork.allowKvEgress(name, {
+					port: kv.port,
+					host: kv.host,
 					priority: CLOUD_RUN_SERVICE_DEFAULTS.kv.firewallPriority,
-					...parsed.gcp.firewallConfig
-				}, { parent: vpc });
+					extra: parsed.gcp.firewallConfig
+				});
 			}
 		}
 
@@ -1240,21 +1227,14 @@ export class CloudRunService extends pulumi.ComponentResource {
 
 		let mig: ContainerGeneric | undefined;
 		const worker = parsedVpc?.worker;
-		if (worker && vpc && subnet) {
+		if (worker && appNetwork) {
 			// Enable SSH firewall if requested
 			if (worker.kind === 'mig' && worker.enableSSH) {
-				new gcp.compute.Firewall(`${name}-ssh-iap-firewall`, {
-					description: `[${name}] Allow SSH access to MIG instances via IAP`,
-					network: vpc.id,
-					direction: 'INGRESS',
-					sourceRanges: [CLOUD_RUN_SERVICE_DEFAULTS.worker.sshIAPRange], // GCP IAP range
+				appNetwork.allowIapSsh(name, {
+					sourceRange: CLOUD_RUN_SERVICE_DEFAULTS.worker.sshIAPRange, // GCP IAP range
 					priority: CLOUD_RUN_SERVICE_DEFAULTS.worker.sshIAPPriority,
-					allows: [{
-						protocol: 'tcp',
-						ports: ['22']
-					}],
-					...parsed.gcp.firewallConfig
-				}, { parent: vpc });
+					extra: parsed.gcp.firewallConfig
+				});
 			}
 
 			// The worker reads the environment of the app, with its own overrides
@@ -1276,7 +1256,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 					description: `[${name}] MIG worker for background tasks`,
 					serviceAccount: serviceAccount.email,
 					identity,
-					subnetwork: subnet,
+					subnetwork: appNetwork.subnet,
 					machineType: worker.machineType,
 					cosImage: worker.cosImage,
 					tags: worker.tags,
@@ -1305,7 +1285,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 					description: `[${name}] Worker for background tasks`,
 					serviceAccount: serviceAccount.email,
 					identity,
-					subnetwork: subnet,
+					subnetwork: appNetwork.subnet,
 					machineType: worker.machineType,
 					tags: worker.tags,
 					count: worker.instanceCount,
@@ -1330,6 +1310,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 		this.service = service;
 		this.database = db;
 		this.kv = kv;
+		this.network = appNetwork;
 		this.vpc = vpc;
 		this.subnet = subnet;
 		this.vpcConnector = vpcConnector;
