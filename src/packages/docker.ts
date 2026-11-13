@@ -15,6 +15,8 @@ import { fingerprintBuildContext, loadBuildContext } from './build-context';
 import type { BuildContext } from './build-context';
 import { GCP_COMPONENT_PREFIX } from './gcp/constants';
 import { BUILD_DEFAULTS } from './gcp/defaults';
+import { clientAuthInputs } from './gcp/client-auth';
+import type { ClientAuthProvider } from './gcp/client-auth';
 import LocalDockerImageBuilder from './localdocker';
 import type { google } from '@google-cloud/cloudbuild/build/protos/protos';
 
@@ -166,6 +168,12 @@ interface GCPDockerImageInput {
 	platform?: string;
 
 	/**
+	 * The caller whose identity the push runs as (the account the provider
+	 * of the caller impersonates, if any)
+	 */
+	provider?: ClientAuthProvider;
+
+	/**
 	 * Secrets to set Environment Variables for
 	 */
 	secrets?: SecretsInput;
@@ -196,7 +204,7 @@ interface GCPDockerRemoteImageInput extends GCPDockerImageInput {
 	 * Google Cloud Provider to use for creating the CloudBuild
 	 * and other resources
 	 */
-	provider: gcp.Provider | Pick<gcp.Provider, 'project'>;
+	provider: ClientAuthProvider;
 
 	/**
 	 * Machine Type information
@@ -348,7 +356,7 @@ abstract class BaseDockerImage extends pulumi.ComponentResource {
 		return(new Tarball.DirTarballArchive(directory, { ...options, context }));
 	}
 
-	constructor(prefix: string, input: GCPDockerImageInput, opts?: pulumi.CustomResourceOptions) {
+	constructor(prefix: string, input: GCPDockerImageInput, opts?: pulumi.ComponentResourceOptions) {
 		super(`${GCP_COMPONENT_PREFIX}:DockerImage`, prefix, {}, { ...opts });
 
 		const registryUrlOutput = pulumi.output(input.registryUrl);
@@ -477,7 +485,8 @@ export class LocalDockerImage extends BaseDockerImage {
 			buildArgs: buildArgs,
 			imageCache: this.imageCache,
 			tags: this.getDockerBuildTags(input),
-			cleanBuildDirectory: false
+			cleanBuildDirectory: false,
+			auth: clientAuthInputs(input.provider)
 		}, {
 			parent: this
 		});
@@ -800,7 +809,7 @@ export class DockerImage implements PublicInterface<LocalDockerImage> {
 	readonly getProvider: LocalDockerImage['getProvider'];
 	readonly clean: LocalDockerImage['clean'];
 
-	constructor(prefix: string, input: GenericDockerImageInput, opts?: pulumi.CustomResourceOptions) {
+	constructor(prefix: string, input: GenericDockerImageInput, opts?: pulumi.ComponentResourceOptions) {
 		let image: RemoteDockerImage | LocalDockerImage;
 
 		if ('serviceAccount' in input && 'bucket' in input && 'provider' in input) {

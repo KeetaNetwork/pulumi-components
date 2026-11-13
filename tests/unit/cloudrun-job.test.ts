@@ -5,7 +5,9 @@ import { requireSource } from './harness/load-sources';
 
 const { executionStateOf, jobExecutionHasChanges } = requireSource<typeof cloudrunJob>('src/packages/gcp/cloudrun-job.ts')._Testing;
 
-const execution = { jobName: 'job-1', projectId: 'project', region: 'us-central1', trigger: 'image@sha256:aaa' };
+const execution: { jobName: string; projectId: string; region: string; trigger: string; auth: { project: string; impersonateServiceAccount?: string }} = {
+	jobName: 'job-1', projectId: 'project', region: 'us-central1', trigger: 'image@sha256:aaa', auth: { project: 'project' }
+};
 const output = { executionName: 'execution-1', status: 'CONDITION_SUCCEEDED' as const, createTime: '1', completionTime: '2', logUri: null };
 
 /*
@@ -26,8 +28,13 @@ describe('jobExecutionHasChanges', function() {
 		expect(jobExecutionHasChanges(state, { ...execution, ...overrides })).toBe(true);
 	});
 
-	it('is not a change when the inputs are the same', function() {
-		expect(jobExecutionHasChanges(state, { ...execution })).toBe(false);
+	const unchanged: [ string, Partial<typeof execution> ][] = [
+		[ 'nothing differs', {} ],
+		[ 'only the auth input differs', { auth: { project: 'other', impersonateServiceAccount: 'deployer@project.iam.gserviceaccount.com' }} ]
+	];
+
+	it.each(unchanged)('is not a change when %s', function(_description, overrides) {
+		expect(jobExecutionHasChanges(state, { ...execution, ...overrides })).toBe(false);
 	});
 
 	it('is a change when the state holds no inputs, as a state from before 2.0 does', function() {

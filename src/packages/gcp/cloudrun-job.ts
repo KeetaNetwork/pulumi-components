@@ -2,6 +2,8 @@ import * as pulumi from '@pulumi/pulumi';
 import { randomUUID } from 'node:crypto';
 
 import type { DeepInput, DeepOutput } from '../../types';
+import { clientAuthInputs, googleAuthFrom } from './client-auth';
+import type { ClientAuthInputs, ClientAuthProvider } from './client-auth';
 import type * as runTypes from '@google-cloud/run';
 
 type ExecutionConditionState = 'STATE_UNSPECIFIED' | 'CONDITION_PENDING' | 'CONDITION_RECONCILING' | 'CONDITION_FAILED' | 'CONDITION_SUCCEEDED';
@@ -11,6 +13,9 @@ interface CloudRunJobExecutionInputs {
 	projectId: string;
 	region: string;
 	trigger: string;
+
+	/** Who runs the job (never part of a diff) */
+	auth?: ClientAuthInputs;
 }
 
 interface ExecutionOutput {
@@ -42,7 +47,13 @@ async function runJob(inputs: CloudRunJobExecutionInputs): Promise<ExecutionOutp
 	// eslint-disable-next-line @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-require-imports
 	const { JobsClient } = require('@google-cloud/run') as typeof runTypes;
 
-	const client = new JobsClient();
+	/* Without `auth` the client finds the credentials of the environment itself */
+	let clientOptions: ConstructorParameters<typeof JobsClient>[0];
+	if (inputs.auth !== undefined) {
+		clientOptions = { auth: await googleAuthFrom(inputs.auth) };
+	}
+
+	const client = new JobsClient(clientOptions);
 
 	// Run the job and wait for completion
 	const [operation] = await client.runJob({ name: jobPathOf(inputs) });
@@ -128,6 +139,9 @@ export interface CloudRunJobExecutionArgs {
 
 	/** Trigger value - when this changes, the job will be re-executed */
 	trigger: pulumi.Input<string>;
+
+	/** The provider of the caller: the job runs as the same identity */
+	provider?: ClientAuthProvider;
 }
 
 /**
@@ -146,7 +160,8 @@ export class CloudRunJobExecution extends pulumi.dynamic.Resource implements Pul
 			jobName: args.jobName,
 			projectId: args.projectId,
 			region: args.region,
-			trigger: args.trigger
+			trigger: args.trigger,
+			auth: clientAuthInputs(args.provider)
 		};
 
 		super(cloudRunJobExecutionProvider, name, {

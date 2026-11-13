@@ -15,8 +15,10 @@ import type { MIGWorkerArgs, CRWPWorkerArgs, LegacyMIGArgs, ParsedCloudRunServic
 export { CloudRunServiceArgsError } from './apps-args';
 export type { MIGWorkerArgs, CRWPWorkerArgs, LegacyMIGArgs } from './apps-args';
 import { CLOUD_RUN_SERVICE_DEFAULTS } from './defaults';
+import { callerOf } from './client-auth';
 import { buildDatabaseEnvVars, buildRedisEnvVars } from './database-env';
 import { createHttpRedirect } from './lb';
+import { legacyUrn, movedFrom } from './aliases';
 import * as components from '../docker';
 import { generateName } from '../../utils';
 
@@ -281,7 +283,7 @@ function createLoadBalancer(
 		}
 	}
 
-	createHttpRedirect(name, ipAddresses, { parent: urlMap });
+	createHttpRedirect(name, ipAddresses, { parent: opts.parent, oldParent: urlMap.urn });
 
 	const ips = pulumi.all(forwardingRules.map(function(fr) { return(fr.ipAddress); })).apply(function(ips) {
 		return(ips.filter(function(ip): ip is string { return(ip !== undefined && ip !== null); }));
@@ -420,6 +422,9 @@ export class StaticWebApp extends pulumi.ComponentResource {
 			},
 			uniformBucketLevelAccess: true,
 			...args.bucketConfig
+		}, {
+			parent: this,
+			aliases: movedFrom(`${name}-bucket`, 'gcp:storage/bucket:Bucket', { kind: 'stack' })
 		});
 
 		new gcp.storage.BucketIAMMember(`${name}-bucket-viewer`, {
@@ -427,6 +432,8 @@ export class StaticWebApp extends pulumi.ComponentResource {
 			role: 'roles/storage.objectViewer',
 			member: 'allUsers'
 		}, {
+			parent: this,
+			aliases: movedFrom(`${name}-bucket-viewer`, 'gcp:storage/bucketIAMMember:BucketIAMMember', { kind: 'stack' }),
 			deletedWith: bucket
 		});
 
@@ -469,6 +476,9 @@ export class StaticWebApp extends pulumi.ComponentResource {
 					});
 				}
 			}
+		}, {
+			parent: this,
+			aliases: movedFrom(`${name}-files`, 'keeta:synced-folder:GoogleCloudFolderWithArgs', { kind: 'stack' })
 		});
 
 		const customResponseHeadersInput = args.customResponseHeaders ?? [];
@@ -508,6 +518,9 @@ export class StaticWebApp extends pulumi.ComponentResource {
 				compressionMode: cdn.compressionMode ?? 'AUTOMATIC',
 				cdnPolicy: cdn.cdnPolicy ?? { cacheMode: 'USE_ORIGIN_HEADERS' }
 			} : {})
+		}, {
+			parent: this,
+			aliases: movedFrom(`${name}-backend`, 'gcp:compute/backendBucket:BackendBucket', { kind: 'stack' })
 		});
 
 		this.bucket = bucket;
@@ -1023,6 +1036,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 				imageName: build.imageName,
 				registryUrl: build.registryUrl,
 				platform: build.platform,
+				provider: callerOf(this, parsed.gcp.project),
 				buildArgs,
 				buildTarget: build.target,
 				buildDirectory: {
@@ -1038,7 +1052,10 @@ export class CloudRunService extends pulumi.ComponentResource {
 				imageConfig = { ...imageConfig, ...remoteConfig };
 			}
 
-			const dockerImage = new components.DockerImage(`${name}-image`, imageConfig);
+			const dockerImage = new components.DockerImage(`${name}-image`, imageConfig, {
+				parent: this,
+				aliases: movedFrom(`${name}-image`, 'Keeta:GCP:DockerImage', { kind: 'stack' })
+			});
 			imageUri = dockerImage.uri;
 		}
 
@@ -1207,16 +1224,22 @@ export class CloudRunService extends pulumi.ComponentResource {
 			member: 'allUsers'
 		}, {
 			deletedWith: service,
-			parent: service
+			parent: this,
+			aliases: movedFrom(`${name}-invoker`, 'gcp:cloudrun/iamMember:IamMember', { kind: 'resource', urn: service.urn })
 		});
 
+		const negType = 'gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup';
 		const neg = new gcp.compute.RegionNetworkEndpointGroup(`${name}-neg`, {
 			region: parsed.region,
 			networkEndpointType: 'SERVERLESS',
 			cloudRun: {
 				service: service.name
 			}
-		}, { parent: service });
+		}, {
+			deletedWith: service,
+			parent: this,
+			aliases: movedFrom(`${name}-neg`, negType, { kind: 'resource', urn: service.urn })
+		});
 
 		const backendService = new gcp.compute.BackendService(`${name}-backend`, {
 			protocol: 'HTTP',
@@ -1224,7 +1247,13 @@ export class CloudRunService extends pulumi.ComponentResource {
 			backends: [{
 				group: neg.id
 			}]
-		}, { parent: neg });
+		}, {
+			parent: this,
+			aliases: movedFrom(`${name}-backend`, 'gcp:compute/backendService:BackendService', {
+				kind: 'resource',
+				urn: legacyUrn(`${name}-neg`, negType, { kind: 'resource', urn: service.urn })
+			})
+		});
 
 		let mig: ContainerGeneric | undefined;
 		const worker = parsedVpc?.worker;
@@ -1354,10 +1383,12 @@ export class CloudRunService extends pulumi.ComponentResource {
 		parsed: ParsedCloudRunServiceArgs,
 		remote: ParsedRemote
 	) {
-		const provider = new gcp.Provider(`${name}-build-provider`, {
-			project: parsed.gcp.project,
-			region: parsed.region
-		}, { parent: this });
+		/*
+		 * The project comes from the arguments. The resources of the build use
+		 * the provider of the component, and the build only needs to know who
+		 * the caller is
+		 */
+		const provider = callerOf(this, parsed.gcp.project);
 
 		let { bindPermissions, serviceAccount, bucket } = remote;
 
