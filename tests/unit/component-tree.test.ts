@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { expectDefined, expectRecord, optionalRecord } from '../helpers/narrow';
-import { captureTree, describeTree, matchLegacyUrns, moveAliases, readBaselineCase, urnsOf, useIsolatedHome } from './harness/pulumi-tree';
+import { captureTree, describeTree, matchLegacyUrns, moveAliases, ofType, readBaselineCase, urnsOf, useIsolatedHome } from './harness/pulumi-tree';
 import type { TreeResource, TreeSnapshot } from './harness/pulumi-tree';
 import { TREE_CASES } from './harness/tree-cases';
 
@@ -64,7 +64,14 @@ const DATABASE_SECRETS = [ 'mc-psql-db-password', 'mc-psql-db-url' ];
  */
 const PLANNED_EXCEPTIONS: {
 	expectedRemovals: { [caseName: string]: { [urn: string]: string }};
+	/** Resources that keep a plain resource as their parent, by name */
+	plainParents: { [caseName: string]: { [name: string]: string }};
 } = {
+	plainParents: {
+		'internal-load-balancer': Object.fromEntries([ '-cert', '-map', '-target', '-ilb', '-ilb-in', '-ilb-in-health' ].map(function(ending) {
+			return([ `internal-load-balancer${ending}`, 'not moved: the internal load balancer is outside the move' ]);
+		}))
+	},
 	expectedRemovals: {
 		'service-build-remote': {
 			[baselineUrn('Keeta:GCP:CloudRunService$pulumi:providers:gcp', 'service-build-remote-build-provider')]: 'build provider removed'
@@ -86,7 +93,10 @@ const CALLER_RESOURCES: { [caseName: string]: string[] } = {
 	'service-providers': [ 'caller-provider' ],
 	'postgres-peering': [ 'postgres-network' ],
 	'standalone-mig': [ 'standalone-mig-network', 'standalone-mig-subnet' ],
-	'standalone-container-cloud-run': [ 'standalone-crwp-network', 'standalone-crwp-subnet' ]
+	'standalone-container-cloud-run': [ 'standalone-crwp-network', 'standalone-crwp-subnet' ],
+	'external-load-balancer': [ 'external-load-balancer-health' ],
+	'external-load-balancer-mig': [ 'external-load-balancer-mig-worker', 'external-load-balancer-mig-cert', 'external-load-balancer-mig-health', 'external-load-balancer-mig-worker-network', 'external-load-balancer-mig-worker-subnet' ],
+	'internal-load-balancer': [ 'internal-load-balancer-worker', 'internal-load-balancer-health', 'internal-load-balancer-worker-network', 'internal-load-balancer-worker-subnet' ]
 };
 
 /*
@@ -114,15 +124,25 @@ const IDENTITY = 'Keeta:GCP:ServiceIdentity';
 const APP_NETWORK = 'Keeta:GCP:AppNetwork';
 const NETWORK = 'gcp:compute/network:Network';
 const SUBNETWORK = 'gcp:compute/subnetwork:Subnetwork';
+const EXTERNAL_LB = 'keeta:lb:ExternalLoadBalancer';
+const INTERNAL_LB = 'keeta:lb:InternalLoadBalancer';
+const URL_MAP = 'gcp:compute/uRLMap:URLMap';
+const FORWARDING_RULE = 'gcp:compute/globalForwardingRule:GlobalForwardingRule';
+const CERTIFICATE_MAP = 'gcp:certificatemanager/certificateMap:CertificateMap';
+const SECURITY_POLICY = 'gcp:compute/securityPolicy:SecurityPolicy';
+const SSL_POLICY = 'gcp:compute/sSLPolicy:SSLPolicy';
+const HTTPS_PROXY = 'gcp:compute/targetHttpsProxy:TargetHttpsProxy';
+/** What the HTTP redirect of a front end belongs to: the app, or the ExternalLoadBalancer (it was under the URL map) */
+const REDIRECT_OWNERS = [ ...FRONT_ENDS, EXTERNAL_LB ];
 
 const MOVES: Move[] = [
 	{ type: 'gcp:storage/bucket:Bucket', name: /-bucket$/, parents: [ STATIC_APP ] },
 	{ type: 'gcp:storage/bucketIAMMember:BucketIAMMember', name: /-bucket-viewer$/, parents: [ STATIC_APP ] },
 	{ type: 'keeta:synced-folder:GoogleCloudFolderWithArgs', name: /-files$/, parents: [ STATIC_APP ] },
 	{ type: 'gcp:compute/backendBucket:BackendBucket', name: /-backend$/, parents: [ STATIC_APP ] },
-	{ type: 'gcp:compute/uRLMap:URLMap', name: /-http-redirect$/, parents: FRONT_ENDS },
-	{ type: 'gcp:compute/targetHttpProxy:TargetHttpProxy', name: /-http-proxy$/, parents: FRONT_ENDS },
-	{ type: 'gcp:compute/globalForwardingRule:GlobalForwardingRule', name: /-http-fr-ipv[46]$/, parents: FRONT_ENDS },
+	{ type: URL_MAP, name: /-http-redirect$/, parents: REDIRECT_OWNERS },
+	{ type: 'gcp:compute/targetHttpProxy:TargetHttpProxy', name: /-http-proxy$/, parents: REDIRECT_OWNERS },
+	{ type: FORWARDING_RULE, name: /-http-fr(-ipv[46])?$/, parents: REDIRECT_OWNERS },
 	{ type: 'Keeta:GCP:DockerImage', name: /-image$/, parents: [ SERVICE ] },
 	{ type: 'gcp:cloudrun/iamMember:IamMember', name: /-invoker$/, parents: [ SERVICE ] },
 	{ type: 'gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup', name: /-neg$/, parents: [ SERVICE ] },
@@ -156,9 +176,41 @@ const MOVES: Move[] = [
 	{ type: 'gcp:servicenetworking/connection:Connection', name: /-svc-networking$/, parents: [ APP_NETWORK ], oldParent: 'gcp:compute/globalAddress:GlobalAddress', parentSuffix: '-network' },
 	{ type: 'gcp:compute/firewall:Firewall', name: /-ssh-iap-firewall$/, parents: [ APP_NETWORK ], oldParent: NETWORK, parentSuffix: '-network' },
 	{ type: 'gcp:compute/firewall:Firewall', name: /-kv-firewall$/, parents: [ APP_NETWORK ], oldParent: NETWORK, parentSuffix: '-network' },
+	/*
+	 * What ExternalLoadBalancer put under its own URL map, backend
+	 * service or forwarding rule moves to the component (the redirect rows
+	 * above cover its HTTP redirect). Each row names the type of the old
+	 * parent. InternalLoadBalancer moves nothing.
+	 */
+	{ type: URL_MAP, name: /-ext-map$/, parents: [ EXTERNAL_LB ], oldParent: 'gcp:compute/backendService:BackendService' },
+	{ type: CERTIFICATE_MAP, name: /-ext-cert-map$/, parents: [ EXTERNAL_LB ], oldParent: URL_MAP },
+	{ type: 'gcp:certificatemanager/certificateMapEntry:CertificateMapEntry', name: /-ext-cert-map-entry$/, parents: [ EXTERNAL_LB ], oldParent: CERTIFICATE_MAP },
+	{ type: HTTPS_PROXY, name: /-ext-target$/, parents: [ EXTERNAL_LB ], oldParent: URL_MAP },
+	{ type: FORWARDING_RULE, name: /-lb$/, parents: [ EXTERNAL_LB ], oldParent: URL_MAP },
+	{ type: 'gcp:compute/firewall:Firewall', name: /-lb-in$/, parents: [ EXTERNAL_LB ], oldParent: FORWARDING_RULE },
+	{ type: 'gcp:compute/globalNetworkEndpoint:GlobalNetworkEndpoint', name: /-ext-be-ne$/, parents: [ EXTERNAL_LB ], oldParent: 'gcp:compute/globalNetworkEndpointGroup:GlobalNetworkEndpointGroup' },
 	/* The binding of a secret the caller owns (`-non-managed-`) had the EnvManager as its parent in 1.0.95 and stays there */
 	{ type: 'gcp:secretmanager/secretIamMember:SecretIamMember', name: /^(?!.*-non-managed-).*-iam-binding$/, parents: [ ENV_MANAGER ] }
 ];
+
+/** A resource that kept its parent and got another logical name; it has one alias, to its URN under the old name */
+interface Rename {
+	caseName: string;
+	type: string;
+	parent: string;
+	from: string;
+	to: string;
+}
+
+const RENAMES: Rename[] = [
+	{ caseName: 'internal-load-balancer', type: SECURITY_POLICY, parent: INTERNAL_LB, from: 'internal-load-balancer-ext-be-sp', to: 'internal-load-balancer-int-be-sp' }
+];
+
+function isRenamed(caseName: string, resource: TreeResource) {
+	return(RENAMES.some(function(rename) {
+		return(rename.caseName === caseName && rename.type === resource.type && rename.to === resource.name);
+	}));
+}
 
 /** The one URN of the released version that has this resource's name and type as its own */
 function releasedUrnOf(caseName: string, resource: TreeResource) {
@@ -350,6 +402,7 @@ describe('component tree', function() {
 			}
 
 			expect([ ...componentTypes ].sort()).toEqual([
+				'Keeta:Crypto:ECDSAKeyPair',
 				'Keeta:GCP:AppNetwork',
 				'Keeta:GCP:CloudRunEnvManager',
 				'Keeta:GCP:CloudRunService',
@@ -361,6 +414,8 @@ describe('component tree', function() {
 				'Keeta:GCP:PostgresCloudSQL',
 				'Keeta:GCP:ServiceIdentity',
 				'Keeta:GCP:StaticWebApp',
+				'keeta:lb:ExternalLoadBalancer',
+				'keeta:lb:InternalLoadBalancer',
 				'keeta:synced-folder:GoogleCloudFolderWithArgs'
 			]);
 		});
@@ -397,7 +452,7 @@ describe('component tree', function() {
 		it.each(caseNames)('%s has no plain resource as a parent', function(caseName) {
 			const tree = treeOf(caseName);
 			const offenders = tree.resources.filter(function(resource) {
-				return(hasPlainParent(tree, resource));
+				return(hasPlainParent(tree, resource) && PLANNED_EXCEPTIONS.plainParents[caseName]?.[resource.name] === undefined);
 			}).map(function(resource) {
 				return(`${resource.name} <- ${parentOf(tree, resource)?.name ?? 'none'}`);
 			});
@@ -441,6 +496,19 @@ describe('component tree', function() {
 			}));
 		}))('%s: gives the reason for removing %s', function(_caseName, _urn, reason) {
 			expect(reason).not.toBe('');
+		});
+
+		it.each(Object.entries(PLANNED_EXCEPTIONS.plainParents).flatMap(function([ caseName, names ]) {
+			return(Object.entries(names).map(function([ name, reason ]): [ string, string, string ] {
+				return([ caseName, name, reason ]);
+			}));
+		}))('%s: keeps the plain parent of %s only for a reason, and only while it has one', function(caseName, name, reason) {
+			const tree = treeOf(caseName);
+			const resource = expectDefined(byName(tree, name), `the resource ${name}`);
+
+			expect(reason).toMatch(/^\S+ \S+/);
+			expect(hasPlainParent(tree, resource)).toBe(true);
+			expect(moveAliases(resource)).toEqual([]);
 		});
 
 		it('keeps the binding of a secret the caller owns where it was', function() {
@@ -501,7 +569,7 @@ describe('component tree', function() {
 
 		it.each(caseNames)('%s gives an alias to nothing that did not move', function(caseName) {
 			const withAlias = treeOf(caseName).resources.filter(function(resource) {
-				return(moveAliases(resource).length > 0 && moveOf(caseName, resource) === undefined);
+				return(moveAliases(resource).length > 0 && moveOf(caseName, resource) === undefined && !isRenamed(caseName, resource));
 			});
 
 			expect(withAlias.map(function(resource) {
@@ -971,6 +1039,77 @@ describe('component tree', function() {
 	 * docker image with its IAM grants and the remote build's service account
 	 * and bucket.
 	 */
+	/*
+	 * Every HTTPS front end of the library gets one SSL
+	 * policy of its own (`${name}-ssl-policy`), attached to its proxy. It is
+	 * the only resource the release creates: no front end loses or replaces
+	 * anything. InternalLoadBalancer is outside this table: it gets no policy.
+	 */
+	describe('SSL policy', function() {
+		/* [ case, the proxy, the policy it is attached to ] */
+		const PROXIES: [ string, string, string ][] = [
+			[ 'static-web-app-load-balancer', 'static-web-app-lb-https-proxy', 'static-web-app-lb-ssl-policy' ],
+			[ 'full-stack-app', 'full-stack-https-proxy', 'full-stack-ssl-policy' ],
+			[ 'full-stack-app-without-frontend', 'full-stack-api-https-proxy', 'full-stack-api-ssl-policy' ],
+			[ 'external-load-balancer', 'external-load-balancer-ext-target', 'external-load-balancer-ssl-policy' ],
+			[ 'external-load-balancer-mig', 'external-load-balancer-mig-ext-target', 'external-load-balancer-mig-ssl-policy' ]
+		];
+
+		it.each(PROXIES)('%s: attaches the MODERN TLS 1.2 policy of its component to %s', function(caseName, proxyName, policyName) {
+			const tree = treeOf(caseName);
+			const proxy = expectDefined(byName(tree, proxyName, HTTPS_PROXY), `the proxy ${proxyName}`);
+			const policy = expectDefined(byName(tree, policyName, SSL_POLICY), `the policy ${policyName}`);
+
+			expect(ofType(tree, SSL_POLICY)).toHaveLength(1);
+			expect(policy.parent).toBe(proxy.parent);
+			expect(expectRecord(policy.inputs, `the inputs of ${policyName}`)).toMatchObject({ profile: 'MODERN', minTlsVersion: 'TLS_1_2' });
+			expect(expectRecord(proxy.inputs, `the inputs of ${proxyName}`).sslPolicy).toBeTypeOf('string');
+			expect(proxy.dependsOn).toContain(policy.urn);
+		});
+
+		it.each(PROXIES)('%s: creates no resource but the SSL policy of its front end', function(caseName, _proxyName, policyName) {
+			const released = new Set(readBaselineCase(baseline, caseName).map(function(urn) {
+				const [ , , typeChain, name ] = urn.split('::');
+
+				return(`${typeChain?.split('$').pop() ?? ''}::${name ?? ''}`);
+			}));
+			const created = treeOf(caseName).resources.filter(function(resource) {
+				return(resource.custom && !released.has(`${resource.type}::${resource.name}`));
+			});
+
+			expect(created.map(function(resource) {
+				return(resource.name);
+			})).toEqual([ policyName ]);
+		});
+	});
+
+	/*
+	 * The policy of InternalLoadBalancer is named after the
+	 * internal balancer. Its parent stays, so one alias to the URN under the
+	 * old name is all the move needs, and nothing is replaced.
+	 */
+	describe('renamed resources', function() {
+		it.each(RENAMES)('$caseName: $from is now $to, with one alias to $from', function(rename) {
+			const tree = treeOf(rename.caseName);
+			const resource = expectDefined(byName(tree, rename.to, rename.type), `the resource ${rename.to}`);
+			const parent = expectDefined(parentOf(tree, resource), `the parent of ${rename.to}`);
+			const released = readBaselineCase(baseline, rename.caseName).filter(function(urn) {
+				return(urn.endsWith(`::${rename.from}`) && urn.split('::')[2]?.split('$').pop() === rename.type);
+			});
+
+			expect(parent.type).toBe(rename.parent);
+			expect(rename.to.startsWith(`${parent.name}-`)).toBe(true);
+			expect(released).toHaveLength(1);
+			expect(resource.aliases).toEqual(released);
+			expect(byName(tree, rename.from)).toBeUndefined();
+			expect(released[0]).toContain(`${parent.type}$${rename.type}::`);
+		});
+
+		it('keeps ExternalLoadBalancer on the name that it has had', function() {
+			expect(byName(treeOf('external-load-balancer-mig'), 'external-load-balancer-mig-ext-be-sp', SECURITY_POLICY)).toBeDefined();
+		});
+	});
+
 	describe('provider propagation', function() {
 		function gcpNamesByProvider(caseName: string) {
 			const resources = treeOf(caseName).resources.filter(function(resource) {

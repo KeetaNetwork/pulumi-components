@@ -1,60 +1,17 @@
 import * as pulumi from '@pulumi/pulumi';
 import * as gcp from '@pulumi/gcp';
 import * as utils from '../../utils';
-import { movedFrom } from './aliases';
+import { legacyUrn, movedFrom } from './aliases';
+import { createHTTPSFrontEnd, parseCallerCertificate, parseSslPolicy } from './https-frontend';
+import type { CertChoice } from './https-frontend';
 
 import type { GCPCommonOptions, CertificateManagerCert, ComputeManagedSslCert } from './common';
 import type { ContainerMIG } from './container';
 
-/**
- * Create HTTP-to-HTTPS redirect resources (URL map, proxy, forwarding rules)
- */
-export function createHttpRedirect(
-	name: string,
-	ips: { ip: pulumi.Input<string>; kind: string }[],
-	opts: {
-		parent: pulumi.Resource;
+export { createHttpRedirect } from './https-frontend';
 
-		/**
-		 * The URN of the resource that was their parent in 1.0.95, for
-		 * resources that moved to `parent`: each answers to its old URN
-		 */
-		oldParent?: pulumi.Input<pulumi.URN>;
-	}
-) {
-	function optionsOf(resourceName: string, type: string): pulumi.CustomResourceOptions {
-		if (opts.oldParent === undefined) {
-			return({ parent: opts.parent });
-		}
-
-		return({ parent: opts.parent, aliases: movedFrom(resourceName, type, { kind: 'resource', urn: opts.oldParent }) });
-	}
-
-	const redirectMap = new gcp.compute.URLMap(`${name}-http-redirect`, {
-		defaultUrlRedirect: {
-			httpsRedirect: true,
-			stripQuery: false
-		}
-	}, optionsOf(`${name}-http-redirect`, 'gcp:compute/uRLMap:URLMap'));
-
-	const httpProxy = new gcp.compute.TargetHttpProxy(`${name}-http-proxy`, {
-		urlMap: redirectMap.id
-	}, optionsOf(`${name}-http-proxy`, 'gcp:compute/targetHttpProxy:TargetHttpProxy'));
-
-	for (const ipConfig of ips) {
-		const ruleName = `${name}-http-fr-${ipConfig.kind}`.replace(/-$/, '');
-		new gcp.compute.GlobalForwardingRule(ruleName, {
-			ipAddress: ipConfig.ip,
-			target: httpProxy.id,
-			portRange: '80',
-			loadBalancingScheme: 'EXTERNAL_MANAGED',
-			ipProtocol: 'TCP'
-		}, {
-			...optionsOf(ruleName, 'gcp:compute/globalForwardingRule:GlobalForwardingRule'),
-			deleteBeforeReplace: true
-		});
-	}
-}
+const URL_MAP_TYPE = 'gcp:compute/uRLMap:URLMap';
+const FORWARDING_RULE_TYPE = 'gcp:compute/globalForwardingRule:GlobalForwardingRule';
 
 type LoadBalancerArgs = {
 	/**
@@ -186,6 +143,13 @@ type ExternalLoadBalancerArgs = LoadBalancerArgs & {
 	 * in "domainName")
 	 */
 	sslCertificate?: CertificateManagerCert | ComputeManagedSslCert;
+
+	/**
+	 * The SSL policy of the HTTPS proxy. Left out, one is created
+	 * (`${name}-ssl-policy`: profile `MODERN`, TLS 1.2 and up); give a policy
+	 * of your own to use it, or `false` for none.
+	 */
+	sslPolicy?: gcp.compute.SSLPolicy | false;
 };
 
 /**
@@ -321,12 +285,11 @@ export class InternalLoadBalancer extends pulumi.ComponentResource {
 		let certificateID: pulumi.Output<string>;
 		let useCertificateManager = false;
 		if ('sslCertificate' in config && config.sslCertificate !== undefined) {
-			const cert = config.sslCertificate;
-			// Discriminate based on presence of certificateId (compute.ManagedSslCertificate only)
-			if ('certificateId' in cert) {
-				// This is a compute.ManagedSslCertificate - look it up by name
+			const cert = parseCallerCertificate(config.sslCertificate);
+			if (cert.kind === 'compute') {
+				// A compute certificate is looked up by name
 				const globalCert = gcp.compute.getCertificateOutput({
-					name: pulumi.output(cert.id).apply(function(id) {
+					name: cert.id.apply(function(id) {
 						const parts = id.split('/');
 						return(parts[parts.length - 1] ?? id);
 					})
@@ -338,9 +301,8 @@ export class InternalLoadBalancer extends pulumi.ComponentResource {
 
 				useCertificateManager = false;
 			} else {
-				// This is a certificatemanager.Certificate
 				useCertificateManager = true;
-				certificateID = pulumi.output(cert.id);
+				certificateID = cert.id;
 			}
 		} else if ('domainName' in config && config.domainName !== undefined) {
 			const domainValidation = new gcp.certificatemanager.DnsAuthorization(`${name}-cert-dns`, {
@@ -378,8 +340,13 @@ export class InternalLoadBalancer extends pulumi.ComponentResource {
 			throw(new Error('Internal Load Balancer does not support Network Endpoint Groups (currently)'));
 		}
 
-		const backendSecurityPolicy = createBackendSecurityPolicy(`${name}-ext-be-sp`, args.allowedSources, undefined, {
-			parent: this
+		/*
+		 * The policy was named `-ext-be-sp` by mistake: it keeps its parent
+		 * and answers to the URN it had under that name
+		 */
+		const backendSecurityPolicy = createBackendSecurityPolicy(`${name}-int-be-sp`, args.allowedSources, undefined, {
+			parent: this,
+			aliases: [ legacyUrn(`${name}-ext-be-sp`, 'gcp:compute/securityPolicy:SecurityPolicy', { kind: 'resource', urn: this.urn }) ]
 		});
 
 		const backend = new gcp.compute.BackendService(`${name}-be`, {
@@ -530,37 +497,22 @@ export class ExternalLoadBalancer extends pulumi.ComponentResource {
 		}
 
 		/*
-		 * Pull in user-specified SSL certificate or create one
+		 * Pull in user-specified SSL certificate or create one (the front end
+		 * creates it, when it is managed)
 		 */
-		let certificateID: pulumi.Output<string>;
-		let useCertificateManager = false;
+		let cert: CertChoice;
 		if ('sslCertificate' in config && config.sslCertificate !== undefined) {
-			const cert = config.sslCertificate;
-			// Discriminate based on presence of certificateId (compute.ManagedSslCertificate only)
-			if ('certificateId' in cert) {
-				// This is a compute.ManagedSslCertificate
-				certificateID = pulumi.output(cert.id);
-				useCertificateManager = false;
-			} else {
-				// This is a certificatemanager.Certificate
-				useCertificateManager = true;
-				certificateID = pulumi.output(cert.id);
-			}
+			cert = parseCallerCertificate(config.sslCertificate, config.domainName);
 		} else if ('domainName' in config && config.domainName !== undefined) {
-			const cert = new gcp.compute.ManagedSslCertificate(`${name}-ext-cert`, {
-				description: `SSL Certificate for the ${args.baseDescription}`,
-				managed: {
-					domains: [config.domainName]
-				}
-			}, {
-				parent: this,
-				dependsOn: toDependOn.splice(0)
-			});
-
-			certificateID = cert.id;
-			useCertificateManager = false;
+			cert = { kind: 'managed', domains: [config.domainName] };
 		} else {
 			throw(new Error('External Load Balancer requires either a domain name or an SSL certificate (or both)'));
+		}
+
+		// The certificate waits for the DNS entry of the domain; with a certificate of the caller the backend does
+		let certDependsOn: pulumi.Resource[] = [];
+		if (cert.kind === 'managed') {
+			certDependsOn = toDependOn.splice(0);
 		}
 
 		let targetBackendGroup;
@@ -598,7 +550,9 @@ export class ExternalLoadBalancer extends pulumi.ComponentResource {
 				globalNetworkEndpointGroup: endpointGroup.id,
 				...targetInfo
 			}, {
-				parent: endpointGroup
+				parent: this,
+				aliases: movedFrom(`${name}-ext-be-ne`, 'gcp:compute/globalNetworkEndpoint:GlobalNetworkEndpoint', { kind: 'resource', urn: endpointGroup.urn }),
+				deletedWith: endpointGroup
 			});
 
 			targetBackendGroup = endpointGroup.id;
@@ -636,65 +590,36 @@ export class ExternalLoadBalancer extends pulumi.ComponentResource {
 			dependsOn: toDependOn.splice(0)
 		});
 
+		/*
+		 * What was a child of the backend service, of the URL map or of the
+		 * forwarding rule in 1.0.95 is a child of this now. A resource answers to
+		 * the URN it had, and the URL map had moved too, so what was under it
+		 * names the old URN of the map.
+		 */
 		const urlMap = new gcp.compute.URLMap(`${name}-ext-map`, {
 			description: `URL Map for the ${args.baseDescription}`,
 			defaultService: backend.selfLink
 		}, {
-			parent: backend
+			parent: this,
+			aliases: movedFrom(`${name}-ext-map`, URL_MAP_TYPE, { kind: 'resource', urn: backend.urn })
 		});
+		const legacyUrlMap = legacyUrn(`${name}-ext-map`, URL_MAP_TYPE, { kind: 'resource', urn: backend.urn });
 
-		let targetConfig: Pick<NonNullable<ConstructorParameters<typeof gcp.compute.TargetHttpsProxy>[1]>, 'description' | 'urlMap' | 'certificateMap' | 'sslCertificates'>;
-		if (useCertificateManager) {
-			const certMap = new gcp.certificatemanager.CertificateMap(`${name}-ext-cert-map`, {
-				description: `Certificate map for the ${args.baseDescription}`
-			}, {
-				parent: urlMap
-			});
+		const frontEnd = createHTTPSFrontEnd(name, { cert, sslPolicy: parseSslPolicy(args.sslPolicy) }, {
+			variant: {
+				kind: 'external',
+				description: args.baseDescription,
+				certDependsOn,
+				legacyUrlMap
+			},
+			urlMap,
+			ips: [{ ip, kind: '' }]
+		}, { parent: this });
 
-			let certMapEntryHostConfig: Pick<NonNullable<ConstructorParameters<typeof gcp.certificatemanager.CertificateMapEntry>[1]>, 'hostname' | 'matcher'>;
-			if ('domainName' in config && config.domainName !== undefined) {
-				certMapEntryHostConfig = { hostname: config.domainName };
-			} else {
-				certMapEntryHostConfig = { matcher: 'PRIMARY' };
-			}
-			const certMapEntry = new gcp.certificatemanager.CertificateMapEntry(`${name}-ext-cert-map-entry`, {
-				map: certMap.name,
-				certificates: [certificateID],
-				...certMapEntryHostConfig
-			}, {
-				parent: certMap
-			});
-			toDependOn.push(certMapEntry);
-
-			targetConfig = {
-				description: `Target HTTPS Proxy for the ${args.baseDescription}`,
-				urlMap: urlMap.name,
-				certificateMap: pulumi.interpolate`//certificatemanager.googleapis.com/${certMap.id}`
-			};
-		} else {
-			targetConfig = {
-				description: `Target HTTPS Proxy for the ${args.baseDescription}`,
-				urlMap: urlMap.name,
-				sslCertificates: [certificateID]
-			};
+		const [ lb ] = frontEnd.forwardingRules;
+		if (lb === undefined) {
+			throw(new Error('The front end of the External Load Balancer has no forwarding rule'));
 		}
-		const target = new gcp.compute.TargetHttpsProxy(`${name}-ext-target`, targetConfig, {
-			parent: urlMap,
-			dependsOn: toDependOn.splice(0)
-		});
-
-		const lb = new gcp.compute.GlobalForwardingRule(`${name}-lb`, {
-			description: `External Load Balancer for the ${args.baseDescription}`,
-			target: target.id,
-			loadBalancingScheme: 'EXTERNAL_MANAGED',
-			ipAddress: ip,
-			portRange: '443'
-		}, {
-			parent: urlMap,
-			dependsOn: toDependOn.splice(0)
-		});
-
-		createHttpRedirect(name, [{ ip, kind: '' }], { parent: urlMap });
 
 		if (args.target.type === 'MIG') {
 			/*
@@ -720,7 +645,11 @@ export class ExternalLoadBalancer extends pulumi.ComponentResource {
 				priority: 900,
 				...args.common.gcp.firewallConfig
 			}, {
-				parent: lb
+				parent: this,
+				aliases: movedFrom(`${name}-lb-in`, 'gcp:compute/firewall:Firewall', {
+					kind: 'resource',
+					urn: legacyUrn(`${name}-lb`, FORWARDING_RULE_TYPE, { kind: 'resource', urn: legacyUrlMap })
+				})
 			});
 		}
 

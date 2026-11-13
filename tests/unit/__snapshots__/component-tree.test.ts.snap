@@ -46,6 +46,663 @@ exports[`component tree > provider propagation > gives the passed provider to th
 }
 `;
 
+exports[`component tree > snapshot > ecdsa-key-pair keeps its resources, parents, aliases and key inputs 1`] = `
+[
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "algorithm": "ECDSA",
+      "ecdsaCurve": "P256",
+    },
+    "name": "ecdsa-key-pair-keypair",
+    "parent": "Keeta:Crypto:ECDSAKeyPair::ecdsa-key-pair",
+    "type": "tls:index/privateKey:PrivateKey",
+    "urn": "Keeta:Crypto:ECDSAKeyPair$tls:index/privateKey:PrivateKey::ecdsa-key-pair-keypair",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "ecdsa-key-pair",
+    "type": "Keeta:Crypto:ECDSAKeyPair",
+    "urn": "Keeta:Crypto:ECDSAKeyPair::ecdsa-key-pair",
+  },
+]
+`;
+
+exports[`component tree > snapshot > external-load-balancer keeps its resources, parents, aliases and key inputs 1`] = `
+[
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "httpHealthCheck": {
+        "port": 8080,
+      },
+    },
+    "name": "external-load-balancer-health",
+    "type": "gcp:compute/healthCheck:HealthCheck",
+    "urn": "gcp:compute/healthCheck:HealthCheck::external-load-balancer-health",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "backends": [
+        {
+          "description": "Backend for the test app",
+          "group": "external-load-balancer-ext-be-neg-id",
+        },
+      ],
+      "customRequestHeaders": [
+        "host:backend.example.com",
+      ],
+      "loadBalancingScheme": "EXTERNAL_MANAGED",
+      "logConfig": {
+        "enable": true,
+      },
+      "protocol": "HTTPS",
+    },
+    "name": "external-load-balancer-ext-be",
+    "parent": "keeta:lb:ExternalLoadBalancer::external-load-balancer",
+    "type": "gcp:compute/backendService:BackendService",
+    "urn": "keeta:lb:ExternalLoadBalancer$gcp:compute/backendService:BackendService::external-load-balancer-ext-be",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "addressType": "EXTERNAL",
+      "description": "IP Address for the test app",
+    },
+    "name": "external-load-balancer-ext-ip",
+    "parent": "keeta:lb:ExternalLoadBalancer::external-load-balancer",
+    "type": "gcp:compute/globalAddress:GlobalAddress",
+    "urn": "keeta:lb:ExternalLoadBalancer$gcp:compute/globalAddress:GlobalAddress::external-load-balancer-ext-ip",
+  },
+  {
+    "aliases": [
+      "keeta:lb:ExternalLoadBalancer$gcp:compute/backendService:BackendService$gcp:compute/uRLMap:URLMap$gcp:compute/globalForwardingRule:GlobalForwardingRule::external-load-balancer-http-fr",
+    ],
+    "custom": true,
+    "inputs": {
+      "ipAddress": "external-load-balancer-ext-ip-id",
+      "ipProtocol": "TCP",
+      "loadBalancingScheme": "EXTERNAL_MANAGED",
+      "portRange": "80",
+      "target": "external-load-balancer-http-proxy-id",
+    },
+    "name": "external-load-balancer-http-fr",
+    "parent": "keeta:lb:ExternalLoadBalancer::external-load-balancer",
+    "type": "gcp:compute/globalForwardingRule:GlobalForwardingRule",
+    "urn": "keeta:lb:ExternalLoadBalancer$gcp:compute/globalForwardingRule:GlobalForwardingRule::external-load-balancer-http-fr",
+  },
+  {
+    "aliases": [
+      "keeta:lb:ExternalLoadBalancer$gcp:compute/backendService:BackendService$gcp:compute/uRLMap:URLMap$gcp:compute/globalForwardingRule:GlobalForwardingRule::external-load-balancer-lb",
+    ],
+    "custom": true,
+    "inputs": {
+      "description": "External Load Balancer for the test app",
+      "ipAddress": "external-load-balancer-ext-ip-id",
+      "loadBalancingScheme": "EXTERNAL_MANAGED",
+      "portRange": "443",
+      "target": "external-load-balancer-ext-target-id",
+    },
+    "name": "external-load-balancer-lb",
+    "parent": "keeta:lb:ExternalLoadBalancer::external-load-balancer",
+    "type": "gcp:compute/globalForwardingRule:GlobalForwardingRule",
+    "urn": "keeta:lb:ExternalLoadBalancer$gcp:compute/globalForwardingRule:GlobalForwardingRule::external-load-balancer-lb",
+  },
+  {
+    "aliases": [
+      "keeta:lb:ExternalLoadBalancer$gcp:compute/globalNetworkEndpointGroup:GlobalNetworkEndpointGroup$gcp:compute/globalNetworkEndpoint:GlobalNetworkEndpoint::external-load-balancer-ext-be-ne",
+    ],
+    "custom": true,
+    "deletedWith": "keeta:lb:ExternalLoadBalancer$gcp:compute/globalNetworkEndpointGroup:GlobalNetworkEndpointGroup::external-load-balancer-ext-be-neg",
+    "inputs": {
+      "fqdn": "backend.example.com",
+      "globalNetworkEndpointGroup": "external-load-balancer-ext-be-neg-id",
+      "port": 443,
+    },
+    "name": "external-load-balancer-ext-be-ne",
+    "parent": "keeta:lb:ExternalLoadBalancer::external-load-balancer",
+    "type": "gcp:compute/globalNetworkEndpoint:GlobalNetworkEndpoint",
+    "urn": "keeta:lb:ExternalLoadBalancer$gcp:compute/globalNetworkEndpoint:GlobalNetworkEndpoint::external-load-balancer-ext-be-ne",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "description": "Network Endpoint Group for the test app (target 4140a263)",
+      "networkEndpointType": "INTERNET_FQDN_PORT",
+    },
+    "name": "external-load-balancer-ext-be-neg",
+    "parent": "keeta:lb:ExternalLoadBalancer::external-load-balancer",
+    "type": "gcp:compute/globalNetworkEndpointGroup:GlobalNetworkEndpointGroup",
+    "urn": "keeta:lb:ExternalLoadBalancer$gcp:compute/globalNetworkEndpointGroup:GlobalNetworkEndpointGroup::external-load-balancer-ext-be-neg",
+  },
+  {
+    "aliases": [
+      "keeta:lb:ExternalLoadBalancer$gcp:compute/mangedSslCertificate:MangedSslCertificate::external-load-balancer-ext-cert",
+    ],
+    "custom": true,
+    "inputs": {
+      "description": "SSL Certificate for the test app",
+      "managed": {
+        "domains": [
+          "app.example.com",
+        ],
+      },
+    },
+    "name": "external-load-balancer-ext-cert",
+    "parent": "keeta:lb:ExternalLoadBalancer::external-load-balancer",
+    "type": "gcp:compute/managedSslCertificate:ManagedSslCertificate",
+    "urn": "keeta:lb:ExternalLoadBalancer$gcp:compute/managedSslCertificate:ManagedSslCertificate::external-load-balancer-ext-cert",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "minTlsVersion": "TLS_1_2",
+      "profile": "MODERN",
+    },
+    "name": "external-load-balancer-ssl-policy",
+    "parent": "keeta:lb:ExternalLoadBalancer::external-load-balancer",
+    "type": "gcp:compute/sSLPolicy:SSLPolicy",
+    "urn": "keeta:lb:ExternalLoadBalancer$gcp:compute/sSLPolicy:SSLPolicy::external-load-balancer-ssl-policy",
+  },
+  {
+    "aliases": [
+      "keeta:lb:ExternalLoadBalancer$gcp:compute/backendService:BackendService$gcp:compute/uRLMap:URLMap$gcp:compute/targetHttpProxy:TargetHttpProxy::external-load-balancer-http-proxy",
+    ],
+    "custom": true,
+    "inputs": {
+      "urlMap": "external-load-balancer-http-redirect-id",
+    },
+    "name": "external-load-balancer-http-proxy",
+    "parent": "keeta:lb:ExternalLoadBalancer::external-load-balancer",
+    "type": "gcp:compute/targetHttpProxy:TargetHttpProxy",
+    "urn": "keeta:lb:ExternalLoadBalancer$gcp:compute/targetHttpProxy:TargetHttpProxy::external-load-balancer-http-proxy",
+  },
+  {
+    "aliases": [
+      "keeta:lb:ExternalLoadBalancer$gcp:compute/backendService:BackendService$gcp:compute/uRLMap:URLMap$gcp:compute/targetHttpsProxy:TargetHttpsProxy::external-load-balancer-ext-target",
+    ],
+    "custom": true,
+    "inputs": {
+      "description": "Target HTTPS Proxy for the test app",
+      "sslCertificates": [
+        "external-load-balancer-ext-cert-id",
+      ],
+      "sslPolicy": "external-load-balancer-ssl-policy-id",
+      "urlMap": "external-load-balancer-ext-map",
+    },
+    "name": "external-load-balancer-ext-target",
+    "parent": "keeta:lb:ExternalLoadBalancer::external-load-balancer",
+    "type": "gcp:compute/targetHttpsProxy:TargetHttpsProxy",
+    "urn": "keeta:lb:ExternalLoadBalancer$gcp:compute/targetHttpsProxy:TargetHttpsProxy::external-load-balancer-ext-target",
+  },
+  {
+    "aliases": [
+      "keeta:lb:ExternalLoadBalancer$gcp:compute/backendService:BackendService$gcp:compute/uRLMap:URLMap::external-load-balancer-ext-map",
+    ],
+    "custom": true,
+    "inputs": {
+      "defaultService": "self-link.external-load-balancer-ext-be",
+      "description": "URL Map for the test app",
+    },
+    "name": "external-load-balancer-ext-map",
+    "parent": "keeta:lb:ExternalLoadBalancer::external-load-balancer",
+    "type": "gcp:compute/uRLMap:URLMap",
+    "urn": "keeta:lb:ExternalLoadBalancer$gcp:compute/uRLMap:URLMap::external-load-balancer-ext-map",
+  },
+  {
+    "aliases": [
+      "keeta:lb:ExternalLoadBalancer$gcp:compute/backendService:BackendService$gcp:compute/uRLMap:URLMap$gcp:compute/uRLMap:URLMap::external-load-balancer-http-redirect",
+    ],
+    "custom": true,
+    "inputs": {
+      "defaultUrlRedirect": {
+        "httpsRedirect": true,
+        "stripQuery": false,
+      },
+    },
+    "name": "external-load-balancer-http-redirect",
+    "parent": "keeta:lb:ExternalLoadBalancer::external-load-balancer",
+    "type": "gcp:compute/uRLMap:URLMap",
+    "urn": "keeta:lb:ExternalLoadBalancer$gcp:compute/uRLMap:URLMap::external-load-balancer-http-redirect",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "external-load-balancer",
+    "type": "keeta:lb:ExternalLoadBalancer",
+    "urn": "keeta:lb:ExternalLoadBalancer::external-load-balancer",
+  },
+]
+`;
+
+exports[`component tree > snapshot > external-load-balancer-mig keeps its resources, parents, aliases and key inputs 1`] = `
+[
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:worker@project-id.iam.gserviceaccount.com",
+      "repository": "projects/project-id/locations/us-central1/repositories/keeta",
+      "role": "roles/artifactregistry.reader",
+    },
+    "name": "external-load-balancer-mig-worker-ar-1-iam",
+    "parent": "Keeta:GCP:ContainerMIG::external-load-balancer-mig-worker",
+    "type": "gcp:artifactregistry/repositoryIamMember:RepositoryIamMember",
+    "urn": "Keeta:GCP:ContainerMIG$gcp:artifactregistry/repositoryIamMember:RepositoryIamMember::external-load-balancer-mig-worker-ar-1-iam",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "disks": [
+        {
+          "diskSizeGb": 50,
+          "sourceImage": "projects/cos-cloud/global/images/cos-stable-mock",
+        },
+      ],
+      "labels": {
+        "container-vm": "cos-stable-mock",
+      },
+      "machineType": "e2-medium",
+      "metadata": {
+        "block-project-ssh-keys": "TRUE",
+        "gce-container-declaration": "{"spec":{"containers":[{"image":"us-central1-docker.pkg.dev/project-id/keeta/app:1","name":"worker","restartPolicy":"Always"}]}}",
+        "google-logging-enabled": "true",
+        "user-data": "#cloud-config
+{"runcmd":["mount --bind /dev/null /usr/sbin/sshd","systemctl disable sshd","systemctl stop sshd","pkill -9 -x sshd"]}",
+      },
+      "networkInterfaces": [
+        {
+          "accessConfigs": [],
+          "network": "self-link.external-load-balancer-mig-worker-network",
+          "subnetwork": "external-load-balancer-mig-worker-subnet-id",
+        },
+      ],
+      "region": "us-central1",
+      "serviceAccount": {
+        "email": "worker@project-id.iam.gserviceaccount.com",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-platform",
+          "https://www.googleapis.com/auth/compute",
+          "https://www.googleapis.com/auth/devstorage.read_only",
+          "https://www.googleapis.com/auth/logging.write",
+          "https://www.googleapis.com/auth/monitoring.write",
+          "https://www.googleapis.com/auth/servicecontrol",
+          "https://www.googleapis.com/auth/service.management.readonly",
+        ],
+      },
+    },
+    "name": "external-load-balancer-mig-worker-mig-template",
+    "parent": "Keeta:GCP:ContainerMIG::external-load-balancer-mig-worker",
+    "type": "gcp:compute/instanceTemplate:InstanceTemplate",
+    "urn": "Keeta:GCP:ContainerMIG$gcp:compute/instanceTemplate:InstanceTemplate::external-load-balancer-mig-worker-mig-template",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "baseInstanceName": "external-load-balancer-mig-worker-mig-base",
+      "namedPorts": [
+        {
+          "name": "http",
+          "port": 8080,
+        },
+      ],
+      "region": "us-central1",
+      "targetSize": 1,
+      "updatePolicy": {
+        "maxUnavailableFixed": 4,
+        "minimalAction": "REPLACE",
+        "mostDisruptiveAllowedAction": "REPLACE",
+        "type": "PROACTIVE",
+      },
+      "versions": [
+        {
+          "instanceTemplate": "self-link.external-load-balancer-mig-worker-mig-template",
+        },
+      ],
+    },
+    "name": "external-load-balancer-mig-worker-mig",
+    "parent": "Keeta:GCP:ContainerMIG::external-load-balancer-mig-worker",
+    "type": "gcp:compute/regionInstanceGroupManager:RegionInstanceGroupManager",
+    "urn": "Keeta:GCP:ContainerMIG$gcp:compute/regionInstanceGroupManager:RegionInstanceGroupManager::external-load-balancer-mig-worker-mig",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:worker@project-id.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/logging.logWriter",
+    },
+    "name": "external-load-balancer-mig-worker-iam-logging",
+    "parent": "Keeta:GCP:ContainerMIG::external-load-balancer-mig-worker",
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:ContainerMIG$gcp:projects/iAMMember:IAMMember::external-load-balancer-mig-worker-iam-logging",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:worker@project-id.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/monitoring.metricWriter",
+    },
+    "name": "external-load-balancer-mig-worker-iam-metric",
+    "parent": "Keeta:GCP:ContainerMIG::external-load-balancer-mig-worker",
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:ContainerMIG$gcp:projects/iAMMember:IAMMember::external-load-balancer-mig-worker-iam-metric",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "external-load-balancer-mig-worker",
+    "type": "Keeta:GCP:ContainerMIG",
+    "urn": "Keeta:GCP:ContainerMIG::external-load-balancer-mig-worker",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "managed": {
+        "domains": [
+          "app.example.com",
+        ],
+      },
+    },
+    "name": "external-load-balancer-mig-cert",
+    "type": "gcp:certificatemanager/certificate:Certificate",
+    "urn": "gcp:certificatemanager/certificate:Certificate::external-load-balancer-mig-cert",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "httpHealthCheck": {
+        "port": 8080,
+      },
+    },
+    "name": "external-load-balancer-mig-health",
+    "type": "gcp:compute/healthCheck:HealthCheck",
+    "urn": "gcp:compute/healthCheck:HealthCheck::external-load-balancer-mig-health",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "autoCreateSubnetworks": false,
+    },
+    "name": "external-load-balancer-mig-worker-network",
+    "type": "gcp:compute/network:Network",
+    "urn": "gcp:compute/network:Network::external-load-balancer-mig-worker-network",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "ipCidrRange": "10.0.0.0/24",
+      "network": "self-link.external-load-balancer-mig-worker-network",
+      "region": "us-central1",
+    },
+    "name": "external-load-balancer-mig-worker-subnet",
+    "type": "gcp:compute/subnetwork:Subnetwork",
+    "urn": "gcp:compute/subnetwork:Subnetwork::external-load-balancer-mig-worker-subnet",
+  },
+  {
+    "aliases": [
+      "keeta:lb:ExternalLoadBalancer$gcp:compute/backendService:BackendService$gcp:compute/uRLMap:URLMap$gcp:certificatemanager/certificateMap:CertificateMap::external-load-balancer-mig-ext-cert-map",
+    ],
+    "custom": true,
+    "inputs": {
+      "description": "Certificate map for the test app",
+    },
+    "name": "external-load-balancer-mig-ext-cert-map",
+    "parent": "keeta:lb:ExternalLoadBalancer::external-load-balancer-mig",
+    "type": "gcp:certificatemanager/certificateMap:CertificateMap",
+    "urn": "keeta:lb:ExternalLoadBalancer$gcp:certificatemanager/certificateMap:CertificateMap::external-load-balancer-mig-ext-cert-map",
+  },
+  {
+    "aliases": [
+      "keeta:lb:ExternalLoadBalancer$gcp:compute/backendService:BackendService$gcp:compute/uRLMap:URLMap$gcp:certificatemanager/certificateMap:CertificateMap$gcp:certificatemanager/certificateMapEntry:CertificateMapEntry::external-load-balancer-mig-ext-cert-map-entry",
+    ],
+    "custom": true,
+    "inputs": {
+      "certificates": [
+        "external-load-balancer-mig-cert-id",
+      ],
+      "map": "external-load-balancer-mig-ext-cert-map",
+      "matcher": "PRIMARY",
+    },
+    "name": "external-load-balancer-mig-ext-cert-map-entry",
+    "parent": "keeta:lb:ExternalLoadBalancer::external-load-balancer-mig",
+    "type": "gcp:certificatemanager/certificateMapEntry:CertificateMapEntry",
+    "urn": "keeta:lb:ExternalLoadBalancer$gcp:certificatemanager/certificateMapEntry:CertificateMapEntry::external-load-balancer-mig-ext-cert-map-entry",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "backends": [
+        {
+          "description": "Backend for the test app",
+        },
+      ],
+      "customRequestHeaders": [],
+      "healthChecks": "self-link.external-load-balancer-mig-health",
+      "loadBalancingScheme": "EXTERNAL_MANAGED",
+      "logConfig": {
+        "enable": true,
+      },
+      "protocol": "HTTP",
+      "securityPolicy": "external-load-balancer-mig-ext-be-sp-id",
+    },
+    "name": "external-load-balancer-mig-ext-be",
+    "parent": "keeta:lb:ExternalLoadBalancer::external-load-balancer-mig",
+    "type": "gcp:compute/backendService:BackendService",
+    "urn": "keeta:lb:ExternalLoadBalancer$gcp:compute/backendService:BackendService::external-load-balancer-mig-ext-be",
+  },
+  {
+    "aliases": [
+      "keeta:lb:ExternalLoadBalancer$gcp:compute/backendService:BackendService$gcp:compute/uRLMap:URLMap$gcp:compute/globalForwardingRule:GlobalForwardingRule$gcp:compute/firewall:Firewall::external-load-balancer-mig-lb-in",
+    ],
+    "custom": true,
+    "inputs": {
+      "allows": [
+        {
+          "ports": [
+            "8080",
+          ],
+          "protocol": "tcp",
+        },
+      ],
+      "description": "Inbound firewall rule for the test app from LB",
+      "direction": "INGRESS",
+      "network": "self-link.external-load-balancer-mig-worker-network",
+      "priority": 900,
+      "sourceRanges": [
+        "35.191.0.0/16",
+        "130.211.0.0/22",
+      ],
+      "targetServiceAccounts": [
+        "worker@project-id.iam.gserviceaccount.com",
+      ],
+    },
+    "name": "external-load-balancer-mig-lb-in",
+    "parent": "keeta:lb:ExternalLoadBalancer::external-load-balancer-mig",
+    "type": "gcp:compute/firewall:Firewall",
+    "urn": "keeta:lb:ExternalLoadBalancer$gcp:compute/firewall:Firewall::external-load-balancer-mig-lb-in",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "addressType": "EXTERNAL",
+      "description": "IP Address for the test app",
+    },
+    "name": "external-load-balancer-mig-ext-ip",
+    "parent": "keeta:lb:ExternalLoadBalancer::external-load-balancer-mig",
+    "type": "gcp:compute/globalAddress:GlobalAddress",
+    "urn": "keeta:lb:ExternalLoadBalancer$gcp:compute/globalAddress:GlobalAddress::external-load-balancer-mig-ext-ip",
+  },
+  {
+    "aliases": [
+      "keeta:lb:ExternalLoadBalancer$gcp:compute/backendService:BackendService$gcp:compute/uRLMap:URLMap$gcp:compute/globalForwardingRule:GlobalForwardingRule::external-load-balancer-mig-http-fr",
+    ],
+    "custom": true,
+    "inputs": {
+      "ipAddress": "external-load-balancer-mig-ext-ip-id",
+      "ipProtocol": "TCP",
+      "loadBalancingScheme": "EXTERNAL_MANAGED",
+      "portRange": "80",
+      "target": "external-load-balancer-mig-http-proxy-id",
+    },
+    "name": "external-load-balancer-mig-http-fr",
+    "parent": "keeta:lb:ExternalLoadBalancer::external-load-balancer-mig",
+    "type": "gcp:compute/globalForwardingRule:GlobalForwardingRule",
+    "urn": "keeta:lb:ExternalLoadBalancer$gcp:compute/globalForwardingRule:GlobalForwardingRule::external-load-balancer-mig-http-fr",
+  },
+  {
+    "aliases": [
+      "keeta:lb:ExternalLoadBalancer$gcp:compute/backendService:BackendService$gcp:compute/uRLMap:URLMap$gcp:compute/globalForwardingRule:GlobalForwardingRule::external-load-balancer-mig-lb",
+    ],
+    "custom": true,
+    "inputs": {
+      "description": "External Load Balancer for the test app",
+      "ipAddress": "external-load-balancer-mig-ext-ip-id",
+      "loadBalancingScheme": "EXTERNAL_MANAGED",
+      "portRange": "443",
+      "target": "external-load-balancer-mig-ext-target-id",
+    },
+    "name": "external-load-balancer-mig-lb",
+    "parent": "keeta:lb:ExternalLoadBalancer::external-load-balancer-mig",
+    "type": "gcp:compute/globalForwardingRule:GlobalForwardingRule",
+    "urn": "keeta:lb:ExternalLoadBalancer$gcp:compute/globalForwardingRule:GlobalForwardingRule::external-load-balancer-mig-lb",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "minTlsVersion": "TLS_1_2",
+      "profile": "MODERN",
+    },
+    "name": "external-load-balancer-mig-ssl-policy",
+    "parent": "keeta:lb:ExternalLoadBalancer::external-load-balancer-mig",
+    "type": "gcp:compute/sSLPolicy:SSLPolicy",
+    "urn": "keeta:lb:ExternalLoadBalancer$gcp:compute/sSLPolicy:SSLPolicy::external-load-balancer-mig-ssl-policy",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "rules": [
+        {
+          "action": "allow",
+          "match": {
+            "config": {
+              "srcIpRanges": [
+                "10.0.0.0/8",
+              ],
+            },
+            "versionedExpr": "SRC_IPS_V1",
+          },
+          "priority": 1000,
+        },
+        {
+          "action": "deny(403)",
+          "match": {
+            "config": {
+              "srcIpRanges": [
+                "*",
+              ],
+            },
+            "versionedExpr": "SRC_IPS_V1",
+          },
+          "priority": 2147483647,
+        },
+      ],
+    },
+    "name": "external-load-balancer-mig-ext-be-sp",
+    "parent": "keeta:lb:ExternalLoadBalancer::external-load-balancer-mig",
+    "type": "gcp:compute/securityPolicy:SecurityPolicy",
+    "urn": "keeta:lb:ExternalLoadBalancer$gcp:compute/securityPolicy:SecurityPolicy::external-load-balancer-mig-ext-be-sp",
+  },
+  {
+    "aliases": [
+      "keeta:lb:ExternalLoadBalancer$gcp:compute/backendService:BackendService$gcp:compute/uRLMap:URLMap$gcp:compute/targetHttpProxy:TargetHttpProxy::external-load-balancer-mig-http-proxy",
+    ],
+    "custom": true,
+    "inputs": {
+      "urlMap": "external-load-balancer-mig-http-redirect-id",
+    },
+    "name": "external-load-balancer-mig-http-proxy",
+    "parent": "keeta:lb:ExternalLoadBalancer::external-load-balancer-mig",
+    "type": "gcp:compute/targetHttpProxy:TargetHttpProxy",
+    "urn": "keeta:lb:ExternalLoadBalancer$gcp:compute/targetHttpProxy:TargetHttpProxy::external-load-balancer-mig-http-proxy",
+  },
+  {
+    "aliases": [
+      "keeta:lb:ExternalLoadBalancer$gcp:compute/backendService:BackendService$gcp:compute/uRLMap:URLMap$gcp:compute/targetHttpsProxy:TargetHttpsProxy::external-load-balancer-mig-ext-target",
+    ],
+    "custom": true,
+    "inputs": {
+      "certificateMap": "//certificatemanager.googleapis.com/external-load-balancer-mig-ext-cert-map-id",
+      "description": "Target HTTPS Proxy for the test app",
+      "sslPolicy": "external-load-balancer-mig-ssl-policy-id",
+      "urlMap": "external-load-balancer-mig-ext-map",
+    },
+    "name": "external-load-balancer-mig-ext-target",
+    "parent": "keeta:lb:ExternalLoadBalancer::external-load-balancer-mig",
+    "type": "gcp:compute/targetHttpsProxy:TargetHttpsProxy",
+    "urn": "keeta:lb:ExternalLoadBalancer$gcp:compute/targetHttpsProxy:TargetHttpsProxy::external-load-balancer-mig-ext-target",
+  },
+  {
+    "aliases": [
+      "keeta:lb:ExternalLoadBalancer$gcp:compute/backendService:BackendService$gcp:compute/uRLMap:URLMap::external-load-balancer-mig-ext-map",
+    ],
+    "custom": true,
+    "inputs": {
+      "defaultService": "self-link.external-load-balancer-mig-ext-be",
+      "description": "URL Map for the test app",
+    },
+    "name": "external-load-balancer-mig-ext-map",
+    "parent": "keeta:lb:ExternalLoadBalancer::external-load-balancer-mig",
+    "type": "gcp:compute/uRLMap:URLMap",
+    "urn": "keeta:lb:ExternalLoadBalancer$gcp:compute/uRLMap:URLMap::external-load-balancer-mig-ext-map",
+  },
+  {
+    "aliases": [
+      "keeta:lb:ExternalLoadBalancer$gcp:compute/backendService:BackendService$gcp:compute/uRLMap:URLMap$gcp:compute/uRLMap:URLMap::external-load-balancer-mig-http-redirect",
+    ],
+    "custom": true,
+    "inputs": {
+      "defaultUrlRedirect": {
+        "httpsRedirect": true,
+        "stripQuery": false,
+      },
+    },
+    "name": "external-load-balancer-mig-http-redirect",
+    "parent": "keeta:lb:ExternalLoadBalancer::external-load-balancer-mig",
+    "type": "gcp:compute/uRLMap:URLMap",
+    "urn": "keeta:lb:ExternalLoadBalancer$gcp:compute/uRLMap:URLMap::external-load-balancer-mig-http-redirect",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "external-load-balancer-mig",
+    "type": "keeta:lb:ExternalLoadBalancer",
+    "urn": "keeta:lb:ExternalLoadBalancer::external-load-balancer-mig",
+  },
+]
+`;
+
 exports[`component tree > snapshot > full-stack-app keeps its resources, parents, aliases and key inputs 1`] = `
 [
   {
@@ -393,6 +1050,18 @@ exports[`component tree > snapshot > full-stack-app keeps its resources, parents
     "urn": "Keeta:GCP:FullStackApp$gcp:compute/managedSslCertificate:ManagedSslCertificate::full-stack-cert",
   },
   {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "minTlsVersion": "TLS_1_2",
+      "profile": "MODERN",
+    },
+    "name": "full-stack-ssl-policy",
+    "parent": "Keeta:GCP:FullStackApp::full-stack",
+    "type": "gcp:compute/sSLPolicy:SSLPolicy",
+    "urn": "Keeta:GCP:FullStackApp$gcp:compute/sSLPolicy:SSLPolicy::full-stack-ssl-policy",
+  },
+  {
     "aliases": [
       "Keeta:GCP:FullStackApp$gcp:compute/uRLMap:URLMap$gcp:compute/targetHttpProxy:TargetHttpProxy::full-stack-http-proxy",
     ],
@@ -412,6 +1081,7 @@ exports[`component tree > snapshot > full-stack-app keeps its resources, parents
       "sslCertificates": [
         "full-stack-cert-id",
       ],
+      "sslPolicy": "full-stack-ssl-policy-id",
       "urlMap": "full-stack-url-map-id",
     },
     "name": "full-stack-https-proxy",
@@ -778,6 +1448,18 @@ exports[`component tree > snapshot > full-stack-app-without-frontend keeps its r
     "urn": "Keeta:GCP:FullStackApp$gcp:compute/managedSslCertificate:ManagedSslCertificate::full-stack-api-cert",
   },
   {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "minTlsVersion": "TLS_1_2",
+      "profile": "MODERN",
+    },
+    "name": "full-stack-api-ssl-policy",
+    "parent": "Keeta:GCP:FullStackApp::full-stack-api",
+    "type": "gcp:compute/sSLPolicy:SSLPolicy",
+    "urn": "Keeta:GCP:FullStackApp$gcp:compute/sSLPolicy:SSLPolicy::full-stack-api-ssl-policy",
+  },
+  {
     "aliases": [
       "Keeta:GCP:FullStackApp$gcp:compute/uRLMap:URLMap$gcp:compute/targetHttpProxy:TargetHttpProxy::full-stack-api-http-proxy",
     ],
@@ -797,6 +1479,7 @@ exports[`component tree > snapshot > full-stack-app-without-frontend keeps its r
       "sslCertificates": [
         "full-stack-api-cert-id",
       ],
+      "sslPolicy": "full-stack-api-ssl-policy-id",
       "urlMap": "full-stack-api-url-map-id",
     },
     "name": "full-stack-api-https-proxy",
@@ -852,6 +1535,387 @@ exports[`component tree > snapshot > full-stack-app-without-frontend keeps its r
     "name": "full-stack-api",
     "type": "Keeta:GCP:FullStackApp",
     "urn": "Keeta:GCP:FullStackApp::full-stack-api",
+  },
+]
+`;
+
+exports[`component tree > snapshot > internal-load-balancer keeps its resources, parents, aliases and key inputs 1`] = `
+[
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:worker@project-id.iam.gserviceaccount.com",
+      "repository": "projects/project-id/locations/us-central1/repositories/keeta",
+      "role": "roles/artifactregistry.reader",
+    },
+    "name": "internal-load-balancer-worker-ar-1-iam",
+    "parent": "Keeta:GCP:ContainerMIG::internal-load-balancer-worker",
+    "type": "gcp:artifactregistry/repositoryIamMember:RepositoryIamMember",
+    "urn": "Keeta:GCP:ContainerMIG$gcp:artifactregistry/repositoryIamMember:RepositoryIamMember::internal-load-balancer-worker-ar-1-iam",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "disks": [
+        {
+          "diskSizeGb": 50,
+          "sourceImage": "projects/cos-cloud/global/images/cos-stable-mock",
+        },
+      ],
+      "labels": {
+        "container-vm": "cos-stable-mock",
+      },
+      "machineType": "e2-medium",
+      "metadata": {
+        "block-project-ssh-keys": "TRUE",
+        "gce-container-declaration": "{"spec":{"containers":[{"image":"us-central1-docker.pkg.dev/project-id/keeta/app:1","name":"worker","restartPolicy":"Always"}]}}",
+        "google-logging-enabled": "true",
+        "user-data": "#cloud-config
+{"runcmd":["mount --bind /dev/null /usr/sbin/sshd","systemctl disable sshd","systemctl stop sshd","pkill -9 -x sshd"]}",
+      },
+      "networkInterfaces": [
+        {
+          "accessConfigs": [],
+          "network": "self-link.internal-load-balancer-worker-network",
+          "subnetwork": "internal-load-balancer-worker-subnet-id",
+        },
+      ],
+      "region": "us-central1",
+      "serviceAccount": {
+        "email": "worker@project-id.iam.gserviceaccount.com",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-platform",
+          "https://www.googleapis.com/auth/compute",
+          "https://www.googleapis.com/auth/devstorage.read_only",
+          "https://www.googleapis.com/auth/logging.write",
+          "https://www.googleapis.com/auth/monitoring.write",
+          "https://www.googleapis.com/auth/servicecontrol",
+          "https://www.googleapis.com/auth/service.management.readonly",
+        ],
+      },
+    },
+    "name": "internal-load-balancer-worker-mig-template",
+    "parent": "Keeta:GCP:ContainerMIG::internal-load-balancer-worker",
+    "type": "gcp:compute/instanceTemplate:InstanceTemplate",
+    "urn": "Keeta:GCP:ContainerMIG$gcp:compute/instanceTemplate:InstanceTemplate::internal-load-balancer-worker-mig-template",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "baseInstanceName": "internal-load-balancer-worker-mig-base",
+      "namedPorts": [
+        {
+          "name": "http",
+          "port": 8080,
+        },
+      ],
+      "region": "us-central1",
+      "targetSize": 1,
+      "updatePolicy": {
+        "maxUnavailableFixed": 4,
+        "minimalAction": "REPLACE",
+        "mostDisruptiveAllowedAction": "REPLACE",
+        "type": "PROACTIVE",
+      },
+      "versions": [
+        {
+          "instanceTemplate": "self-link.internal-load-balancer-worker-mig-template",
+        },
+      ],
+    },
+    "name": "internal-load-balancer-worker-mig",
+    "parent": "Keeta:GCP:ContainerMIG::internal-load-balancer-worker",
+    "type": "gcp:compute/regionInstanceGroupManager:RegionInstanceGroupManager",
+    "urn": "Keeta:GCP:ContainerMIG$gcp:compute/regionInstanceGroupManager:RegionInstanceGroupManager::internal-load-balancer-worker-mig",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:worker@project-id.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/logging.logWriter",
+    },
+    "name": "internal-load-balancer-worker-iam-logging",
+    "parent": "Keeta:GCP:ContainerMIG::internal-load-balancer-worker",
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:ContainerMIG$gcp:projects/iAMMember:IAMMember::internal-load-balancer-worker-iam-logging",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "member": "serviceAccount:worker@project-id.iam.gserviceaccount.com",
+      "project": "project-id",
+      "role": "roles/monitoring.metricWriter",
+    },
+    "name": "internal-load-balancer-worker-iam-metric",
+    "parent": "Keeta:GCP:ContainerMIG::internal-load-balancer-worker",
+    "type": "gcp:projects/iAMMember:IAMMember",
+    "urn": "Keeta:GCP:ContainerMIG$gcp:projects/iAMMember:IAMMember::internal-load-balancer-worker-iam-metric",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "internal-load-balancer-worker",
+    "type": "Keeta:GCP:ContainerMIG",
+    "urn": "Keeta:GCP:ContainerMIG::internal-load-balancer-worker",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "httpHealthCheck": {
+        "port": 8080,
+      },
+    },
+    "name": "internal-load-balancer-health",
+    "type": "gcp:compute/healthCheck:HealthCheck",
+    "urn": "gcp:compute/healthCheck:HealthCheck::internal-load-balancer-health",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "autoCreateSubnetworks": false,
+    },
+    "name": "internal-load-balancer-worker-network",
+    "type": "gcp:compute/network:Network",
+    "urn": "gcp:compute/network:Network::internal-load-balancer-worker-network",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "ipCidrRange": "10.0.0.0/24",
+      "network": "self-link.internal-load-balancer-worker-network",
+      "region": "us-central1",
+    },
+    "name": "internal-load-balancer-worker-subnet",
+    "type": "gcp:compute/subnetwork:Subnetwork",
+    "urn": "gcp:compute/subnetwork:Subnetwork::internal-load-balancer-worker-subnet",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "description": "SSL Certificate for the test app",
+      "managed": {
+        "dnsAuthorizations": [
+          "internal-load-balancer-cert-dns-id",
+        ],
+        "domains": [
+          "app.example.com",
+        ],
+      },
+      "scope": "ALL_REGIONS",
+    },
+    "name": "internal-load-balancer-cert",
+    "parent": "keeta:lb:InternalLoadBalancer$gcp:certificatemanager/dnsAuthorization:DnsAuthorization::internal-load-balancer-cert-dns",
+    "type": "gcp:certificatemanager/certificate:Certificate",
+    "urn": "keeta:lb:InternalLoadBalancer$gcp:certificatemanager/dnsAuthorization:DnsAuthorization$gcp:certificatemanager/certificate:Certificate::internal-load-balancer-cert",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "description": "DNS Authorization for the SSL Certificate for the test app",
+      "domain": "app.example.com",
+    },
+    "name": "internal-load-balancer-cert-dns",
+    "parent": "keeta:lb:InternalLoadBalancer::internal-load-balancer",
+    "type": "gcp:certificatemanager/dnsAuthorization:DnsAuthorization",
+    "urn": "keeta:lb:InternalLoadBalancer$gcp:certificatemanager/dnsAuthorization:DnsAuthorization::internal-load-balancer-cert-dns",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "addressType": "INTERNAL",
+      "description": "IP Address for the test app",
+      "region": "us-central1",
+      "subnetwork": "internal-load-balancer-worker-subnet-id",
+    },
+    "name": "internal-load-balancer-ip",
+    "parent": "keeta:lb:InternalLoadBalancer::internal-load-balancer",
+    "type": "gcp:compute/address:Address",
+    "urn": "keeta:lb:InternalLoadBalancer$gcp:compute/address:Address::internal-load-balancer-ip",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "allows": [
+        {
+          "ports": [
+            "8080",
+            "80",
+            "443",
+          ],
+          "protocol": "tcp",
+        },
+      ],
+      "description": "Inbound firewall rule for the test app",
+      "direction": "INGRESS",
+      "network": "self-link.internal-load-balancer-worker-network",
+      "priority": 900,
+      "sourceRanges": [
+        "10.1.0.0/24",
+        "35.191.0.0/16",
+        "130.211.0.0/22",
+      ],
+      "targetServiceAccounts": [
+        "worker@project-id.iam.gserviceaccount.com",
+      ],
+    },
+    "name": "internal-load-balancer-ilb-in",
+    "parent": "keeta:lb:InternalLoadBalancer$gcp:compute/backendService:BackendService$gcp:compute/uRLMap:URLMap$gcp:compute/globalForwardingRule:GlobalForwardingRule::internal-load-balancer-ilb",
+    "type": "gcp:compute/firewall:Firewall",
+    "urn": "keeta:lb:InternalLoadBalancer$gcp:compute/backendService:BackendService$gcp:compute/uRLMap:URLMap$gcp:compute/globalForwardingRule:GlobalForwardingRule$gcp:compute/firewall:Firewall::internal-load-balancer-ilb-in",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "allows": [
+        {
+          "ports": [
+            "443",
+            "8080",
+            "80",
+          ],
+          "protocol": "tcp",
+        },
+      ],
+      "description": "Inbound firewall rule for the test app ILB Health Check",
+      "destinationRanges": [
+        "internal-load-balancer-ip-id",
+      ],
+      "direction": "INGRESS",
+      "network": "self-link.internal-load-balancer-worker-network",
+      "priority": 900,
+      "sourceRanges": [
+        "35.191.0.0/16",
+        "130.211.0.0/22",
+      ],
+    },
+    "name": "internal-load-balancer-ilb-in-health",
+    "parent": "keeta:lb:InternalLoadBalancer$gcp:compute/backendService:BackendService$gcp:compute/uRLMap:URLMap$gcp:compute/globalForwardingRule:GlobalForwardingRule::internal-load-balancer-ilb",
+    "type": "gcp:compute/firewall:Firewall",
+    "urn": "keeta:lb:InternalLoadBalancer$gcp:compute/backendService:BackendService$gcp:compute/uRLMap:URLMap$gcp:compute/globalForwardingRule:GlobalForwardingRule$gcp:compute/firewall:Firewall::internal-load-balancer-ilb-in-health",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "description": "Internal Load Balancer for test app",
+      "ipAddress": "internal-load-balancer-ip-id",
+      "loadBalancingScheme": "INTERNAL_MANAGED",
+      "network": "self-link.internal-load-balancer-worker-network",
+      "portRange": "443",
+      "subnetwork": "internal-load-balancer-worker-subnet-id",
+      "target": "internal-load-balancer-target-id",
+    },
+    "name": "internal-load-balancer-ilb",
+    "parent": "keeta:lb:InternalLoadBalancer$gcp:compute/backendService:BackendService$gcp:compute/uRLMap:URLMap::internal-load-balancer-map",
+    "type": "gcp:compute/globalForwardingRule:GlobalForwardingRule",
+    "urn": "keeta:lb:InternalLoadBalancer$gcp:compute/backendService:BackendService$gcp:compute/uRLMap:URLMap$gcp:compute/globalForwardingRule:GlobalForwardingRule::internal-load-balancer-ilb",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "certificateManagerCertificates": [
+        "internal-load-balancer-cert-id",
+      ],
+      "description": "Target HTTPS Proxy for the test app",
+      "urlMap": "internal-load-balancer-map",
+    },
+    "name": "internal-load-balancer-target",
+    "parent": "keeta:lb:InternalLoadBalancer$gcp:compute/backendService:BackendService$gcp:compute/uRLMap:URLMap::internal-load-balancer-map",
+    "type": "gcp:compute/targetHttpsProxy:TargetHttpsProxy",
+    "urn": "keeta:lb:InternalLoadBalancer$gcp:compute/backendService:BackendService$gcp:compute/uRLMap:URLMap$gcp:compute/targetHttpsProxy:TargetHttpsProxy::internal-load-balancer-target",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "defaultService": "self-link.internal-load-balancer-be",
+      "description": "URL Map for the test app",
+    },
+    "name": "internal-load-balancer-map",
+    "parent": "keeta:lb:InternalLoadBalancer$gcp:compute/backendService:BackendService::internal-load-balancer-be",
+    "type": "gcp:compute/uRLMap:URLMap",
+    "urn": "keeta:lb:InternalLoadBalancer$gcp:compute/backendService:BackendService$gcp:compute/uRLMap:URLMap::internal-load-balancer-map",
+  },
+  {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "backends": [
+        {
+          "description": "Backend for the test app",
+        },
+      ],
+      "healthChecks": "self-link.internal-load-balancer-health",
+      "loadBalancingScheme": "INTERNAL_MANAGED",
+      "logConfig": {
+        "enable": true,
+      },
+      "securityPolicy": "internal-load-balancer-int-be-sp-id",
+    },
+    "name": "internal-load-balancer-be",
+    "parent": "keeta:lb:InternalLoadBalancer::internal-load-balancer",
+    "type": "gcp:compute/backendService:BackendService",
+    "urn": "keeta:lb:InternalLoadBalancer$gcp:compute/backendService:BackendService::internal-load-balancer-be",
+  },
+  {
+    "aliases": [
+      "keeta:lb:InternalLoadBalancer$gcp:compute/securityPolicy:SecurityPolicy::internal-load-balancer-ext-be-sp",
+    ],
+    "custom": true,
+    "inputs": {
+      "rules": [
+        {
+          "action": "allow",
+          "match": {
+            "config": {
+              "srcIpRanges": [
+                "10.0.0.0/8",
+              ],
+            },
+            "versionedExpr": "SRC_IPS_V1",
+          },
+          "priority": 1000,
+        },
+        {
+          "action": "deny(403)",
+          "match": {
+            "config": {
+              "srcIpRanges": [
+                "*",
+              ],
+            },
+            "versionedExpr": "SRC_IPS_V1",
+          },
+          "priority": 2147483647,
+        },
+      ],
+    },
+    "name": "internal-load-balancer-int-be-sp",
+    "parent": "keeta:lb:InternalLoadBalancer::internal-load-balancer",
+    "type": "gcp:compute/securityPolicy:SecurityPolicy",
+    "urn": "keeta:lb:InternalLoadBalancer$gcp:compute/securityPolicy:SecurityPolicy::internal-load-balancer-int-be-sp",
+  },
+  {
+    "aliases": [],
+    "custom": false,
+    "name": "internal-load-balancer",
+    "type": "keeta:lb:InternalLoadBalancer",
+    "urn": "keeta:lb:InternalLoadBalancer::internal-load-balancer",
   },
 ]
 `;
@@ -6194,6 +7258,18 @@ exports[`component tree > snapshot > static-web-app-load-balancer keeps its reso
     "urn": "Keeta:GCP:StaticWebApp$gcp:compute/managedSslCertificate:ManagedSslCertificate::static-web-app-lb-cert",
   },
   {
+    "aliases": [],
+    "custom": true,
+    "inputs": {
+      "minTlsVersion": "TLS_1_2",
+      "profile": "MODERN",
+    },
+    "name": "static-web-app-lb-ssl-policy",
+    "parent": "Keeta:GCP:StaticWebApp::static-web-app-lb",
+    "type": "gcp:compute/sSLPolicy:SSLPolicy",
+    "urn": "Keeta:GCP:StaticWebApp$gcp:compute/sSLPolicy:SSLPolicy::static-web-app-lb-ssl-policy",
+  },
+  {
     "aliases": [
       "Keeta:GCP:StaticWebApp$gcp:compute/uRLMap:URLMap$gcp:compute/targetHttpProxy:TargetHttpProxy::static-web-app-lb-http-proxy",
     ],
@@ -6213,6 +7289,7 @@ exports[`component tree > snapshot > static-web-app-load-balancer keeps its reso
       "sslCertificates": [
         "static-web-app-lb-cert-id",
       ],
+      "sslPolicy": "static-web-app-lb-ssl-policy-id",
       "urlMap": "static-web-app-lb-url-map-id",
     },
     "name": "static-web-app-lb-https-proxy",

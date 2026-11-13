@@ -5,14 +5,16 @@ import { isDeeplyFrozen, leavesOf } from '../helpers/leaves';
 import { requireSource } from './harness/load-sources';
 
 const moduleDefaults = requireSource<typeof defaults>('src/packages/gcp/defaults.ts');
-const { CLOUD_RUN_SERVICE_DEFAULTS, POSTGRES_DEFAULTS, BUILD_DEFAULTS, CONTAINER_DEFAULTS, MIGRATION_DEFAULTS } = moduleDefaults;
+const { CLOUD_RUN_SERVICE_DEFAULTS, POSTGRES_DEFAULTS, BUILD_DEFAULTS, CONTAINER_DEFAULTS, MIGRATION_DEFAULTS, ROUTING_DEFAULTS, FRONT_END_DEFAULTS } = moduleDefaults;
 
 const exported = {
 	CLOUD_RUN_SERVICE_DEFAULTS,
 	POSTGRES_DEFAULTS,
 	BUILD_DEFAULTS,
 	CONTAINER_DEFAULTS,
-	MIGRATION_DEFAULTS
+	MIGRATION_DEFAULTS,
+	ROUTING_DEFAULTS,
+	FRONT_END_DEFAULTS
 };
 
 type ExportName = keyof typeof exported;
@@ -46,6 +48,18 @@ describe('defaults module', function() {
 		expect(CLOUD_RUN_SERVICE_DEFAULTS.worker.machineType).toBe('e2-micro');
 		expect(CONTAINER_DEFAULTS.mig.machineType).toBe('e2-medium');
 		expect(CONTAINER_DEFAULTS.crwp.size).toEqual({ cpu: '2', ram: '4096' });
+	});
+
+	/* The two front ends differ on purpose: unifying the lists would update the URL map of every StaticWebApp */
+	it('keeps the routing defaults of each front end apart', function() {
+		const paths = [ '/assets/', '/icons/', '/fonts/', '/images/' ];
+
+		expect(ROUTING_DEFAULTS.staticWebApp).toEqual({ staticPaths: paths, staticFiles: [] });
+		expect(ROUTING_DEFAULTS.fullStack).toEqual({ staticPaths: paths, staticFiles: [ '/favicon.svg' ] });
+	});
+
+	it('holds the TLS policy of the front ends', function() {
+		expect(FRONT_END_DEFAULTS.sslPolicy).toEqual({ profile: 'MODERN', minTlsVersion: 'TLS_1_2' });
 	});
 
 	/* [ object, value it holds, how many times it holds it ] */

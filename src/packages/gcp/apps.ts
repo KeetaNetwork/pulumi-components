@@ -18,10 +18,11 @@ import { CloudRunServiceArgsError, parseCloudRunServiceArgs } from './apps-args'
 import type { MIGWorkerArgs, CRWPWorkerArgs, LegacyMIGArgs, ParsedCloudRunServiceArgs, ParsedRemote } from './apps-args';
 export { CloudRunServiceArgsError } from './apps-args';
 export type { MIGWorkerArgs, CRWPWorkerArgs, LegacyMIGArgs } from './apps-args';
-import { CLOUD_RUN_SERVICE_DEFAULTS } from './defaults';
+import { CLOUD_RUN_SERVICE_DEFAULTS, ROUTING_DEFAULTS } from './defaults';
 import { callerOf } from './client-auth';
 import { buildDatabaseEnvVars, buildRedisEnvVars } from './database-env';
-import { createHttpRedirect } from './lb';
+import { buildRouteRules, createHTTPSFrontEnd, parseFrontEndConfig, resolveIPAddresses } from './https-frontend';
+import type { RouteRuleConfig } from './https-frontend';
 import { legacyUrn, movedFrom } from './aliases';
 import * as components from '../docker';
 import { generateName } from '../../utils';
@@ -76,6 +77,14 @@ export interface LoadBalancerConfig {
 	 * SSL certificate configuration
 	 */
 	ssl: SSLConfig;
+
+	/**
+	 * The SSL policy of the HTTPS proxy. Left out, the load balancer creates
+	 * `${name}-ssl-policy` (profile `MODERN`, TLS 1.2 and up). Give a policy
+	 * of your own to use it instead, or `false` for no policy (the proxy
+	 * then accepts what GCP accepts by default, TLS 1.0 and up).
+	 */
+	sslPolicy?: gcp.compute.SSLPolicy | false;
 }
 
 /**
@@ -89,65 +98,6 @@ interface LoadBalancerResources {
 }
 
 /**
- * Route rule configuration for URL map
- */
-interface RouteRuleConfig {
-	priority: number;
-	matchRules: {
-		prefixMatch?: string;
-		fullPathMatch?: string;
-		pathTemplateMatch?: string;
-	}[];
-	service: pulumi.Input<string>;
-	routeAction?: {
-		urlRewrite?: {
-			pathTemplateRewrite?: string;
-		};
-	};
-}
-
-/**
- * Parse IP address configuration into structured format
- */
-function parseIPAddresses(
-	name: string,
-	ipAddress: IPAddressConfig | undefined,
-	opts: { parent: pulumi.Resource }
-): { kind: 'ipv4' | 'ipv6' | ''; ip: pulumi.Input<string> }[] {
-	const ipAddresses: { kind: 'ipv4' | 'ipv6' | ''; ip: pulumi.Input<string> }[] = [];
-
-	if (ipAddress === undefined) {
-		ipAddresses.push(
-			{
-				kind: 'ipv4',
-				ip: new gcp.compute.GlobalAddress(`${name}-ipv4`, {
-					addressType: 'EXTERNAL',
-					ipVersion: 'IPV4'
-				}, opts).address
-			},
-			{
-				kind: 'ipv6',
-				ip: new gcp.compute.GlobalAddress(`${name}-ipv6`, {
-					addressType: 'EXTERNAL',
-					ipVersion: 'IPV6'
-				}, opts).address
-			}
-		);
-	} else if (typeof ipAddress === 'object' && ('ipv4' in ipAddress || 'ipv6' in ipAddress)) {
-		if ('ipv4' in ipAddress && ipAddress.ipv4) {
-			ipAddresses.push({ kind: 'ipv4', ip: ipAddress.ipv4 });
-		}
-		if ('ipv6' in ipAddress && ipAddress.ipv6) {
-			ipAddresses.push({ kind: 'ipv6', ip: ipAddress.ipv6 });
-		}
-	} else {
-		ipAddresses.push({ kind: '', ip: ipAddress });
-	}
-
-	return(ipAddresses);
-}
-
-/**
  * Create a load balancer with URL map, HTTPS proxy, and forwarding rules
  */
 function createLoadBalancer(
@@ -157,6 +107,8 @@ function createLoadBalancer(
 	defaultService: pulumi.Input<string>,
 	opts: { parent: pulumi.Resource }
 ): LoadBalancerResources {
+	const parsed = parseFrontEndConfig(config);
+
 	// Create URL map with routing rules
 	const urlMap = new gcp.compute.URLMap(`${name}-url-map`, {
 		defaultService,
@@ -171,132 +123,26 @@ function createLoadBalancer(
 		}]
 	}, opts);
 
-	// Create or use existing SSL certificate
-	let certificateID: pulumi.Output<string>;
-	let useCertificateManager: boolean;
-	if ('sslCertificate' in config.ssl && config.ssl.sslCertificate) {
-		const cert = config.ssl.sslCertificate;
-		certificateID = pulumi.output(cert.id);
-
-		// Discriminate based on presence of certificateId (compute.ManagedSslCertificate only)
-		if ('certificateId' in cert) {
-			// This is a compute.ManagedSslCertificate
-			useCertificateManager = false;
-		} else {
-			// This is a certificatemanager.Certificate
-			useCertificateManager = true;
-		}
-	} else {
-		/*
-		 * If a sslCertificateVersion is provided, use that as the
-		 * name of the resource so that it can be replaced when
-		 * the version changes
-		 */
-		let addToCertName = '';
-		if ('sslCertificateVersion' in config.ssl && config.ssl.sslCertificateVersion !== undefined) {
-			addToCertName = `-${config.ssl.sslCertificateVersion}`;
-		}
-
-		// Create a new compute.ManagedSslCertificate
-		const sslCertificate = new gcp.compute.ManagedSslCertificate(`${name}-cert${addToCertName}`, {
-			managed: {
-				domains: config.ssl.domains
-			}
-		}, {
-			...opts,
-			protect: config.ssl.protectCert
-		});
-		certificateID = sslCertificate.id;
-		useCertificateManager = false;
+	let dns: { zoneId: pulumi.Input<string>; domain: pulumi.Input<string> } | undefined;
+	if (parsed.dnsZoneId) {
+		dns = { zoneId: parsed.dnsZoneId, domain: parsed.domain };
 	}
 
-	// Create HTTPS proxy
-	const toDependOn: pulumi.Resource[] = [];
-	let proxyConfig: ConstructorParameters<typeof gcp.compute.TargetHttpsProxy>[1];
-	if (useCertificateManager) {
-		const certMap = new gcp.certificatemanager.CertificateMap(`${name}-cert-map`, {
-			description: `[${name}] Certificate map for load balancer`
-		}, opts);
+	const frontEnd = createHTTPSFrontEnd(name, parsed, {
+		variant: { kind: 'app' },
+		urlMap,
+		ips: resolveIPAddresses(name, parsed.ipAddress, opts),
+		dns
+	}, opts);
 
-		/*
-		 * We need to make the TargetHttpsProxy depend on the
-		 * CertificateMapEntry to ensure the certificate is properly
-		 * associated before the proxy is created, or it will fail
-		 */
-		const certMapEntry = new gcp.certificatemanager.CertificateMapEntry(`${name}-cert-map-entry`, {
-			map: certMap.name,
-			certificates: [certificateID],
-			/*
-			 * Since we create one cert-map per Load Balancer we
-			 * can just use the "PRIMARY" matcher to match all
-			 * requests, and avoid having to specify which domains
-			 * to match in the entry.
-			 */
-			matcher: 'PRIMARY'
-		}, opts);
-		toDependOn.push(certMapEntry);
-
-		proxyConfig = {
-			urlMap: urlMap.id,
-			certificateMap: pulumi.interpolate`//certificatemanager.googleapis.com/${certMap.id}`
-		};
-	} else {
-		proxyConfig = {
-			urlMap: urlMap.id,
-			sslCertificates: [certificateID]
-		};
-	}
-	const httpsProxy = new gcp.compute.TargetHttpsProxy(`${name}-https-proxy`, proxyConfig, {
-		...opts,
-		dependsOn: toDependOn.splice(0),
-		/*
-		 * It seems like we need to replace the proxy when the kind
-		 * of certificate changes, or GCP gets confused
-		 */
-		replaceOnChanges: ['certificateMap', 'sslCertificates']
-	});
-
-	// Parse IP addresses
-	const ipAddresses = parseIPAddresses(name, config.ipAddress, opts);
-	const forwardingRules: gcp.compute.GlobalForwardingRule[] = [];
-
-	// Create forwarding rules and DNS records
-	for (const ipConfig of ipAddresses) {
-		const ruleName = `${name}-fr-${ipConfig.kind}`.replace(/-$/, '');
-		const rule = new gcp.compute.GlobalForwardingRule(ruleName, {
-			ipAddress: ipConfig.ip,
-			target: httpsProxy.id,
-			portRange: '443',
-			loadBalancingScheme: 'EXTERNAL_MANAGED',
-			ipProtocol: 'TCP'
-		}, {
-			...opts,
-			deleteBeforeReplace: true
-		});
-		forwardingRules.push(rule);
-
-		// Create DNS records if zone ID provided
-		if (config.dnsZoneId && ipConfig.kind !== '') {
-			new gcp.dns.RecordSet(`${name}-dns-${ipConfig.kind}`, {
-				name: pulumi.output(config.domain).apply(function(d) { return(d.endsWith('.') ? d : `${d}.`); }),
-				type: ipConfig.kind === 'ipv4' ? 'A' : 'AAAA',
-				ttl: 300,
-				managedZone: config.dnsZoneId,
-				rrdatas: [ipConfig.ip]
-			}, opts);
-		}
-	}
-
-	createHttpRedirect(name, ipAddresses, { parent: opts.parent, oldParent: urlMap.urn });
-
-	const ips = pulumi.all(forwardingRules.map(function(fr) { return(fr.ipAddress); })).apply(function(ips) {
+	const ips = pulumi.all(frontEnd.forwardingRules.map(function(fr) { return(fr.ipAddress); })).apply(function(ips) {
 		return(ips.filter(function(ip): ip is string { return(ip !== undefined && ip !== null); }));
 	});
 
 	return({
 		urlMap,
-		httpsProxy,
-		forwardingRules,
+		httpsProxy: frontEnd.httpsProxy,
+		forwardingRules: frontEnd.forwardingRules,
 		ips
 	});
 }
@@ -533,35 +379,11 @@ export class StaticWebApp extends pulumi.ComponentResource {
 		if (args.loadBalancer) {
 			const lb = args.loadBalancer;
 			const routing = args.routing ?? {};
-			const staticPaths = routing.staticPaths ?? ['/assets/', '/icons/', '/fonts/', '/images/'];
-			const staticFiles = routing.staticFiles ?? [];
-
-			const routeRules: RouteRuleConfig[] = [
-				...staticPaths.map(function(path, priority): RouteRuleConfig {
-					return({
-						priority: priority + 1,
-						matchRules: [{ prefixMatch: path }],
-						service: backendBucket.id
-					});
-				}),
-				...staticFiles.map(function(file, priority): RouteRuleConfig {
-					return({
-						priority: staticPaths.length + priority + 1,
-						matchRules: [{ fullPathMatch: file }],
-						service: backendBucket.id
-					});
-				}),
-				{
-					priority: staticPaths.length + staticFiles.length + 1,
-					matchRules: [{ pathTemplateMatch: '/**' }],
-					service: backendBucket.id,
-					routeAction: {
-						urlRewrite: {
-							pathTemplateRewrite: '/'
-						}
-					}
-				}
-			];
+			const routeRules = buildRouteRules({
+				staticPaths: routing.staticPaths ?? ROUTING_DEFAULTS.staticWebApp.staticPaths,
+				staticFiles: routing.staticFiles ?? ROUTING_DEFAULTS.staticWebApp.staticFiles,
+				frontendService: backendBucket.id
+			});
 
 			const lbResources = createLoadBalancer(
 				name,
@@ -1434,41 +1256,12 @@ export class FullStackApp extends pulumi.ComponentResource {
 			this.frontendBucket = this.frontend.bucket.name;
 
 			const routing = args.routing ?? {};
-			const apiPrefix = routing.apiPrefix ?? '/api';
-			const staticPaths = routing.staticPaths ?? ['/assets/', '/icons/', '/fonts/', '/images/'];
-			const staticFiles = routing.staticFiles ?? ['/favicon.svg'];
-
-			routeRules = [
-				...staticPaths.map((path, priority): RouteRuleConfig => {
-					return({
-						priority: priority + 1,
-						matchRules: [{ prefixMatch: path }],
-						service: frontend.backendBucket.id
-					});
-				}),
-				...staticFiles.map((file, priority): RouteRuleConfig => {
-					return({
-						priority: staticPaths.length + priority + 1,
-						matchRules: [{ fullPathMatch: file }],
-						service: frontend.backendBucket.id
-					});
-				}),
-				{
-					priority: staticPaths.length + staticFiles.length + 1,
-					matchRules: [{ prefixMatch: apiPrefix }],
-					service: this.backend.backendService.id
-				},
-				{
-					priority: staticPaths.length + staticFiles.length + 2,
-					matchRules: [{ pathTemplateMatch: '/**' }],
-					service: this.frontend.backendBucket.id,
-					routeAction: {
-						urlRewrite: {
-							pathTemplateRewrite: '/'
-						}
-					}
-				}
-			];
+			routeRules = buildRouteRules({
+				staticPaths: routing.staticPaths ?? ROUTING_DEFAULTS.fullStack.staticPaths,
+				staticFiles: routing.staticFiles ?? ROUTING_DEFAULTS.fullStack.staticFiles,
+				api: { prefix: routing.apiPrefix ?? '/api', service: this.backend.backendService.id },
+				frontendService: frontend.backendBucket.id
+			});
 		} else {
 			this.frontend = null;
 			this.frontendBucket = null;
