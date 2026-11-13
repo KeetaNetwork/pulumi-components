@@ -1120,7 +1120,10 @@ export class CloudRunService extends pulumi.ComponentResource {
 			const workerEnv = envManager?.view(workerOverrides) ?? EnvView.ofOverrides(workerOverrides);
 
 			/* The workers run the new image only after the migration job has migrated the database for it, as the service does */
-			const rollAfter = migration === undefined ? {} : { rollAfter: [migration] };
+			let rollAfter: { rollAfter?: pulumi.Resource[] } = {};
+			if (migration !== undefined) {
+				rollAfter = { rollAfter: [migration] };
+			}
 
 			if (worker.kind === 'mig') {
 				// Reserve the external IP if the worker egresses through a NAT
