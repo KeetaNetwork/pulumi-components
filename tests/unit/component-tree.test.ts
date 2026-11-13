@@ -40,6 +40,28 @@ function baselineUrn(typeChain: string, name: string) {
  *   plain (non-component) resource as its parent, and what removes it. An
  *   entry that no resource needs fails the test as well.
  */
+/**
+ * The URNs that a duplicate environment had in the released version: its
+ * manager, and for each secret variable the secret, its version and its
+ * binding. The worker and the migration job read the environment of the
+ * app, so these leave once, on the first deploy after the upgrade.
+ */
+function duplicateEnvironment(parentChain: string, manager: string, variables: string[]) {
+	const reason = 'the worker and the migration job read the environment of the app';
+	const environment = `${parentChain}$Keeta:GCP:CloudRunEnvManager`;
+	const secret = `${environment}$gcp:secretmanager/secret:Secret`;
+	const removed: { [urn: string]: string } = { [baselineUrn(environment, manager)]: reason };
+	for (const variable of variables) {
+		removed[baselineUrn(secret, `${manager}-${variable}`)] = reason;
+		removed[baselineUrn(`${secret}$gcp:secretmanager/secretVersion:SecretVersion`, `${manager}-${variable}-version`)] = reason;
+		removed[baselineUrn(`${secret}$gcp:secretmanager/secretIamMember:SecretIamMember`, `${manager}-${variable}-iam-binding`)] = reason;
+	}
+
+	return(removed);
+}
+
+const DATABASE_SECRETS = [ 'mc-psql-db-password', 'mc-psql-db-url' ];
+
 const PLANNED_EXCEPTIONS: {
 	expectedRemovals: { [caseName: string]: { [urn: string]: string }};
 	deferredParents: { [nameEnding: string]: string };
@@ -49,8 +71,13 @@ const PLANNED_EXCEPTIONS: {
 			[baselineUrn('Keeta:GCP:CloudRunService$pulumi:providers:gcp', 'service-build-remote-build-provider')]: 'build provider removed'
 		},
 		'service-providers': {
-			[baselineUrn('Keeta:GCP:CloudRunService$pulumi:providers:gcp', 'service-providers-build-provider')]: 'build provider removed'
-		}
+			[baselineUrn('Keeta:GCP:CloudRunService$pulumi:providers:gcp', 'service-providers-build-provider')]: 'build provider removed',
+			...duplicateEnvironment('Keeta:GCP:CloudRunService', 'service-providers-mig-env', [ ...DATABASE_SECRETS, 'secret' ]),
+			...duplicateEnvironment('Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob', 'service-providers-migration-env', [ ...DATABASE_SECRETS, 'secret' ])
+		},
+		'service-database': duplicateEnvironment('Keeta:GCP:CloudRunService$Keeta:GCP:MigrationJob', 'service-database-migration-env', DATABASE_SECRETS),
+		'service-mig': duplicateEnvironment('Keeta:GCP:CloudRunService', 'service-mig-mig-env', []),
+		'service-crwp': duplicateEnvironment('Keeta:GCP:CloudRunService', 'service-crwp-mig-env', [])
 	},
 	deferredParents: {
 		'-subnet': 'the network chain moves to AppNetwork',
@@ -685,6 +712,132 @@ describe('component tree', function() {
 			expect(owned.filter(function(resource) {
 				return(resource.provider !== passed.urn);
 			})).toEqual([]);
+		});
+	});
+
+	/*
+	 * An app has one EnvManager, `${name}-env`, and its service, migration job
+	 * and worker read views of it. The EnvManagers of the worker and of
+	 * the migration job leave with their secrets: the one-time rollout that
+	 * `PLANNED_EXCEPTIONS.expectedRemovals` names. A standalone MigrationJob
+	 * keeps its own EnvManager.
+	 */
+	describe('environment ownership', function() {
+		const ENVIRONMENT_TYPES = [
+			ENV_MANAGER,
+			'gcp:secretmanager/secret:Secret',
+			'gcp:secretmanager/secretVersion:SecretVersion',
+			'gcp:secretmanager/secretIamMember:SecretIamMember'
+		];
+		const RUNNERS = [ 'gcp:cloudrun/service:Service', 'gcp:cloudrunv2/job:Job', 'gcp:cloudrunv2/workerPool:WorkerPool' ];
+
+		function appOf(tree: TreeSnapshot, resource: TreeResource) {
+			let current = parentOf(tree, resource);
+			while (current !== undefined) {
+				if (current.type === SERVICE) {
+					return(current);
+				}
+
+				current = parentOf(tree, current);
+			}
+
+			return(undefined);
+		}
+
+		/** The names that the secret references in a value point at (`secretKeyRef.name` of a service, `.secret` of a job) */
+		function secretNamesOf(value: unknown): string[] {
+			if (Array.isArray(value)) {
+				const items: unknown[] = value;
+
+				return(items.flatMap(secretNamesOf));
+			}
+
+			const record = optionalRecord(value);
+			if (record === undefined) {
+				return([]);
+			}
+
+			const names: string[] = [];
+			const reference = optionalRecord(record.secretKeyRef);
+			for (const field of [ 'name', 'secret' ]) {
+				const named = reference?.[field];
+				if (typeof named === 'string') {
+					names.push(named);
+				}
+			}
+
+			for (const nested of Object.values(record)) {
+				names.push(...secretNamesOf(nested));
+			}
+
+			return(names);
+		}
+
+		it.each(caseNames)('%s has one EnvManager for each app, named after it, under it', function(caseName) {
+			const tree = treeOf(caseName);
+			const offenders = tree.resources.filter(function(resource) {
+				const app = appOf(tree, resource);
+				if (resource.type !== ENV_MANAGER || app === undefined) {
+					return(false);
+				}
+
+				return(parentOf(tree, resource)?.urn !== app.urn || resource.name !== `${app.name}-env`);
+			});
+
+			expect(offenders.map(function(resource) {
+				return(resource.name);
+			})).toEqual([]);
+		});
+
+		it.each(caseNames)('%s has one managed secret for each variable of an app', function(caseName) {
+			const tree = treeOf(caseName);
+			const offenders = tree.resources.filter(function(resource) {
+				const app = appOf(tree, resource);
+				if (!ENVIRONMENT_TYPES.includes(resource.type) || app === undefined) {
+					return(false);
+				}
+
+				return(!resource.name.startsWith(`${app.name}-env`));
+			});
+
+			expect(offenders.map(function(resource) {
+				return(resource.name);
+			})).toEqual([]);
+		});
+
+		/*
+		 * A removed secret must not be one that a service, a job or a worker
+		 * still names: every reference points at a secret of the tree or at
+		 * one that the caller owns (the binding of `-non-managed-` names it).
+		 */
+		it.each(caseNames)('%s reads only secrets that exist, and none of a removed environment', function(caseName) {
+			const tree = treeOf(caseName);
+			const known = tree.resources.filter(function(resource) {
+				return(resource.type === 'gcp:secretmanager/secret:Secret' || resource.type === 'gcp:secretmanager/secretIamMember:SecretIamMember');
+			}).map(function(resource) {
+				return(optionalRecord(resource.inputs)?.secretId);
+			});
+			const references = tree.resources.filter(function(resource) {
+				return(RUNNERS.includes(resource.type));
+			}).map(function(resource): [ TreeResource, string[] ] {
+				return([ resource, secretNamesOf(resource.inputs) ]);
+			});
+			const missing = references.flatMap(function([ resource, names ]) {
+				return(names.filter(function(name) {
+					return(!known.includes(name));
+				}).map(function(name) {
+					return(`${resource.name} -> ${name}`);
+				}));
+			});
+			const removed = references.flatMap(function([ resource, names ]) {
+				return(names.filter(function(name) {
+					return(appOf(tree, resource) !== undefined && (name.includes('-mig-env-') || name.includes('-migration-env-')));
+				}).map(function(name) {
+					return(`${resource.name} -> ${name}`);
+				}));
+			});
+
+			expect({ missing, removed }).toEqual({ missing: [], removed: [] });
 		});
 	});
 

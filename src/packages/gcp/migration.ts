@@ -5,7 +5,7 @@ import type { GCPRegion } from './constants';
 import type { PostgresCloudSQL } from './sql';
 import { CloudRunJobExecution } from './cloudrun-job';
 import { EnvManager } from './cloudrun';
-import type { EnvironmentVariables } from './cloudrun';
+import type { EnvironmentVariables, EnvView } from './cloudrun';
 import { buildDatabaseEnvVars } from './database-env';
 import { MIGRATION_DEFAULTS } from './defaults';
 import { movedFrom } from './aliases';
@@ -113,9 +113,18 @@ export interface MigrationJobArgs {
 	taskTimeout?: number;
 
 	/**
-	 * Additional environment variables
+	 * Additional environment variables. Cannot be combined with `env`:
+	 * give the variables to the environment that `env` is a view of.
 	 */
 	environment?: EnvironmentVariables;
+
+	/**
+	 * The environment of the app, as this job reads it (a view of the
+	 * `EnvManager` of the app, with the overrides of the migration). When it
+	 * is given the job has no manager of its own and creates no secret;
+	 * the database variables and `environment` come from the view.
+	 */
+	env?: EnvView;
 
 	/**
 	 * Trigger value - when this changes, the migration job re-runs
@@ -145,6 +154,10 @@ export class MigrationJob extends pulumi.ComponentResource {
 
 	constructor(name: string, args: MigrationJobArgs, opts?: pulumi.ComponentResourceOptions) {
 		super('Keeta:GCP:MigrationJob', name, args, opts);
+
+		if (args.env !== undefined && args.environment !== undefined) {
+			throw(new TypeError('MigrationJob: environment and env cannot both be given, the variables come from the environment that env is a view of'));
+		}
 
 		// Extract database connection info
 		let dbHost: pulumi.Input<string>;
@@ -211,23 +224,29 @@ export class MigrationJob extends pulumi.ComponentResource {
 			}, { parent: this, retainOnDelete });
 		}
 
-		// Build environment variables
-		const variables: EnvironmentVariables = {
-			...buildDatabaseEnvVars({
-				host: dbHost,
-				username,
-				password,
-				databaseName,
-				caCertificate
-			}),
-			...args.environment
-		};
+		// The environment of the app when there is one, else the manager of this job
+		let jobEnvs: gcp.types.input.cloudrunv2.JobTemplateTemplateContainerEnv[];
+		if (args.env) {
+			jobEnvs = args.env.cloudRunJob;
+		} else {
+			const variables: EnvironmentVariables = {
+				...buildDatabaseEnvVars({
+					host: dbHost,
+					username,
+					password,
+					databaseName,
+					caCertificate
+				}),
+				...args.environment
+			};
 
-		const envManager = new EnvManager(`${name}-env`, {
-			serviceAccount: pulumi.interpolate`serviceAccount:${serviceAccount.email}`,
-			secretRegionName: args.region,
-			variables
-		}, { parent: this });
+			const envManager = new EnvManager(`${name}-env`, {
+				serviceAccount: pulumi.interpolate`serviceAccount:${serviceAccount.email}`,
+				secretRegionName: args.region,
+				variables
+			}, { parent: this });
+			jobEnvs = envManager.cloudRunJobVariableOutput;
+		}
 
 		// Configure VPC access if connector is provided
 		let vpcAccess: { connector: pulumi.Output<string>; egress: string } | undefined;
@@ -247,7 +266,7 @@ export class MigrationJob extends pulumi.ComponentResource {
 						image: args.image,
 						commands: args.container?.entrypoint,
 						args: args.container?.args,
-						envs: envManager.cloudRunJobVariableOutput,
+						envs: jobEnvs,
 						resources: {
 							limits: {
 								cpu: String(args.cpuLimit ?? MIGRATION_DEFAULTS.cpuLimit),
