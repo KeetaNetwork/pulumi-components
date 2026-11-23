@@ -9,6 +9,9 @@ interface DatabaseConnectionInfo {
 	caCertificate: pulumi.Input<string>;
 }
 
+/** The variable that holds the size of the connection pool of an application (a plain value, not a secret) */
+export const DATABASE_POOL_SIZE_VARIABLE = 'MC_PSQL_DB_POOL_SIZE';
+
 /**
  * Build the standard MC_PSQL_DB_* environment variables for database connectivity.
  * Used by CloudRunService, MigrationJob, and ContainerMIG to ensure all three

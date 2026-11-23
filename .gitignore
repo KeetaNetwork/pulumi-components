@@ -4,3 +4,4 @@ node_modules/
 /keetanetwork-pulumi-components-*.tgz
 # Ignore Pulumi test files
 Pulumi.test-*.yaml
+Pulumi.ci-*.yaml

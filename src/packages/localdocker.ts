@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto';
 
 import { promisifyExec } from '../utils';
 import type { DeepInput } from '../types';
+import type { ClientAuthInputs } from './gcp/client-auth';
 
 interface LocalBuildInputs {
 	buildDirectory: string;
@@ -14,7 +15,71 @@ interface LocalBuildInputs {
 	imageURI: string;
 	cleanBuildDirectory?: boolean;
 	tags?: string[];
+
+	/** Who pushes the image (never part of a diff) */
+	auth?: ClientAuthInputs;
 }
+
+/**
+ * The repository of an image URI in the form `docker image inspect` lists it:
+ * the URI without its tag (a colon only starts a tag when no "/" follows it,
+ * otherwise it separates a registry port), and for Docker Hub without
+ * "docker.io/" and "library/".
+ */
+function imageRepository(imageURI: string) {
+	const colon = imageURI.lastIndexOf(':');
+	let repository = imageURI;
+	if (colon !== -1 && !imageURI.slice(colon).includes('/')) {
+		repository = imageURI.slice(0, colon);
+	}
+
+	/* "docker image inspect" lists Docker Hub images in their short form: "user/image", and "image" for "library/image" */
+	return(repository.replace(/^docker\.io\//, '').replace(/^library\//, ''));
+}
+
+/**
+ * Choose the digest of the image that was built from the `RepoDigests`
+ * of `docker image inspect`, which lists one entry per repository the image
+ * is known in. It is the entry of the repository in the image's own URI.
+ */
+function pickRepoDigest(repoDigests: string[], imageURI: string) {
+	const repository = imageRepository(imageURI);
+	const found = repoDigests.find(function(entry) {
+		return(entry.split('@')[0] === repository);
+	});
+
+	if (found === undefined) {
+		throw(new Error(`Failed to get image digest, none of ${repoDigests.length} RepoDigests entries belongs to ${repository}`));
+	}
+
+	return(found);
+}
+
+function sameList(left: string[] | undefined, right: string[] | undefined) {
+	const leftItems = left ?? [];
+	const rightItems = right ?? [];
+
+	return(leftItems.length === rightItems.length && leftItems.every(function(item, index) {
+		return(item === rightItems[index]);
+	}));
+}
+
+/**
+ * Whether the image to build differs.  The build directory is a fresh
+ * temporary directory on every run and the secrets are only read by the
+ * build, so neither says the image is different.
+ */
+function localBuildHasChanges(olds: Partial<LocalBuildInputs>, news: Partial<LocalBuildInputs>) {
+	return(olds.imageURI !== news.imageURI ||
+		(olds.imageCache ?? undefined) !== (news.imageCache ?? undefined) ||
+		!sameList(olds.buildArgs, news.buildArgs) ||
+		!sameList(olds.tags, news.tags));
+}
+
+export const _Testing = {
+	pickRepoDigest,
+	localBuildHasChanges
+};
 
 async function createBuild(inputs: LocalBuildInputs) {
 	const toClean = [];
@@ -60,7 +125,7 @@ async function createBuild(inputs: LocalBuildInputs) {
 
 			const secretsFilePath = path.join(secretsDir, 'secrets');
 
-			fs.writeFileSync(secretsFilePath, inputs.secretContents, { mode: 0o700 });
+			fs.writeFileSync(secretsFilePath, inputs.secretContents, { mode: 0o600 });
 
 			toClean.push(secretsDir);
 
@@ -72,39 +137,48 @@ async function createBuild(inputs: LocalBuildInputs) {
 		/*
 		 * Run "docker build" to build the image
 		 */
-		await promisifyExec('docker', ['build', ...buildArgs, inputs.buildDirectory], env);
+		await promisifyExec('docker', ['build', ...buildArgs, '.'], env, inputs.buildDirectory);
+
+		/*
+		 * The push goes through the credential helper of gcloud, which
+		 * impersonates the account of the provider when there is one
+		 */
+		let pushEnv: NodeJS.ProcessEnv | undefined;
+		if (inputs.auth?.impersonateServiceAccount !== undefined) {
+			pushEnv = { ...process.env, CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT: inputs.auth.impersonateServiceAccount };
+		}
 
 		/*
 		 * Authenticate Docker to the registry before pushing
 		 */
 		const registryHost = inputs.imageURI.split('/')[0];
 		if (registryHost) {
-			await promisifyExec('gcloud', ['auth', 'configure-docker', registryHost, '--quiet']);
+			await promisifyExec('gcloud', ['auth', 'configure-docker', registryHost, '--quiet'], pushEnv);
 		}
 
 		/*
 		 * Push the image
 		 */
-		await promisifyExec('docker', [ 'image', 'push', inputs.imageURI ]);
+		await promisifyExec('docker', [ 'image', 'push', inputs.imageURI ], pushEnv);
 
 		/**
-		 * Add the additional tags and push them
+		 * Add the additional tags and push them, one at a time: the pushes
+		 * share one docker client and one registry login, and a failure then
+		 * names the first tag that could not be pushed
 		 */
 		for (const taggedImage of inputs.tags ?? []) {
 			await promisifyExec('docker', [ 'tag', inputs.imageURI, taggedImage ]);
-			await promisifyExec('docker', [ 'image', 'push', taggedImage ]);
+			await promisifyExec('docker', [ 'image', 'push', taggedImage ], pushEnv);
 		}
 
 		const imageInfoJSON = await promisifyExec('docker', [ 'image', 'inspect', inputs.imageURI ]);
 		// eslint-disable-next-line @typescript-eslint/consistent-type-assertions
 		const imageInfo = JSON.parse(imageInfoJSON.stdout.join('\n')) as { RepoDigests: unknown[] }[];
-		const imageDigest = imageInfo[0]?.RepoDigests?.[0];
+		const repoDigests = (imageInfo[0]?.RepoDigests ?? []).filter(function(entry): entry is string {
+			return(typeof entry === 'string');
+		});
 
-		if (typeof imageDigest !== 'string') {
-			throw(new TypeError('Failed to get image digest, it is not a string'));
-		}
-
-		return({ digest: imageDigest });
+		return({ digest: pickRepoDigest(repoDigests, inputs.imageURI) });
 	} catch (buildError) {
 		console.log(`Failed to build local Docker image ${inputs.imageURI}:`, buildError);
 
@@ -119,6 +193,9 @@ async function createBuild(inputs: LocalBuildInputs) {
 const localImageProvider: pulumi.dynamic.ResourceProvider = {
 	async check(_ignore_oldInput: LocalBuildInputs, newInput: LocalBuildInputs) {
 		return({ inputs: { ...newInput }});
+	},
+	diff(_ignore_id: string, olds: LocalBuildInputs, news: LocalBuildInputs) {
+		return(Promise.resolve({ changes: localBuildHasChanges(olds, news) }));
 	},
 	async create(inputs: LocalBuildInputs) {
 		const id = randomUUID();
@@ -136,7 +213,7 @@ const localImageProvider: pulumi.dynamic.ResourceProvider = {
 };
 
 export class LocalDockerImageBuilder extends pulumi.dynamic.Resource {
-	public readonly digest!: pulumi.Output<string>;
+	declare public readonly digest: pulumi.Output<string>;
 
 	constructor(name: string, args: Exclude<DeepInput<LocalBuildInputs>, Promise<LocalBuildInputs>>, opts?: pulumi.CustomResourceOptions) {
 		super(localImageProvider, name, {

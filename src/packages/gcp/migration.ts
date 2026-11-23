@@ -5,8 +5,13 @@ import type { GCPRegion } from './constants';
 import type { PostgresCloudSQL } from './sql';
 import { CloudRunJobExecution } from './cloudrun-job';
 import { EnvManager } from './cloudrun';
-import type { EnvironmentVariables } from './cloudrun';
+import type { EnvironmentVariables, EnvView } from './cloudrun';
 import { buildDatabaseEnvVars } from './database-env';
+import { MIGRATION_DEFAULTS } from './defaults';
+import { movedFrom } from './aliases';
+import { callerOf } from './client-auth';
+import { identityGrantsRole } from './identity';
+import type { ServiceIdentityRef } from './identity';
 import { generateName } from '../../utils';
 
 /**
@@ -47,12 +52,21 @@ export interface MigrationJobArgs {
 	region: GCPRegion;
 
 	/**
+	 * The identity of the app that this is part of. When it grants the Cloud
+	 * SQL client role to the service account, this does not (its own grant
+	 * stays as a retained tombstone, so the binding is never revoked).
+	 *
+	 * @internal Set by `CloudRunService`, which owns the identity; a component you build yourself grants for itself.
+	 */
+	identity?: ServiceIdentityRef;
+
+	/**
 	 * Database connection - either an existing PostgresCloudSQL instance or explicit credentials
 	 */
 	database: DatabaseInstanceConfig | DatabaseCredentialsConfig;
 
 	/**
-	 * Container image to use for migrations (e.g., 'postgres:15-alpine')
+	 * Container image to use for migrations (e.g., 'postgres:18-alpine')
 	 */
 	image: pulumi.Input<string>;
 
@@ -99,9 +113,18 @@ export interface MigrationJobArgs {
 	taskTimeout?: number;
 
 	/**
-	 * Additional environment variables
+	 * Additional environment variables. Cannot be combined with `env`:
+	 * give the variables to the environment that `env` is a view of.
 	 */
 	environment?: EnvironmentVariables;
+
+	/**
+	 * The environment of the app, as this job reads it (a view of the
+	 * `EnvManager` of the app, with the overrides of the migration). When it
+	 * is given the job has no manager of its own and creates no secret;
+	 * the database variables and `environment` come from the view.
+	 */
+	env?: EnvView;
 
 	/**
 	 * Trigger value - when this changes, the migration job re-runs
@@ -119,7 +142,7 @@ export interface MigrationJobArgs {
  * Features:
  * - Works with existing PostgresCloudSQL instances or explicit credentials
  * - Auto-injects MC_PSQL_DB_* vars for database connection
- * - Uses Cloud SQL volume mount for secure connection
+ * - Connects to the database over the VPC private IP through the VPC connector given in "vpc"
  * - Re-runs when trigger value changes (e.g., new image)
  */
 export class MigrationJob extends pulumi.ComponentResource {
@@ -131,6 +154,10 @@ export class MigrationJob extends pulumi.ComponentResource {
 
 	constructor(name: string, args: MigrationJobArgs, opts?: pulumi.ComponentResourceOptions) {
 		super('Keeta:GCP:MigrationJob', name, args, opts);
+
+		if (args.env !== undefined && args.environment !== undefined) {
+			throw(new TypeError('MigrationJob: environment and env cannot both be given, the variables come from the environment that env is a view of'));
+		}
 
 		// Extract database connection info
 		let dbHost: pulumi.Input<string>;
@@ -175,33 +202,51 @@ export class MigrationJob extends pulumi.ComponentResource {
 		// Grant Cloud SQL Client role to service account
 		const cloudSqlClientMember = pulumi.interpolate`serviceAccount:${serviceAccount.email}`;
 		let cloudSqlClient: pulumi.Input<pulumi.Resource> | undefined;
+		/* A role that the identity of the app grants is not granted here */
+		const cloudSqlRole = 'roles/cloudsql.client';
+		const identityGrants = identityGrantsRole(args.identity, cloudSqlRole);
+
 		if (args.gcp.changeProjectIAMPolicy) {
-			cloudSqlClient = args.gcp.changeProjectIAMPolicy('roles/cloudsql.client', [cloudSqlClientMember]);
+			if (!identityGrants) {
+				cloudSqlClient = args.gcp.changeProjectIAMPolicy(cloudSqlRole, [cloudSqlClientMember]);
+			}
 		} else {
+			/* When the identity grants the role, this is a retained tombstone that keeps the binding and its 1.0.95 URN. Otherwise it is the grant. */
+			let retainOnDelete: boolean | undefined;
+			if (identityGrants) {
+				retainOnDelete = true;
+			}
+
 			cloudSqlClient = new gcp.projects.IAMMember(`${name}-cloudsql-client`, {
 				project: args.gcp.project,
-				role: 'roles/cloudsql.client',
+				role: cloudSqlRole,
 				member: cloudSqlClientMember
-			}, { parent: this });
+			}, { parent: this, retainOnDelete });
 		}
 
-		// Build environment variables
-		const variables: EnvironmentVariables = {
-			...buildDatabaseEnvVars({
-				host: dbHost,
-				username,
-				password,
-				databaseName,
-				caCertificate
-			}),
-			...args.environment
-		};
+		// The environment of the app when there is one, else the manager of this job
+		let jobEnvs: gcp.types.input.cloudrunv2.JobTemplateTemplateContainerEnv[];
+		if (args.env) {
+			jobEnvs = args.env.cloudRunJob;
+		} else {
+			const variables: EnvironmentVariables = {
+				...buildDatabaseEnvVars({
+					host: dbHost,
+					username,
+					password,
+					databaseName,
+					caCertificate
+				}),
+				...args.environment
+			};
 
-		const envManager = new EnvManager(`${name}-env`, {
-			serviceAccount: pulumi.interpolate`serviceAccount:${serviceAccount.email}`,
-			secretRegionName: args.region,
-			variables
-		}, { parent: this });
+			const envManager = new EnvManager(`${name}-env`, {
+				serviceAccount: pulumi.interpolate`serviceAccount:${serviceAccount.email}`,
+				secretRegionName: args.region,
+				variables
+			}, { parent: this });
+			jobEnvs = envManager.cloudRunJobVariableOutput;
+		}
 
 		// Configure VPC access if connector is provided
 		let vpcAccess: { connector: pulumi.Output<string>; egress: string } | undefined;
@@ -221,16 +266,16 @@ export class MigrationJob extends pulumi.ComponentResource {
 						image: args.image,
 						commands: args.container?.entrypoint,
 						args: args.container?.args,
-						envs: envManager.cloudRunJobVariableOutput,
+						envs: jobEnvs,
 						resources: {
 							limits: {
-								cpu: String(args.cpuLimit ?? 1),
-								memory: `${args.memoryLimit ?? 512}Mi`
+								cpu: String(args.cpuLimit ?? MIGRATION_DEFAULTS.cpuLimit),
+								memory: `${args.memoryLimit ?? MIGRATION_DEFAULTS.memoryLimit}Mi`
 							}
 						}
 					}],
-					maxRetries: 1,
-					timeout: `${args.taskTimeout ?? 600}s`
+					maxRetries: MIGRATION_DEFAULTS.maxRetries,
+					timeout: `${args.taskTimeout ?? MIGRATION_DEFAULTS.taskTimeout}s`
 				}
 			}
 		}, { parent: this });
@@ -242,13 +287,20 @@ export class MigrationJob extends pulumi.ComponentResource {
 			executionDeps.push(cloudSqlClient);
 		}
 
+		/* The grants of the identity of the app: the execution needs the roles that it makes */
+		if (args.identity) {
+			executionDeps.push(...args.identity.grants);
+		}
+
 		this.execution = new CloudRunJobExecution(`${name}-exec`, {
 			jobName: this.job.name,
 			projectId: args.gcp.project,
 			region: args.region,
-			trigger: pulumi.output(trigger).apply(function(t) { return(t); })
+			trigger: pulumi.output(trigger).apply(function(t) { return(t); }),
+			provider: callerOf(this, args.gcp.project)
 		}, {
-			parent: this.job,
+			parent: this,
+			aliases: movedFrom(`${name}-exec`, 'pulumi-nodejs:dynamic:Resource', { kind: 'resource', urn: this.job.urn }),
 			dependsOn: executionDeps
 		});
 

@@ -9,7 +9,7 @@
 	},
 	"dependencies": {
 		"@keetanetwork/pulumi-components": "file:../../dist",
-		"@pulumi/gcp": "^9.6.0",
-		"@pulumi/pulumi": "^3.122.0"
+		"@pulumi/gcp": "^9.30.0",
+		"@pulumi/pulumi": "^3.272.0"
 	}
 }

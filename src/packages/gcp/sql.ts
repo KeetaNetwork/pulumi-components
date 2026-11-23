@@ -2,6 +2,10 @@ import * as pulumi from '@pulumi/pulumi';
 import * as gcp from '@pulumi/gcp';
 import * as random from '@pulumi/random';
 import type { GCPRegion, PerGCPRegion } from './constants';
+import { POSTGRES_DEFAULTS } from './defaults';
+import { movedFrom } from './aliases';
+import { assertMaxConnectionsUnambiguous, connectionBudget, parseCloudSQLTier, resolveMaxConnections } from './connection-budget';
+import type { ConnectionBudget, TierShape } from './connection-budget';
 
 type VPCNetworkLike = Pick<gcp.compute.Network, 'id' | 'name'>;
 
@@ -104,6 +108,17 @@ export interface PostgresCloudSQLArgs {
 	tier: string;
 
 	/**
+	 * The database engine version (for example 'POSTGRES_15').
+	 *
+	 * Left out, a new instance is created with POSTGRES_DEFAULTS.version and
+	 * the version of an instance that exists is never changed (the property is
+	 * ignored on update, so a plain `pulumi up` neither upgrades nor replaces
+	 * it). A replica takes the version of its master. Giving a version sets
+	 * it, and a higher one upgrades the instance in place.
+	 */
+	databaseVersion?: string;
+
+	/**
 	 * Replication configuration for created database
 	 */
 	replication?: {
@@ -158,6 +173,16 @@ export interface PostgresCloudSQLArgs {
 	flags?: DBFlags;
 
 	/**
+	 * Writes the `max_connections` flag. A number is the value; 'tier-default'
+	 * writes what Cloud SQL applies to the tier already, so that the value is
+	 * explicit in the state. Without it no flag is written. Giving it together
+	 * with `flags.max_connections` throws a `MaxConnectionsConflictError`.
+	 *
+	 * Adding the flag to an instance that had none restarts Cloud SQL once.
+	 */
+	maxConnections?: number | 'tier-default';
+
+	/**
 	 * TLS Options
 	 */
 	tls?: {
@@ -199,7 +224,9 @@ export interface PostgresCloudSQLArgs {
 	abandonOnDelete?: boolean;
 
 	/**
-	 * Query Insights options
+	 * Query Insights options. Left out, Query Insights is on, without
+	 * application tags or client addresses. Pass
+	 * `{ queryInsightsEnabled: false }` to turn it off.
 	 */
 	insightsConfig?: NonNullable<pulumi.Unwrap<ConstructorParameters<typeof gcp.sql.DatabaseInstance>[1]['settings']>>['insightsConfig'];
 }
@@ -212,6 +239,16 @@ type PostgresURLParams = {
 	 */
 	connection_limit?: number
 };
+
+type Edition = 'ENTERPRISE' | 'ENTERPRISE_PLUS';
+
+/** The edition that each kind of tier belongs to: a new kind of tier is a compile error until it says its edition (`undefined` leaves the API default) */
+const EDITION_OF_TIER = {
+	shared: 'ENTERPRISE',
+	custom: 'ENTERPRISE',
+	'perf-optimized': 'ENTERPRISE_PLUS',
+	unknown: undefined
+} satisfies { [kind in TierShape['kind']]: Edition | undefined };
 
 export class PostgresCloudSQL extends pulumi.ComponentResource {
 	#prefix: string;
@@ -248,8 +285,21 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 	 */
 	readonly masterPort: pulumi.Output<string>;
 
+	/**
+	 * The connections that the instance has to share: the `max_connections`
+	 * that Cloud SQL applies (the explicit flag, else `maxConnections`, else the
+	 * default of the tier), less a reserve. Reading it writes nothing.
+	 *
+	 * @throws Error naming the tier when no `max_connections` is set and the tier is not one that the library knows
+	 */
+	get connectionBudget(): ConnectionBudget {
+		return(connectionBudget(this.#maxConnections()));
+	}
+
 	constructor(name: string, args: PostgresCloudSQLArgs, opts?: pulumi.ComponentResourceOptions) {
 		super('Keeta:GCP:PostgresCloudSQL', name, args, opts);
+
+		assertMaxConnectionsUnambiguous(args);
 
 		this.#prefix = args.prefix ?? name;
 		this.#options = args;
@@ -278,7 +328,7 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 			const privateIpAddress = new gcp.compute.GlobalAddress(`${this.#prefix}-postgres-private-ip`, {
 				purpose: 'VPC_PEERING',
 				addressType: 'INTERNAL',
-				prefixLength: 16,
+				prefixLength: POSTGRES_DEFAULTS.psaPrefixLength,
 				network: this.#vpcNetwork.id
 			}, { parent: this });
 
@@ -289,7 +339,10 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 				network: this.#vpcNetwork.id,
 				service: 'servicenetworking.googleapis.com',
 				reservedPeeringRanges: [ privateIpAddress.name ]
-			}, { parent: privateIpAddress });
+			}, {
+				parent: this,
+				aliases: movedFrom(`${this.#prefix}-postgres-vpc-connection`, 'gcp:servicenetworking/connection:Connection', { kind: 'resource', urn: privateIpAddress.urn })
+			});
 
 			masterDependsOn.push(vpcConnection);
 		}
@@ -310,8 +363,11 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 			/**
 			 * Create the replica instance, with the master instance as the parent
 			 */
-			this.createPostgres(`${this.#prefix}-${region}-replica`, region, masterDatabase, {
-				parent: masterDatabase
+			const replicaName = `${this.#prefix}-${region}-replica`;
+			this.createPostgres(replicaName, region, masterDatabase, {
+				parent: this,
+				aliases: movedFrom(replicaName, 'gcp:sql/databaseInstance:DatabaseInstance', { kind: 'resource', urn: masterDatabase.urn }),
+				dependsOn: [ masterDatabase ]
 			});
 		}
 
@@ -329,7 +385,8 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 			instance: masterDatabase.name,
 			deletionPolicy: deletionPolicy
 		}, {
-			parent: masterDatabase,
+			parent: this,
+			aliases: movedFrom(`${this.#prefix}-db`, 'gcp:sql/database:Database', { kind: 'resource', urn: masterDatabase.urn }),
 			protect: args.deletionProtection,
 			deletedWith: masterDatabase
 		});
@@ -349,7 +406,10 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 			password: password,
 			deletionPolicy: deletionPolicy
 		}, {
-			parent: masterDatabase,
+			parent: this,
+			aliases: movedFrom(`${this.#prefix}-db-user`, 'gcp:sql/user:User', { kind: 'resource', urn: masterDatabase.urn }),
+			/* Protected with the database */
+			protect: args.deletionProtection,
 			deletedWith: masterDatabase
 		});
 		this.username = user.name;
@@ -357,6 +417,36 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 
 		this.masterHost = this.getPrimaryHostIP();
 		this.masterPort = this.getPrimaryHost().port;
+	}
+
+	/**
+	 * The `max_connections` of the instance: the flag of the caller, else
+	 * `maxConnections` when it is a number, else the default of the tier
+	 */
+	#maxConnections(): number {
+		return(resolveMaxConnections({ flags: this.#options.flags, maxConnections: this.#options.maxConnections, tier: this.#options.tier }));
+	}
+
+	/**
+	 * The engine version of an instance: the caller's, else the one of its
+	 * master (a replica must match it), else the default of the library
+	 */
+	#databaseVersion(masterInstance?: gcp.sql.DatabaseInstance): pulumi.Input<string> {
+		if (this.#options.databaseVersion !== undefined) {
+			return(this.#options.databaseVersion);
+		}
+
+		return(masterInstance?.databaseVersion ?? POSTGRES_DEFAULTS.version);
+	}
+
+	/**
+	 * The edition that the tier belongs to. Since PostgreSQL 16 the API
+	 * defaults to Enterprise Plus, which accepts only the `db-perf-optimized`
+	 * tiers, so the shared-core and custom tiers say theirs. A tier that the
+	 * library does not know gets none: the API default applies.
+	 */
+	#edition(): Edition | undefined {
+		return(EDITION_OF_TIER[parseCloudSQLTier(this.#options.tier).kind]);
 	}
 
 	/**
@@ -427,16 +517,30 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 			});
 		}
 
+		if (this.#options.maxConnections !== undefined) {
+			databaseFlags.push({
+				name: 'max_connections',
+				value: String(this.#maxConnections())
+			});
+		}
+
 		const deletionProtection = this.#options.deletionProtection;
+
+		/* No version from the caller: an instance that exists keeps the one it has */
+		const ignoreChanges = [ ...(options?.ignoreChanges ?? []) ];
+		if (this.#options.databaseVersion === undefined) {
+			ignoreChanges.push('databaseVersion');
+		}
 
 		const instance = new gcp.sql.DatabaseInstance(name, {
 			region: region,
-			databaseVersion: 'POSTGRES_14',
+			databaseVersion: this.#databaseVersion(masterInstance),
 			deletionProtection: deletionProtection,
 			masterInstanceName: masterInstance?.name,
 			settings: {
 				availabilityType: availabilityType,
 				tier: this.#options.tier,
+				edition: this.#edition(),
 				ipConfiguration: {
 					ipv4Enabled: false,
 					privateNetwork: this.#vpcNetwork.id,
@@ -445,14 +549,13 @@ export class PostgresCloudSQL extends pulumi.ComponentResource {
 				databaseFlags: databaseFlags,
 				backupConfiguration: backupConfiguration,
 				insightsConfig: this.#options.insightsConfig ?? {
-					queryInsightsEnabled: false,
-					queryPlansPerMinute: 0,
-					queryStringLength: 0,
+					queryInsightsEnabled: POSTGRES_DEFAULTS.queryInsights,
+					queryStringLength: POSTGRES_DEFAULTS.queryStringLength,
 					recordApplicationTags: false,
 					recordClientAddress: false
 				}
 			}
-		}, { protect: deletionProtection, ...options });
+		}, { protect: deletionProtection, ...options, ignoreChanges });
 
 		this.hosts[region] = {
 			host: instance.firstIpAddress,

@@ -5,13 +5,26 @@ import type { GCPCommonOptions, CertificateManagerCert, ComputeManagedSslCert } 
 import type { GCPRegion } from './constants';
 import type { EnvironmentVariables } from './cloudrun';
 import { GoogleCloudFolderWithArgs } from './bucket';
-import { EnvManager } from './cloudrun';
+import { EnvManager, EnvView } from './cloudrun';
+import type { ReplacedEnvironment } from './cloudrun';
 import { PostgresCloudSQL } from './sql';
 import type { ContainerGeneric } from './container';
 import { ContainerMIG, ContainerCloudRun } from './container';
+import type { ContainerMIGEgressOptions } from './container';
 import { MigrationJob } from './migration';
-import { buildDatabaseEnvVars, buildRedisEnvVars } from './database-env';
-import { createHttpRedirect } from './lb';
+import { AppNetwork } from './network';
+import { ServiceIdentity } from './identity';
+import { CloudRunServiceArgsError, MAX_SCALE_ANNOTATION, parseCloudRunServiceArgs } from './apps-args';
+import type { DeploymentProfile } from './profiles';
+import type { MIGWorkerArgs, CRWPWorkerArgs, LegacyMIGArgs, ParsedCloudRunServiceArgs, ParsedRemote } from './apps-args';
+export { CloudRunServiceArgsError } from './apps-args';
+export type { MIGWorkerArgs, CRWPWorkerArgs, LegacyMIGArgs } from './apps-args';
+import { CLOUD_RUN_SERVICE_DEFAULTS, ROUTING_DEFAULTS } from './defaults';
+import { callerOf } from './client-auth';
+import { DATABASE_POOL_SIZE_VARIABLE, buildDatabaseEnvVars, buildRedisEnvVars } from './database-env';
+import { buildRouteRules, createHTTPSFrontEnd, parseFrontEndConfig, resolveIPAddresses } from './https-frontend';
+import type { RouteRuleConfig } from './https-frontend';
+import { legacyUrn, movedFrom } from './aliases';
 import * as components from '../docker';
 import { generateName } from '../../utils';
 
@@ -65,6 +78,14 @@ export interface LoadBalancerConfig {
 	 * SSL certificate configuration
 	 */
 	ssl: SSLConfig;
+
+	/**
+	 * The SSL policy of the HTTPS proxy. Left out, the load balancer creates
+	 * `${name}-ssl-policy` (profile `MODERN`, TLS 1.2 and up). Give a policy
+	 * of your own to use it instead, or `false` for no policy (the proxy
+	 * then accepts what GCP accepts by default, TLS 1.0 and up).
+	 */
+	sslPolicy?: gcp.compute.SSLPolicy | false;
 }
 
 /**
@@ -78,65 +99,6 @@ interface LoadBalancerResources {
 }
 
 /**
- * Route rule configuration for URL map
- */
-interface RouteRuleConfig {
-	priority: number;
-	matchRules: {
-		prefixMatch?: string;
-		fullPathMatch?: string;
-		pathTemplateMatch?: string;
-	}[];
-	service: pulumi.Input<string>;
-	routeAction?: {
-		urlRewrite?: {
-			pathTemplateRewrite?: string;
-		};
-	};
-}
-
-/**
- * Parse IP address configuration into structured format
- */
-function parseIPAddresses(
-	name: string,
-	ipAddress: IPAddressConfig | undefined,
-	opts: { parent: pulumi.Resource }
-): { kind: 'ipv4' | 'ipv6' | ''; ip: pulumi.Input<string> }[] {
-	const ipAddresses: { kind: 'ipv4' | 'ipv6' | ''; ip: pulumi.Input<string> }[] = [];
-
-	if (ipAddress === undefined) {
-		ipAddresses.push(
-			{
-				kind: 'ipv4',
-				ip: new gcp.compute.GlobalAddress(`${name}-ipv4`, {
-					addressType: 'EXTERNAL',
-					ipVersion: 'IPV4'
-				}, opts).address
-			},
-			{
-				kind: 'ipv6',
-				ip: new gcp.compute.GlobalAddress(`${name}-ipv6`, {
-					addressType: 'EXTERNAL',
-					ipVersion: 'IPV6'
-				}, opts).address
-			}
-		);
-	} else if (typeof ipAddress === 'object' && ('ipv4' in ipAddress || 'ipv6' in ipAddress)) {
-		if ('ipv4' in ipAddress && ipAddress.ipv4) {
-			ipAddresses.push({ kind: 'ipv4', ip: ipAddress.ipv4 });
-		}
-		if ('ipv6' in ipAddress && ipAddress.ipv6) {
-			ipAddresses.push({ kind: 'ipv6', ip: ipAddress.ipv6 });
-		}
-	} else {
-		ipAddresses.push({ kind: '', ip: ipAddress });
-	}
-
-	return(ipAddresses);
-}
-
-/**
  * Create a load balancer with URL map, HTTPS proxy, and forwarding rules
  */
 function createLoadBalancer(
@@ -146,6 +108,8 @@ function createLoadBalancer(
 	defaultService: pulumi.Input<string>,
 	opts: { parent: pulumi.Resource }
 ): LoadBalancerResources {
+	const parsed = parseFrontEndConfig(config);
+
 	// Create URL map with routing rules
 	const urlMap = new gcp.compute.URLMap(`${name}-url-map`, {
 		defaultService,
@@ -160,132 +124,26 @@ function createLoadBalancer(
 		}]
 	}, opts);
 
-	// Create or use existing SSL certificate
-	let certificateID: pulumi.Output<string>;
-	let useCertificateManager: boolean;
-	if ('sslCertificate' in config.ssl && config.ssl.sslCertificate) {
-		const cert = config.ssl.sslCertificate;
-		certificateID = pulumi.output(cert.id);
-
-		// Discriminate based on presence of certificateId (compute.ManagedSslCertificate only)
-		if ('certificateId' in cert) {
-			// This is a compute.ManagedSslCertificate
-			useCertificateManager = false;
-		} else {
-			// This is a certificatemanager.Certificate
-			useCertificateManager = true;
-		}
-	} else {
-		/*
-		 * If a sslCertificateVersion is provided, use that as the
-		 * name of the resource so that it can be replaced when
-		 * the version changes
-		 */
-		let addToCertName = '';
-		if ('sslCertificateVersion' in config.ssl && config.ssl.sslCertificateVersion !== undefined) {
-			addToCertName = `-${config.ssl.sslCertificateVersion}`;
-		}
-
-		// Create a new compute.ManagedSslCertificate
-		const sslCertificate = new gcp.compute.ManagedSslCertificate(`${name}-cert${addToCertName}`, {
-			managed: {
-				domains: config.ssl.domains
-			}
-		}, {
-			...opts,
-			protect: config.ssl.protectCert
-		});
-		certificateID = sslCertificate.id;
-		useCertificateManager = false;
+	let dns: { zoneId: pulumi.Input<string>; domain: pulumi.Input<string> } | undefined;
+	if (parsed.dnsZoneId) {
+		dns = { zoneId: parsed.dnsZoneId, domain: parsed.domain };
 	}
 
-	// Create HTTPS proxy
-	const toDependOn: pulumi.Resource[] = [];
-	let proxyConfig: ConstructorParameters<typeof gcp.compute.TargetHttpsProxy>[1];
-	if (useCertificateManager) {
-		const certMap = new gcp.certificatemanager.CertificateMap(`${name}-cert-map`, {
-			description: `[${name}] Certificate map for load balancer`
-		}, opts);
+	const frontEnd = createHTTPSFrontEnd(name, parsed, {
+		variant: { kind: 'app' },
+		urlMap,
+		ips: resolveIPAddresses(name, parsed.ipAddress, opts),
+		dns
+	}, opts);
 
-		/*
-		 * We need to make the TargetHttpsProxy depend on the
-		 * CertificateMapEntry to ensure the certificate is properly
-		 * associated before the proxy is created, or it will fail
-		 */
-		const certMapEntry = new gcp.certificatemanager.CertificateMapEntry(`${name}-cert-map-entry`, {
-			map: certMap.name,
-			certificates: [certificateID],
-			/*
-			 * Since we create one cert-map per Load Balancer we
-			 * can just use the "PRIMARY" matcher to match all
-			 * requests, and avoid having to specify which domains
-			 * to match in the entry.
-			 */
-			matcher: 'PRIMARY'
-		}, opts);
-		toDependOn.push(certMapEntry);
-
-		proxyConfig = {
-			urlMap: urlMap.id,
-			certificateMap: pulumi.interpolate`//certificatemanager.googleapis.com/${certMap.id}`
-		};
-	} else {
-		proxyConfig = {
-			urlMap: urlMap.id,
-			sslCertificates: [certificateID]
-		};
-	}
-	const httpsProxy = new gcp.compute.TargetHttpsProxy(`${name}-https-proxy`, proxyConfig, {
-		...opts,
-		dependsOn: toDependOn.splice(0),
-		/*
-		 * It seems like we need to replace the proxy when the kind
-		 * of certificate changes, or GCP gets confused
-		 */
-		replaceOnChanges: ['certificateMap', 'sslCertificates']
-	});
-
-	// Parse IP addresses
-	const ipAddresses = parseIPAddresses(name, config.ipAddress, opts);
-	const forwardingRules: gcp.compute.GlobalForwardingRule[] = [];
-
-	// Create forwarding rules and DNS records
-	for (const ipConfig of ipAddresses) {
-		const ruleName = `${name}-fr-${ipConfig.kind}`.replace(/-$/, '');
-		const rule = new gcp.compute.GlobalForwardingRule(ruleName, {
-			ipAddress: ipConfig.ip,
-			target: httpsProxy.id,
-			portRange: '443',
-			loadBalancingScheme: 'EXTERNAL_MANAGED',
-			ipProtocol: 'TCP'
-		}, {
-			...opts,
-			deleteBeforeReplace: true
-		});
-		forwardingRules.push(rule);
-
-		// Create DNS records if zone ID provided
-		if (config.dnsZoneId && ipConfig.kind !== '') {
-			new gcp.dns.RecordSet(`${name}-dns-${ipConfig.kind}`, {
-				name: pulumi.output(config.domain).apply(function(d) { return(d.endsWith('.') ? d : `${d}.`); }),
-				type: ipConfig.kind === 'ipv4' ? 'A' : 'AAAA',
-				ttl: 300,
-				managedZone: config.dnsZoneId,
-				rrdatas: [ipConfig.ip]
-			}, opts);
-		}
-	}
-
-	createHttpRedirect(name, ipAddresses, { parent: urlMap });
-
-	const ips = pulumi.all(forwardingRules.map(function(fr) { return(fr.ipAddress); })).apply(function(ips) {
+	const ips = pulumi.all(frontEnd.forwardingRules.map(function(fr) { return(fr.ipAddress); })).apply(function(ips) {
 		return(ips.filter(function(ip): ip is string { return(ip !== undefined && ip !== null); }));
 	});
 
 	return({
 		urlMap,
-		httpsProxy,
-		forwardingRules,
+		httpsProxy: frontEnd.httpsProxy,
+		forwardingRules: frontEnd.forwardingRules,
 		ips
 	});
 }
@@ -415,6 +273,9 @@ export class StaticWebApp extends pulumi.ComponentResource {
 			},
 			uniformBucketLevelAccess: true,
 			...args.bucketConfig
+		}, {
+			parent: this,
+			aliases: movedFrom(`${name}-bucket`, 'gcp:storage/bucket:Bucket', { kind: 'stack' })
 		});
 
 		new gcp.storage.BucketIAMMember(`${name}-bucket-viewer`, {
@@ -422,6 +283,8 @@ export class StaticWebApp extends pulumi.ComponentResource {
 			role: 'roles/storage.objectViewer',
 			member: 'allUsers'
 		}, {
+			parent: this,
+			aliases: movedFrom(`${name}-bucket-viewer`, 'gcp:storage/bucketIAMMember:BucketIAMMember', { kind: 'stack' }),
 			deletedWith: bucket
 		});
 
@@ -464,6 +327,9 @@ export class StaticWebApp extends pulumi.ComponentResource {
 					});
 				}
 			}
+		}, {
+			parent: this,
+			aliases: movedFrom(`${name}-files`, 'keeta:synced-folder:GoogleCloudFolderWithArgs', { kind: 'stack' })
 		});
 
 		const customResponseHeadersInput = args.customResponseHeaders ?? [];
@@ -503,6 +369,9 @@ export class StaticWebApp extends pulumi.ComponentResource {
 				compressionMode: cdn.compressionMode ?? 'AUTOMATIC',
 				cdnPolicy: cdn.cdnPolicy ?? { cacheMode: 'USE_ORIGIN_HEADERS' }
 			} : {})
+		}, {
+			parent: this,
+			aliases: movedFrom(`${name}-backend`, 'gcp:compute/backendBucket:BackendBucket', { kind: 'stack' })
 		});
 
 		this.bucket = bucket;
@@ -511,35 +380,11 @@ export class StaticWebApp extends pulumi.ComponentResource {
 		if (args.loadBalancer) {
 			const lb = args.loadBalancer;
 			const routing = args.routing ?? {};
-			const staticPaths = routing.staticPaths ?? ['/assets/', '/icons/', '/fonts/', '/images/'];
-			const staticFiles = routing.staticFiles ?? [];
-
-			const routeRules: RouteRuleConfig[] = [
-				...staticPaths.map(function(path, priority): RouteRuleConfig {
-					return({
-						priority: priority + 1,
-						matchRules: [{ prefixMatch: path }],
-						service: backendBucket.id
-					});
-				}),
-				...staticFiles.map(function(file, priority): RouteRuleConfig {
-					return({
-						priority: staticPaths.length + priority + 1,
-						matchRules: [{ fullPathMatch: file }],
-						service: backendBucket.id
-					});
-				}),
-				{
-					priority: staticPaths.length + staticFiles.length + 1,
-					matchRules: [{ pathTemplateMatch: '/**' }],
-					service: backendBucket.id,
-					routeAction: {
-						urlRewrite: {
-							pathTemplateRewrite: '/'
-						}
-					}
-				}
-			];
+			const routeRules = buildRouteRules({
+				staticPaths: routing.staticPaths ?? ROUTING_DEFAULTS.staticWebApp.staticPaths,
+				staticFiles: routing.staticFiles ?? ROUTING_DEFAULTS.staticWebApp.staticFiles,
+				frontendService: backendBucket.id
+			});
 
 			const lbResources = createLoadBalancer(
 				name,
@@ -583,18 +428,22 @@ export interface CloudRunServiceArgs {
 	region: GCPRegion;
 
 	/**
-	 * Docker image configuration
+	 * Docker image configuration: either the URI of an image or a
+	 * configuration to build one (not both)
 	 */
 	image: {
 		/**
-		 * Docker image URI or configuration to build
+		 * Docker image URI
 		 */
-		uri?: pulumi.Input<string>;
+		uri: pulumi.Input<string>;
+		build?: never;
+	} | {
+		uri?: never;
 
 		/**
 		 * Build configuration (alternative to uri)
 		 */
-		build?: {
+		build: {
 			directory: string;
 			registryUrl?: pulumi.Input<string>;
 			imageName: string;
@@ -615,6 +464,12 @@ export interface CloudRunServiceArgs {
 				bucketConfig?: Partial<Pick<gcp.storage.BucketArgs, 'logging'>>;
 				bindPermissions?: boolean;
 				machineType?: string;
+
+				/**
+				 * Time that Cloud Build gives the build, in seconds
+				 * @default BUILD_DEFAULTS.timeoutSeconds
+				 */
+				timeoutSeconds?: number;
 			};
 		};
 	};
@@ -639,6 +494,18 @@ export interface CloudRunServiceArgs {
 		tier?: string;
 
 		/**
+		 * Database engine version
+		 * @default POSTGRES_DEFAULTS.version for a new database; a database that exists keeps its version (see `PostgresCloudSQLArgs.databaseVersion`)
+		 */
+		version?: string;
+
+		/**
+		 * Length of the query strings that query insights records
+		 * @default POSTGRES_DEFAULTS.queryStringLength
+		 */
+		queryStringLength?: number;
+
+		/**
 		 * Whether to enable deletion protection (default: false)
 		 */
 		deletionProtection?: boolean;
@@ -649,9 +516,22 @@ export interface CloudRunServiceArgs {
 		flags?: { [key: string]: number };
 
 		/**
-		 * Whether query insights should be enabled
+		 * Whether Query Insights is on. Set `false` to turn it off.
+		 * @default true
 		 */
 		queryInsights?: boolean;
+
+		/**
+		 * Size of the connection pool of each instance of the service and of
+		 * the migration job, given to them as the plain variable
+		 * MC_PSQL_DB_POOL_SIZE. When it is given the constructor checks that
+		 * the pools fit in `flags.max_connections` (less a reserve of 10%):
+		 * `service.maxInstances` x this, plus the worker (`worker.instanceCount`
+		 * x its pool size, or this one).
+		 *
+		 * @throws ConnectionBudgetExceededError from the constructor when they do not fit
+		 */
+		poolSize?: number;
 
 		/**
 		 * Replication configuration for created database
@@ -705,7 +585,24 @@ export interface CloudRunServiceArgs {
 	 */
 	kv?: ({
 		type?: 'redis';
-	} & Omit<gcp.redis.InstanceArgs, 'region' | 'authorizedNetwork' | 'authEnabled'>)
+
+		/**
+		 * Memory of the store, in GB. Required unless `profile` gives it.
+		 */
+		memorySizeGb?: pulumi.Input<number>;
+	} & Omit<gcp.redis.InstanceArgs, 'region' | 'authorizedNetwork' | 'authEnabled' | 'memorySizeGb'>)
+
+	/**
+	 * Environment and size profile (optional). It fills in what the
+	 * arguments leave out: an explicit argument beats the profile, which
+	 * beats the default of the library. It applies to `database` (tier,
+	 * `flags.max_connections`, `poolSize`, deletion protection, backups, query
+	 * insights), `service.maxInstances`, `worker.poolSize`, the VPC connector
+	 * and `kv.memorySizeGb`, where the app has them. The connection budget is
+	 * checked with its numbers. `profiles` (`gcp.profiles`) holds the same
+	 * values to spread yourself.
+	 */
+	profile?: DeploymentProfile;
 
 	/**
 	 * Cloud Run service configuration
@@ -735,10 +632,29 @@ export interface CloudRunServiceArgs {
 		 * Additional metadata annotations
 		 */
 		annotations?: { [key: string]: pulumi.Input<string> };
+
+		/**
+		 * The most instances that Cloud Run starts: sets the
+		 * `autoscaling.knative.dev/maxScale` annotation. Without it no
+		 * annotation is set, and the connection budget counts the service
+		 * with the number of instances that Cloud Run scales to by default.
+		 */
+		maxInstances?: number;
 	};
 
 	/**
-	 * VPC configuration (optional, created automatically if database is enabled)
+	 * The network of the service: the VPC, the subnet, the VPC connector and
+	 * the one private service access connection that a VPC may have. Services
+	 * that share a VPC receive the same `AppNetwork`, so the connection is made
+	 * once. When it is given the service creates no network resource, and
+	 * `vpc` cannot be given (the `AppNetwork` holds those settings).
+	 */
+	network?: AppNetwork;
+
+	/**
+	 * VPC configuration (optional, created automatically if database is enabled).
+	 * Giving `vpc.network` builds an `AppNetwork` around that VPC for this service
+	 * alone (and warns): services that share a VPC should share an `AppNetwork`.
 	 */
 	vpc?: {
 		/**
@@ -750,6 +666,22 @@ export interface CloudRunServiceArgs {
 		 * VPC connector CIDR range
 		 */
 		connectorCIDR?: string;
+
+		/**
+		 * Number of instances of the VPC connector
+		 * @default CLOUD_RUN_SERVICE_DEFAULTS.network.connector
+		 */
+		connector?: {
+			minInstances?: number;
+			maxInstances?: number;
+		};
+
+		/**
+		 * Prefix length of the private service access range that the
+		 * database is reached through
+		 * @default CLOUD_RUN_SERVICE_DEFAULTS.network.psaPrefixLength
+		 */
+		psaPrefixLength?: number;
 
 		/**
 		 * Subnet CIDR range (for database peering)
@@ -765,65 +697,21 @@ export interface CloudRunServiceArgs {
 	};
 
 	/**
-	 * Managed Instance Group configuration (optional, for background workers/queue processors)
+	 * Worker for background tasks/queue processors (optional): a Managed
+	 * Instance Group of VMs (`kind: 'mig'`) or a Cloud Run Worker Pool
+	 * (`kind: 'crwp'`). Cannot be combined with `mig`.
 	 */
-	mig?: {
-		/**
-		 * Whether to enable the MIG worker
-		 */
-		enabled: boolean;
+	worker?: MIGWorkerArgs | CRWPWorkerArgs;
 
-		/**
-		 * Number of instances (default: 1)
-		 */
-		instanceCount?: number;
-
-		/**
-		 * Machine type (default: 'e2-micro')
-		 */
-		machineType?: string;
-
-		/**
-		 * Container OS image to use
-		 */
-		cosImage?: string;
-
-		/**
-		 * Whether to enable SSH via IAP
-		 */
-		enableSSH?: boolean;
-
-		/**
-		 * Additional tags for the instances
-		 */
-		tags?: string[];
-
-		/**
-		 * Type of external access
-		 *
-		 *   - vpc: No external IP, only VPC access (default)
-		 *   - vpc+direct: External IP automatically assigned for
-		 *                 internet access, VPC for private access
-		 *   - vpc+nat: Create a NAT for internet access, VPC for
-		 *              private access (this is the old
-		 *              "allocateExternalIP" option).  For CRWP
-		 *              this will create a NAT Router.
-		 */
-		egress?: 'vpc' | 'vpc+direct' | 'vpc+nat';
-
-		/**
-		 * Additional environment variables specific to the MIG worker
-		 * These are merged with the main environment variables
-		 */
-		environmentOverrides?: { [key: string]: pulumi.Input<string> };
-
-		/**
-		 * Kind of worker to create for this:
-		 *   - mig: Managed Instance Group (default)
-		 *   - crwp: Cloud Run Worker Pool (more modern -- does not support "cosImage", "enableSSH", or "allocateExternalIP")
-		 */
-		workerKind?: 'mig' | 'crwp';
-	};
+	/**
+	 * Worker configuration of 1.0.x (optional, for background workers/queue processors)
+	 *
+	 * Deprecated (the constructor warns): use `worker`. `mig: { enabled: true, workerKind: 'crwp', ... }`
+	 *             becomes `worker: { kind: 'crwp', ... }` (`workerKind`
+	 *             defaults to 'mig'), and `enabled: false` becomes no
+	 *             `worker` at all
+	 */
+	mig?: LegacyMIGArgs;
 
 	/**
 	 * Database migration configuration (optional)
@@ -857,17 +745,20 @@ export interface CloudRunServiceArgs {
 		environmentOverrides?: { [key: string]: pulumi.Input<string> };
 
 		/**
-		 * CPU limit for migration job (default: 1)
+		 * CPU limit for migration job
+		 * @default MIGRATION_DEFAULTS.cpuLimit
 		 */
 		cpuLimit?: number;
 
 		/**
-		 * Memory limit for migration job in MB (default: 512)
+		 * Memory limit for migration job in MB
+		 * @default MIGRATION_DEFAULTS.memoryLimit
 		 */
 		memoryLimit?: number;
 
 		/**
-		 * Task timeout in seconds (default: 600)
+		 * Task timeout in seconds
+		 * @default MIGRATION_DEFAULTS.taskTimeout
 		 */
 		taskTimeout?: number;
 	};
@@ -882,6 +773,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 	readonly service: gcp.cloudrun.Service;
 	readonly database?: PostgresCloudSQL;
 	readonly kv?: gcp.redis.Instance;
+	readonly network?: AppNetwork;
 	readonly vpc?: gcp.compute.Network;
 	readonly subnet?: gcp.compute.Subnetwork;
 	readonly vpcConnector?: gcp.vpcaccess.Connector;
@@ -891,116 +783,97 @@ export class CloudRunService extends pulumi.ComponentResource {
 	readonly migration?: MigrationJob;
 
 	constructor(name: string, args: CloudRunServiceArgs, opts?: pulumi.ComponentResourceOptions) {
+		// Parsed before the component registers, so a rejected configuration leaves nothing behind
+		const parsed = parseCloudRunServiceArgs(args);
+
 		super('Keeta:GCP:CloudRunService', name, args, opts);
 
 		let vpc: gcp.compute.Network | undefined;
 		let subnet: gcp.compute.Subnetwork | undefined;
 		let vpcConnector: gcp.vpcaccess.Connector | undefined;
+		let appNetwork: AppNetwork | undefined;
 		let db: PostgresCloudSQL | undefined;
 		let kv: gcp.redis.Instance | undefined;
 
-		if (args.database || args.kv || args.vpc || args.mig?.enabled) {
-			vpc = args.vpc?.network ?? new gcp.compute.Network(`${name}-vpc`, {
-				description: `[${name}] VPC network`,
-				autoCreateSubnetworks: false
-			}, { parent: this });
+		const parsedVpc = parsed.vpc;
+		if (parsedVpc !== undefined) {
+			/*
+			 * The network is an AppNetwork: the caller's when it is given, else one
+			 * that this service builds for itself (around the VPC of the caller,
+			 * if there is one). It owns the VPC, the subnet, the connector and the
+			 * one private service access connection.
+			 */
+			if (parsedVpc.appNetwork === undefined) {
+				const own = parsedVpc.network;
+				appNetwork = new AppNetwork(name, {
+					region: parsed.region,
+					network: own.existing,
+					subnetCIDR: own.subnetCIDR,
+					connectorCIDR: own.connectorCIDR,
+					connector: own.connector,
+					psaPrefixLength: own.psaPrefixLength,
+					servicePeeringDeletionPolicy: own.servicePeeringDeletionPolicy,
+					movedFrom: this.urn
+				}, { parent: this });
+			} else {
+				appNetwork = parsedVpc.appNetwork;
+				if (parsedVpc.worker?.egress === 'vpc+nat' && !appNetwork.claimNatWorker()) {
+					throw(new CloudRunServiceArgsError('worker.egress \'vpc+nat\' is already used by another worker on this AppNetwork: a network has one Cloud NAT worker, so give the second worker egress \'vpc\' or its own AppNetwork'));
+				}
+			}
 
-			const subnetCIDR = args.vpc?.subnetCIDR ?? '10.97.35.0/24';
-			subnet = new gcp.compute.Subnetwork(`${name}-subnet`, {
-				description: `[${name}] Subnet`,
-				network: vpc.selfLink,
-				region: args.region,
-				ipCidrRange: subnetCIDR,
-				privateIpGoogleAccess: true
-			}, { parent: vpc });
+			vpc = appNetwork.network;
+			subnet = appNetwork.subnet;
+			vpcConnector = appNetwork.connector;
 
-			const connectorCIDR = args.vpc?.connectorCIDR ?? '10.97.36.0/28';
-			const connectorName = generateName(name, 'vpc', 25);
-			vpcConnector = new gcp.vpcaccess.Connector(`${name}-vpc-connector`, {
-				name: connectorName,
-				ipCidrRange: connectorCIDR,
-				minInstances: 2,
-				maxInstances: 3,
-				network: vpc.selfLink,
-				region: args.region
-			}, { parent: subnet });
-
-			if (args.database) {
-				const privateIpAlloc = new gcp.compute.GlobalAddress(`${name}-private-ip-alloc`, {
-					purpose: 'VPC_PEERING',
-					addressType: 'INTERNAL',
-					prefixLength: 16,
-					network: vpc.selfLink
-				}, { parent: vpc });
-
-				const svcNetworkingConnection = new gcp.servicenetworking.Connection(`${name}-svc-networking`, {
-					network: vpc.selfLink,
-					service: 'servicenetworking.googleapis.com',
-					reservedPeeringRanges: [privateIpAlloc.name],
-					deletionPolicy: args.vpc?.servicePeeringDeletionPolicy
-				}, { parent: privateIpAlloc });
+			if (parsedVpc.data) {
+				const { database } = parsedVpc.data;
+				const svcNetworkingConnection = appNetwork.privateServiceAccess();
 
 				db = new PostgresCloudSQL(`${name}-db`, {
-					region: args.region,
-					tier: args.database.tier ?? 'db-f1-micro',
-					deletionProtection: args.database.deletionProtection ?? false,
+					region: parsed.region,
+					tier: database.tier,
+					databaseVersion: database.version,
+					deletionProtection: database.deletionProtection,
 					vpcNetwork: vpc,
 					insightsConfig: {
-						queryInsightsEnabled: args.database.queryInsights ?? false,
-						queryStringLength: 4500
+						queryInsightsEnabled: database.queryInsights,
+						queryStringLength: database.queryStringLength
 					},
-					flags: {
-						max_connections: 25000,
-						...args.database.flags
-					},
-					replication: args.database.replication,
-					backups: args.database.backups
+					flags: database.flags,
+					replication: database.replication,
+					backups: database.backups
 				}, {
 					dependsOn: [svcNetworkingConnection],
 					parent: this
 				});
 			}
 
-			if (args.kv) {
+			if (parsedVpc.kv) {
 				kv = new gcp.redis.Instance(generateName(name, 'kv', 32), {
 					authEnabled: true,
 					authorizedNetwork: vpc.id,
-					region: args.region,
-					...args.kv
+					region: parsed.region,
+					...parsedVpc.kv
 				}, {
 					parent: this,
 					dependsOn: [ vpc, vpcConnector ]
 				});
 
-				new gcp.compute.Firewall(`${name}-kv-firewall`, {
-					description: `Allow VPC connector for to access KV (Redis)`,
-					network: vpc.id,
-					direction: 'EGRESS',
-					allows: [{
-						protocol: 'tcp',
-						ports: [ pulumi.interpolate`${kv.port}` ]
-					}],
-					sourceRanges: [
-						vpcConnector.ipCidrRange.apply(function(cidr) {
-							if (!cidr) {
-								throw(new Error('VPC connector does not have a CIDR range'));
-							}
-
-							return(cidr);
-						})
-					],
-					destinationRanges: [ pulumi.interpolate`${kv.host}/32` ],
-					priority: 850,
-					...args.gcp?.firewallConfig
-				}, { parent: vpc });
+				appNetwork.allowKvEgress(name, {
+					port: kv.port,
+					host: kv.host,
+					priority: CLOUD_RUN_SERVICE_DEFAULTS.kv.firewallPriority,
+					extra: parsed.gcp.firewallConfig
+				});
 			}
 		}
 
 		let imageUri: pulumi.Input<string>;
-		if (args.image.uri) {
-			imageUri = args.image.uri;
-		} else if (args.image.build) {
-			const build = args.image.build;
+		if (parsed.image.kind === 'uri') {
+			imageUri = parsed.image.uri;
+		} else {
+			const build = parsed.image.build;
 			const buildArgs: { [key: string]: pulumi.Input<string> } = { ...build.buildArgs };
 			if (build.nodeImage) {
 				buildArgs.NODE_IMAGE = build.nodeImage;
@@ -1015,8 +888,9 @@ export class CloudRunService extends pulumi.ComponentResource {
 
 			let imageConfig: ConstructorParameters<typeof components.DockerImage>[1] = {
 				imageName: build.imageName,
-				registryUrl: build.registryUrl ?? pulumi.interpolate`${args.region}-docker.pkg.dev/${args.gcp.project}/keeta`,
-				platform: build.platform ?? 'linux/amd64',
+				registryUrl: build.registryUrl,
+				platform: build.platform,
+				provider: callerOf(this, parsed.gcp.project),
 				buildArgs,
 				buildTarget: build.target,
 				buildDirectory: {
@@ -1028,112 +902,60 @@ export class CloudRunService extends pulumi.ComponentResource {
 			};
 
 			if (build.remote) {
-				const remoteConfig = this.getRemoteConfig(name, args, build.remote);
+				const remoteConfig = this.getRemoteConfig(name, parsed, build.remote);
 				imageConfig = { ...imageConfig, ...remoteConfig };
 			}
 
-			const dockerImage = new components.DockerImage(`${name}-image`, imageConfig);
+			const dockerImage = new components.DockerImage(`${name}-image`, imageConfig, {
+				parent: this,
+				aliases: movedFrom(`${name}-image`, 'Keeta:GCP:DockerImage', { kind: 'stack' })
+			});
 			imageUri = dockerImage.uri;
-		} else {
-			throw(new Error('Either image.uri or image.build must be provided'));
 		}
 
-		let serviceAccount: Pick<gcp.serviceaccount.Account, 'email'>;
-		if (args.service?.serviceAccount) {
-			if (typeof args.service.serviceAccount === 'object' && args.service.serviceAccount !== null && 'email' in args.service.serviceAccount) {
-				serviceAccount = args.service.serviceAccount;
-			} else {
-				serviceAccount = { email: pulumi.output(args.service.serviceAccount) };
-			}
-		} else {
-			const accountId = generateName(name, 'sa', 30);
+		const identity = new ServiceIdentity(name, {
+			gcp: parsed.gcp,
+			account: parsed.identity.account,
+			grantRoles: parsed.identity.grantRoles,
+			app: this,
+			database: db,
+			worker: parsedVpc?.worker !== undefined
+		}, { parent: this });
+		const serviceAccount = identity.account;
 
-			serviceAccount = new gcp.serviceaccount.Account(`${name}-sa`, {
-				description: `[${name}] Service account`,
-				accountId
-			}, { parent: this });
+		let serviceDependsOn: pulumi.Input<pulumi.Resource[]> | undefined = pulumi.all(identity.grants);
+
+		/*
+		 * The one environment of the app: the service, the migration job and the
+		 * worker read views of it. The bindings of the replaced managers for a
+		 * secret that the caller owns stay, retained (see `ReplacedEnvironment`).
+		 */
+		const parsedWorker = parsedVpc?.worker;
+		const replaces: ReplacedEnvironment[] = [];
+		if (parsedWorker && vpc && subnet) {
+			replaces.push({
+				name: `${name}-mig-env`,
+				oldParent: { kind: 'resource', urn: this.urn },
+				except: Object.keys(parsedWorker.environmentOverrides ?? {})
+			});
 		}
 
-		let serviceDependsOn: pulumi.Input<pulumi.Resource[]> | undefined = undefined;
-		if (args.service?.grantIAMRoles !== false && !args.service?.serviceAccount) {
-			if (args.gcp.changeProjectIAMPolicy) {
-				const resource = args.gcp.changeProjectIAMPolicy('roles/logging.logWriter', [
-					pulumi.interpolate`serviceAccount:${serviceAccount.email}`
-				]);
-
-				if (resource) {
-					serviceDependsOn = pulumi.output(resource).apply(function(unwrappedResource) {
-						return([unwrappedResource]);
-					});
-				}
-			} else {
-				const resource = new gcp.projects.IAMMember(`${name}-log-writer`, {
-					project: args.gcp.project,
-					role: 'roles/logging.logWriter',
-					member: pulumi.interpolate`serviceAccount:${serviceAccount.email}`
-				}, { parent: this });
-				serviceDependsOn = [resource];
-			}
-		}
-
-		// Grant Cloud SQL client role if database is enabled
-		if (db && args.service?.grantIAMRoles !== false && !args.service?.serviceAccount) {
-			const cloudSqlClientMember = pulumi.interpolate`serviceAccount:${serviceAccount.email}`;
-			let cloudSqlClient: pulumi.Input<pulumi.Resource> | undefined;
-			if (args.gcp.changeProjectIAMPolicy) {
-				cloudSqlClient = args.gcp.changeProjectIAMPolicy('roles/cloudsql.client', [cloudSqlClientMember]);
-			} else {
-				cloudSqlClient = new gcp.projects.IAMMember(`${name}-cloudsql-client`, {
-					project: args.gcp.project,
-					role: 'roles/cloudsql.client',
-					member: cloudSqlClientMember
-				}, { parent: db });
-			}
-
-			if (cloudSqlClient) {
-				serviceDependsOn = pulumi.all([serviceDependsOn ?? [], cloudSqlClient]).apply(function([deps, dep]) {
-					return([...deps, dep]);
-				});
-			}
-		}
-
-		// Create migration job if enabled and database is configured
-		let migration: MigrationJob | undefined;
-		if (args.migration?.enabled && db) {
-			let vpcConfig: { connector: gcp.vpcaccess.Connector } | undefined;
-			if (vpcConnector) {
-				vpcConfig = { connector: vpcConnector };
-			}
-
-			migration = new MigrationJob(`${name}-migration`, {
-				gcp: args.gcp,
-				region: args.region,
-				database: { instance: db },
-				image: imageUri,
-				container: args.migration.container,
-				vpc: vpcConfig,
-				serviceAccount: serviceAccount,
-				cpuLimit: args.migration.cpuLimit,
-				memoryLimit: args.migration.memoryLimit,
-				taskTimeout: args.migration.taskTimeout,
-				environment: { ...args.environment, ...args.migration.environmentOverrides },
-				trigger: imageUri // Re-run migration when image changes
-			}, { parent: this });
-
-			// Make Cloud Run service depend on migration completing
-			const migrationDep = migration;
-			serviceDependsOn = pulumi.output(serviceDependsOn ?? []).apply(function(deps) {
-				return([...deps, migrationDep]);
+		const parsedMigration = parsedVpc?.data?.migration;
+		if (parsedMigration && db) {
+			replaces.push({
+				name: `${name}-migration-env`,
+				oldParent: { kind: 'resource', urn: pulumi.createUrn(`${name}-migration`, 'Keeta:GCP:MigrationJob', this.urn) },
+				except: Object.keys(parsedMigration.environmentOverrides ?? {})
 			});
 		}
 
 		let envManager: EnvManager | undefined;
-		// Create environment manager if we have environment variables OR a database (for auto-injected DB vars)
-		if (args.environment || db || kv) {
+		// Create environment manager if we have environment variables OR a database (for auto-injected DB vars) OR Redis
+		if (parsed.environment || db || kv) {
 			const variables: EnvironmentVariables = {};
 
 			if (db) {
-				const hostInfo = db.getHost(args.region);
+				const hostInfo = db.getHost(parsed.region);
 				const dbVars = buildDatabaseEnvVars({
 					host: hostInfo.host,
 					username: db.username,
@@ -1142,6 +964,10 @@ export class CloudRunService extends pulumi.ComponentResource {
 					caCertificate: hostInfo.caCertificate
 				});
 				Object.assign(variables, dbVars);
+
+				if (parsedVpc?.data?.database.poolSize !== undefined) {
+					variables[DATABASE_POOL_SIZE_VARIABLE] = String(parsedVpc.data.database.poolSize);
+				}
 			}
 
 			if (kv) {
@@ -1154,37 +980,73 @@ export class CloudRunService extends pulumi.ComponentResource {
 				Object.assign(variables, kvVars);
 			}
 
-			if (args.environment) {
-				Object.assign(variables, args.environment);
+			if (parsed.environment) {
+				Object.assign(variables, parsed.environment);
 			}
 
 			envManager = new EnvManager(`${name}-env`, {
 				serviceAccount: pulumi.interpolate`serviceAccount:${serviceAccount.email}`,
-				secretRegionName: args.region,
-				variables
+				secretRegionName: parsed.region,
+				variables,
+				replaces
 			}, { parent: this });
 		}
 
+		// Create migration job if enabled and database is configured
+		let migration: MigrationJob | undefined;
+		if (parsedMigration && db) {
+			let vpcConfig: { connector: gcp.vpcaccess.Connector } | undefined;
+			if (vpcConnector) {
+				vpcConfig = { connector: vpcConnector };
+			}
+
+			migration = new MigrationJob(`${name}-migration`, {
+				gcp: parsed.gcp,
+				region: parsed.region,
+				database: { instance: db },
+				image: imageUri,
+				container: parsedMigration.container,
+				vpc: vpcConfig,
+				serviceAccount: serviceAccount,
+				identity,
+				cpuLimit: parsedMigration.cpuLimit,
+				memoryLimit: parsedMigration.memoryLimit,
+				taskTimeout: parsedMigration.taskTimeout,
+				env: envManager?.view(parsedMigration.environmentOverrides),
+				trigger: imageUri // Re-run migration when image changes
+			}, { parent: this });
+
+			// Make Cloud Run service depend on migration completing
+			const migrationDep = migration;
+			serviceDependsOn = pulumi.output(serviceDependsOn ?? []).apply(function(deps) {
+				return([...deps, migrationDep]);
+			});
+		}
+
 		const annotations: { [key: string]: pulumi.Input<string> } = {
-			...args.service?.annotations
+			...parsed.service.annotations
 		};
+
+		if (parsed.service.maxInstances !== undefined) {
+			annotations[MAX_SCALE_ANNOTATION] = String(parsed.service.maxInstances);
+		}
 
 		if (vpcConnector) {
 			annotations['run.googleapis.com/vpc-access-connector'] = vpcConnector.selfLink;
 		}
 
 		const service = new gcp.cloudrun.Service(`${name}-api`, {
-			location: args.region,
+			location: parsed.region,
 			template: {
 				spec: {
 					serviceAccountName: serviceAccount.email,
 					containers: [{
 						image: imageUri,
-						envs: envManager?.variableOutput,
+						envs: envManager?.view().cloudRun,
 						resources: {
 							limits: {
-								cpu: String(args.service?.cpuLimit ?? 1),
-								memory: `${args.service?.memoryLimit ?? 512}Mi`
+								cpu: String(parsed.service.cpuLimit),
+								memory: `${parsed.service.memoryLimit}Mi`
 							}
 						}
 					}]
@@ -1205,16 +1067,22 @@ export class CloudRunService extends pulumi.ComponentResource {
 			member: 'allUsers'
 		}, {
 			deletedWith: service,
-			parent: service
+			parent: this,
+			aliases: movedFrom(`${name}-invoker`, 'gcp:cloudrun/iamMember:IamMember', { kind: 'resource', urn: service.urn })
 		});
 
+		const negType = 'gcp:compute/regionNetworkEndpointGroup:RegionNetworkEndpointGroup';
 		const neg = new gcp.compute.RegionNetworkEndpointGroup(`${name}-neg`, {
-			region: args.region,
+			region: parsed.region,
 			networkEndpointType: 'SERVERLESS',
 			cloudRun: {
 				service: service.name
 			}
-		}, { parent: service });
+		}, {
+			deletedWith: service,
+			parent: this,
+			aliases: movedFrom(`${name}-neg`, negType, { kind: 'resource', urn: service.urn })
+		});
 
 		const backendService = new gcp.compute.BackendService(`${name}-backend`, {
 			protocol: 'HTTP',
@@ -1222,126 +1090,100 @@ export class CloudRunService extends pulumi.ComponentResource {
 			backends: [{
 				group: neg.id
 			}]
-		}, { parent: neg });
+		}, {
+			parent: this,
+			aliases: movedFrom(`${name}-backend`, 'gcp:compute/backendService:BackendService', {
+				kind: 'resource',
+				urn: legacyUrn(`${name}-neg`, negType, { kind: 'resource', urn: service.urn })
+			})
+		});
 
 		let mig: ContainerGeneric | undefined;
-		if (args.mig?.enabled && vpc && subnet) {
+		const worker = parsedVpc?.worker;
+		if (worker && appNetwork) {
 			// Enable SSH firewall if requested
-			if (args.mig.enableSSH) {
-				if (args.mig.workerKind === 'crwp') {
-					throw(new Error('enableSSH is not supported for Cloud Run Worker Pool (crwp)'));
-				}
-
-				new gcp.compute.Firewall(`${name}-ssh-iap-firewall`, {
-					description: `[${name}] Allow SSH access to MIG instances via IAP`,
-					network: vpc.id,
-					direction: 'INGRESS',
-					sourceRanges: ['35.235.240.0/20'], // GCP IAP range
-					priority: 900,
-					allows: [{
-						protocol: 'tcp',
-						ports: ['22']
-					}],
-					...args.gcp.firewallConfig
-				}, { parent: vpc });
-			}
-
-			// Build MIG environment variables through EnvManager (resolves secrets at deploy time)
-			const migVariables: { [key: string]: pulumi.Input<string> | { value: pulumi.Input<string>; secret: boolean }} = {};
-
-			if (db) {
-				const hostInfo = db.getHost(args.region);
-				const dbVars = buildDatabaseEnvVars({
-					host: hostInfo.host,
-					username: db.username,
-					password: db.password,
-					databaseName: db.databaseName,
-					caCertificate: hostInfo.caCertificate
+			if (worker.kind === 'mig' && worker.enableSSH) {
+				appNetwork.allowIapSsh(name, {
+					sourceRange: CLOUD_RUN_SERVICE_DEFAULTS.worker.sshIAPRange, // GCP IAP range
+					priority: CLOUD_RUN_SERVICE_DEFAULTS.worker.sshIAPPriority,
+					extra: parsed.gcp.firewallConfig
 				});
-				Object.assign(migVariables, dbVars);
 			}
 
-			if (args.environment) {
-				Object.assign(migVariables, args.environment);
+			// The worker reads the environment of the app, with its own overrides
+			// (an app without variables has no manager, and the view holds the overrides alone)
+			// (a pool size of its own is one of those overrides: the environment of the app keeps the one of the database)
+			const workerOverrides: { [key: string]: pulumi.Input<string> } = { ...worker.environmentOverrides };
+			if (worker.poolSize !== undefined) {
+				workerOverrides[DATABASE_POOL_SIZE_VARIABLE] = String(worker.poolSize);
 			}
-			if (args.mig.environmentOverrides) {
-				Object.assign(migVariables, args.mig.environmentOverrides);
+
+			const workerEnv = envManager?.view(workerOverrides) ?? EnvView.ofOverrides(workerOverrides);
+
+			/* The workers run the new image only after the migration job has migrated the database for it, as the service does */
+			let rollAfter: { rollAfter?: pulumi.Resource[] } = {};
+			if (migration !== undefined) {
+				rollAfter = { rollAfter: [migration] };
 			}
 
-			const migEnvManager = new EnvManager(`${name}-mig-env`, {
-				serviceAccount: pulumi.interpolate`serviceAccount:${serviceAccount.email}`,
-				secretRegionName: args.region,
-				variables: migVariables
-			}, { parent: this });
-
-			const migEnvVars = migEnvManager.resolvedVariableOutput;
-
-			// Create external IP if requested
-			let extIP: gcp.compute.Address | undefined;
-			const crwpEgress: 'vpc' | 'vpc+direct' | 'vpc+nat' = args.mig.egress ?? 'vpc';
-			if (args.mig.egress === 'vpc+nat') {
-				if (args.mig.workerKind !== 'crwp') {
-					extIP = new gcp.compute.Address(`${name}-mig-ext-ip`, {
+			if (worker.kind === 'mig') {
+				// Reserve the external IP if the worker egresses through a NAT
+				let egress: ContainerMIGEgressOptions = { egress: worker.egress === 'vpc+direct' ? 'vpc+direct' : 'vpc' };
+				if (worker.egress === 'vpc+nat') {
+					// The reserved address (and so the IP that peers allow) stays; the NAT of the worker uses it
+					const extIP = new gcp.compute.Address(`${name}-mig-ext-ip`, {
 						description: `[${name}] External IP for MIG`,
 						addressType: 'EXTERNAL',
-						region: args.region
+						region: parsed.region
 					}, { parent: this });
+					egress = { egress: 'vpc+nat', natIps: [extIP.selfLink] };
 				}
-			}
 
-			if (args.mig.workerKind !== 'crwp') {
 				mig = new ContainerMIG(`${name}-mig`, {
 					description: `[${name}] MIG worker for background tasks`,
 					serviceAccount: serviceAccount.email,
-					subnetwork: subnet,
-					machineType: args.mig.machineType ?? 'e2-micro',
-					cosImage: args.mig.cosImage,
-					tags: args.mig.tags,
-					enableVMSSH: args.mig.enableSSH,
-					count: args.mig.instanceCount,
-					networkInterfaces: extIP ? [{
-						accessConfigs: [{
-							natIp: extIP.address
-						}]
-					}] : undefined,
+					identity,
+					subnetwork: appNetwork.subnet,
+					machineType: worker.machineType,
+					cosImage: worker.cosImage,
+					tags: worker.tags,
+					enableVMSSH: worker.enableSSH,
+					count: worker.instanceCount,
+					diskSizeGb: worker.diskSizeGb,
+					...egress,
+					...rollAfter,
 					common: {
-						gcp: args.gcp
+						gcp: parsed.gcp
 					},
 					containerSpec: {
 						containers: [{
 							image: imageUri,
 							name: `${name}-worker`,
 							restartPolicy: 'Always',
-							env: migEnvVars
+							env: workerEnv.resolvedForVm
 						}]
 					}
 				}, { parent: this });
 			} else {
-				if (args.mig.enableSSH) {
-					throw(new Error('enableSSH is not supported for Cloud Run Worker Pool (crwp)'));
-				}
-
-				if (args.mig.cosImage !== undefined) {
-					throw(new Error('cosImage is not supported for Cloud Run Worker Pool (crwp)'));
-				}
-
 				mig = new ContainerCloudRun(`${name}-crwp`, {
 					description: `[${name}] Worker for background tasks`,
 					serviceAccount: serviceAccount.email,
-					subnetwork: subnet,
-					machineType: args.mig.machineType ?? 'e2-micro',
-					tags: args.mig.tags,
-					count: args.mig.instanceCount,
-					egress: crwpEgress,
+					identity,
+					subnetwork: appNetwork.subnet,
+					machineType: worker.machineType,
+					tags: worker.tags,
+					count: worker.instanceCount,
+					egress: worker.egress,
+					...rollAfter,
 					common: {
-						gcp: args.gcp
+						gcp: parsed.gcp
 					},
 					containerSpec: {
 						containers: [{
 							image: imageUri,
 							name: `${name}-worker`,
 							restartPolicy: 'Always',
-							env: migEnvManager.cloudRunJobVariableOutput
+							env: workerEnv.cloudRunJob
 						}]
 					}
 				}, {
@@ -1353,6 +1195,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 		this.service = service;
 		this.database = db;
 		this.kv = kv;
+		this.network = appNetwork;
 		this.vpc = vpc;
 		this.subnet = subnet;
 		this.vpcConnector = vpcConnector;
@@ -1364,13 +1207,15 @@ export class CloudRunService extends pulumi.ComponentResource {
 
 	private getRemoteConfig(
 		name: string,
-		args: CloudRunServiceArgs,
-		remote: NonNullable<NonNullable<CloudRunServiceArgs['image']['build']>['remote']>
+		parsed: ParsedCloudRunServiceArgs,
+		remote: ParsedRemote
 	) {
-		const provider = new gcp.Provider(`${name}-build-provider`, {
-			project: args.gcp.project,
-			region: args.region
-		}, { parent: this });
+		/*
+		 * The project comes from the arguments. The resources of the build use
+		 * the provider of the component, and the build only needs to know who
+		 * the caller is
+		 */
+		const provider = callerOf(this, parsed.gcp.project);
 
 		let { bindPermissions, serviceAccount, bucket } = remote;
 
@@ -1386,7 +1231,7 @@ export class CloudRunService extends pulumi.ComponentResource {
 
 		if (!bucket) {
 			bucket = new gcp.storage.Bucket(generateName(name, 'docker', 55), {
-				location: args.region,
+				location: parsed.region,
 				forceDestroy: true,
 				uniformBucketLevelAccess: true,
 				...remote.bucketConfig
@@ -1398,7 +1243,8 @@ export class CloudRunService extends pulumi.ComponentResource {
 			bindPermissions,
 			serviceAccount,
 			bucket,
-			machineType: remote.machineType
+			machineType: remote.machineType,
+			timeoutSeconds: remote.timeoutSeconds
 		});
 	}
 }
@@ -1471,41 +1317,12 @@ export class FullStackApp extends pulumi.ComponentResource {
 			this.frontendBucket = this.frontend.bucket.name;
 
 			const routing = args.routing ?? {};
-			const apiPrefix = routing.apiPrefix ?? '/api';
-			const staticPaths = routing.staticPaths ?? ['/assets/', '/icons/', '/fonts/', '/images/'];
-			const staticFiles = routing.staticFiles ?? ['/favicon.svg'];
-
-			routeRules = [
-				...staticPaths.map((path, priority): RouteRuleConfig => {
-					return({
-						priority: priority + 1,
-						matchRules: [{ prefixMatch: path }],
-						service: frontend.backendBucket.id
-					});
-				}),
-				...staticFiles.map((file, priority): RouteRuleConfig => {
-					return({
-						priority: staticPaths.length + priority + 1,
-						matchRules: [{ fullPathMatch: file }],
-						service: frontend.backendBucket.id
-					});
-				}),
-				{
-					priority: staticPaths.length + staticFiles.length + 1,
-					matchRules: [{ prefixMatch: apiPrefix }],
-					service: this.backend.backendService.id
-				},
-				{
-					priority: staticPaths.length + staticFiles.length + 2,
-					matchRules: [{ pathTemplateMatch: '/**' }],
-					service: this.frontend.backendBucket.id,
-					routeAction: {
-						urlRewrite: {
-							pathTemplateRewrite: '/'
-						}
-					}
-				}
-			];
+			routeRules = buildRouteRules({
+				staticPaths: routing.staticPaths ?? ROUTING_DEFAULTS.fullStack.staticPaths,
+				staticFiles: routing.staticFiles ?? ROUTING_DEFAULTS.fullStack.staticFiles,
+				api: { prefix: routing.apiPrefix ?? '/api', service: this.backend.backendService.id },
+				frontendService: frontend.backendBucket.id
+			});
 		} else {
 			this.frontend = null;
 			this.frontendBucket = null;

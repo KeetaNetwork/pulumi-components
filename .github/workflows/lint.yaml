@@ -1,7 +1,14 @@
-name: Lint
+name: CI
 
 on:
   push:
+    branches: [main]
+  # No branch filter: stacked PRs whose base is not "main" are checked too.
+  pull_request:
+
+permissions:
+  contents: read
+  packages: read
 
 jobs:
   lint:
@@ -26,6 +33,11 @@ jobs:
       - name: Lint
         run: make do-lint
 
+      - name: Type-check
+        run: make typecheck
+
+      - name: Unit Tests
+        run: make test-unit
+
       - name: Build
         run: make dist
-  

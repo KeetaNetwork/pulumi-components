@@ -3,6 +3,11 @@ import * as gcp from '@pulumi/gcp';
 import * as components from '../../';
 import type { GCPCommonOptions } from './common';
 import { generateName } from '../../utils';
+import { CONTAINER_DEFAULTS } from './defaults';
+import { identityGrantsRole } from './identity';
+import type { ServiceIdentityRef } from './identity';
+import type { WorkerEgress } from './apps-args';
+import { buildContainerCloudConfig } from './container-cloudinit';
 
 /**
  * Common options for GCP
@@ -34,9 +39,27 @@ interface ContainerGenericOptions<SupportSecretRefEnvs extends boolean> {
 	common: ContainerCommonOptions;
 
 	/**
+	 * The identity of the app that this is part of. For each project role
+	 * (logging and metrics) that the identity grants to the service account,
+	 * this does not: its own grant stays as a retained tombstone, so the
+	 * binding that exists is never revoked. Any other role is granted here.
+	 *
+	 * @internal Set by `CloudRunService`, which owns the identity; a component you build yourself grants for itself.
+	 */
+	identity?: ServiceIdentityRef;
+
+	/**
 	 * Description to provide to the VMs and to the Managed Instance Group (MIG)
 	 */
 	description?: pulumi.Input<string>;
+
+	/**
+	 * Resources that must finish before the workers roll to a new version,
+	 * for example the migration job that changes the database schema for
+	 * the new image. The group of VMs (or the worker pool) depends on them.
+	 * The component itself does not, so its own place in the graph stays.
+	 */
+	rollAfter?: pulumi.Input<pulumi.Resource>[];
 
 	/**
 	 * Number of VMs/containers to run (default is 1)
@@ -49,8 +72,7 @@ interface ContainerGenericOptions<SupportSecretRefEnvs extends boolean> {
 	tags?: pulumi.Input<string[]>;
 
 	/**
-	 * Container specification, must conform to the GCP Container Spec
-	 *    https://cloud.google.com/compute/docs/containers/configuring-options-to-run-containers
+	 * Container specification (ContainerMIG supports exactly one container)
 	 */
 	containerSpec: {
 		containers: {
@@ -78,7 +100,7 @@ interface ContainerGenericOptions<SupportSecretRefEnvs extends boolean> {
 /**
  * Options for creating a managed instance group (MIG) for containers
  */
-interface ContainerMIGOptions extends ContainerGenericOptions<false> {
+interface ContainerMIGBaseOptions extends ContainerGenericOptions<false> {
 	/**
 	 * Zone to deploy the VMs to -- if this is specified it will create a
 	 * zonal instance group manager instead of a regional one
@@ -96,6 +118,12 @@ interface ContainerMIGOptions extends ContainerGenericOptions<false> {
 	 * Machine Type to use
 	 */
 	machineType?: pulumi.Input<string>;
+
+	/**
+	 * Size of the boot disk of each VM, in GB
+	 * @default CONTAINER_DEFAULTS.mig.diskSizeGb
+	 */
+	diskSizeGb?: pulumi.Input<number>;
 
 	/**
 	 * Network Interface parameters
@@ -116,6 +144,27 @@ interface ContainerMIGOptions extends ContainerGenericOptions<false> {
 	 */
 	enableVMSSH?: boolean;
 }
+
+/**
+ * How the VMs reach the internet:
+ *    - vpc: Through the VPC alone, they have no external address (default)
+ *    - vpc+direct: Each VM gets an ephemeral external IP address
+ *    - vpc+nat: A Cloud NAT is created on the network, and every VM
+ *      leaves through it (through `natIps`, the self links of reserved
+ *      external addresses, if they are given, else through addresses that
+ *      GCP picks). The VMs have no external address.
+ *
+ * `natIps` belongs to `vpc+nat` alone, so the other two cannot be given it.
+ */
+export type ContainerMIGEgressOptions = {
+	egress?: 'vpc' | 'vpc+direct';
+	natIps?: never;
+} | {
+	egress: 'vpc+nat';
+	natIps?: pulumi.Input<string>[];
+};
+
+type ContainerMIGOptions = ContainerMIGBaseOptions & ContainerMIGEgressOptions;
 
 /**
  * Options for creating a Cloud Run Worker Pool (CRWP) for containers
@@ -153,9 +202,83 @@ type ContainerCloudRunOptions = ContainerGenericOptions<true> & ({
 	 * This replaces the "networkInterfaces" option from MIGs, since Cloud
 	 * Run Worker Pools do not support specifying network interfaces directly.
 	 */
-	egress?: 'vpc' | 'vpc+nat' | 'vpc+direct';
+	egress?: ContainerEgress;
 };
 
+
+/** How a worker reaches the internet (the `egress` of a `CloudRunService` worker) */
+export type ContainerEgress = WorkerEgress;
+
+interface CloudNatArgs {
+	/** Self link or ID of the network */
+	network: pulumi.Input<string>;
+	region: pulumi.Input<string>;
+
+	/**
+	 * Reserved external addresses (self links) for the NAT to use. Without
+	 * them GCP allocates the addresses.
+	 */
+	natIps?: pulumi.Input<string>[];
+
+	/**
+	 * The subnets (IDs) that the NAT serves, with all their IP ranges. Without
+	 * them it serves every subnet of the network in the region: GCP then allows
+	 * no other NAT for that network and region, so a worker that shares its
+	 * network gives a list.
+	 */
+	subnets?: pulumi.Input<string>[];
+
+	/** Description of the router */
+	description?: string;
+}
+
+/**
+ * A Cloud Router and a Cloud NAT for every range of the network (or of the
+ * `subnets` that are given), named
+ * `${name}-cloudnat-router` and `${name}-cloudnat`. The NAT is the way out to
+ * the internet for workers that have no external address.
+ */
+function createCloudNat(name: string, args: CloudNatArgs, opts: { parent: pulumi.Resource; dependsOn?: pulumi.Input<pulumi.Input<pulumi.Resource>[]> }) {
+	const router = new gcp.compute.Router(`${name}-cloudnat-router`, {
+		description: args.description ?? `[${name}] Cloud NAT router`,
+		network: args.network,
+		region: args.region
+	}, {
+		parent: opts.parent
+	});
+
+	let natIpArgs: { natIps?: pulumi.Input<string>[] } = {};
+	let natIpAllocateOption = 'AUTO_ONLY';
+	if (args.natIps !== undefined) {
+		natIpArgs = { natIps: args.natIps };
+		natIpAllocateOption = 'MANUAL_ONLY';
+	}
+
+	let subnetArgs: Pick<gcp.compute.RouterNatArgs, 'sourceSubnetworkIpRangesToNat' | 'subnetworks'> = {
+		sourceSubnetworkIpRangesToNat: 'ALL_SUBNETWORKS_ALL_IP_RANGES'
+	};
+	if (args.subnets !== undefined) {
+		subnetArgs = {
+			sourceSubnetworkIpRangesToNat: 'LIST_OF_SUBNETWORKS',
+			subnetworks: args.subnets.map(function(subnet) {
+				return({ name: subnet, sourceIpRangesToNats: [ 'ALL_IP_RANGES' ] });
+			})
+		};
+	}
+
+	const nat = new gcp.compute.RouterNat(`${name}-cloudnat`, {
+		router: router.name,
+		region: args.region,
+		natIpAllocateOption,
+		...natIpArgs,
+		...subnetArgs
+	}, {
+		parent: opts.parent,
+		dependsOn: opts.dependsOn
+	});
+
+	return({ router, nat });
+}
 
 function handleGenericOptions(name: string, options: ContainerGenericOptions<true> | ContainerGenericOptions<false>, parent: pulumi.ComponentResource) {
 	if (options.common.gcp.project === undefined) {
@@ -252,8 +375,8 @@ function handleGenericOptions(name: string, options: ContainerGenericOptions<tru
 		/**
 		 * For each image perform a callback to grant access to the image
 		 */
-		for (const image of images) {
-			const policyResource = options.common.gcp.changeRegistryIAMPolicy(image, 'read', [pulumi.interpolate`serviceAccount:${serviceAccountEmail}`]);
+		for (const [index, image] of images.entries()) {
+			const policyResource = options.common.gcp.changeRegistryIAMPolicy(image, 'read', [pulumi.interpolate`serviceAccount:${serviceAccountEmail}`], { name, index });
 
 			if (policyResource) {
 				policyChangeToDependOn.push(policyResource);
@@ -281,44 +404,61 @@ function handleGenericOptions(name: string, options: ContainerGenericOptions<tru
 	}
 
 	/**
-	 * Grant project access to write logs
+	 * Grant project access to write logs and metrics, unless the identity of
+	 * the app grants that role
 	 */
+	const logRole = 'roles/logging.logWriter';
+	const metricRole = 'roles/monitoring.metricWriter';
+	const identity = options.identity;
+	if (identity) {
+		policyChangeToDependOn.push(...identity.grants);
+	}
+	function identityGrants(role: string) {
+		return(identityGrantsRole(identity, role));
+	}
+
 	if (options.common.gcp.changeProjectIAMPolicy) {
 		/**
 		 * If a callback was specified, use it to grant permissions to logs/metrics
 		 */
-		const policyResourceLogging = options.common.gcp.changeProjectIAMPolicy('roles/logging.logWriter', [pulumi.interpolate`serviceAccount:${serviceAccountEmail}`]);
-		const policyResourceMetric = options.common.gcp.changeProjectIAMPolicy('roles/monitoring.metricWriter', [pulumi.interpolate`serviceAccount:${serviceAccountEmail}`]);
+		for (const role of [ logRole, metricRole ]) {
+			if (identityGrants(role)) {
+				continue;
+			}
 
-		if (policyResourceLogging) {
-			policyChangeToDependOn.push(policyResourceLogging);
-		}
-
-		if (policyResourceMetric) {
-			policyChangeToDependOn.push(policyResourceMetric);
+			const policyResource = options.common.gcp.changeProjectIAMPolicy(role, [pulumi.interpolate`serviceAccount:${serviceAccountEmail}`]);
+			if (policyResource) {
+				policyChangeToDependOn.push(policyResource);
+			}
 		}
 	} else {
-		/**
-		 * Grant project access to write logs/metrics
+		/*
+		 * The grants of a component of an app were made here in 1.0.95. When
+		 * the identity grants the same role they stay, retained, at their
+		 * URN (a state without them would revoke the role, and the identity
+		 * owns it now). A role that the identity does not grant is still
+		 * granted here, and revoked with the component.
 		 */
-		const policyResourceLogging = new gcp.projects.IAMMember(`${name}-iam-logging`, {
-			project: options.common.gcp.project,
-			member: pulumi.interpolate`serviceAccount:${serviceAccountEmail}`,
-			role: 'roles/logging.logWriter'
-		}, {
-			parent: parent
-		});
+		const grants = [
+			{ suffix: 'iam-logging', role: logRole },
+			{ suffix: 'iam-metric', role: metricRole }
+		];
 
-		const policyResourceMetric = new gcp.projects.IAMMember(`${name}-iam-metric`, {
-			project: options.common.gcp.project,
-			member: pulumi.interpolate`serviceAccount:${serviceAccountEmail}`,
-			role: 'roles/monitoring.metricWriter'
-		}, {
-			parent: parent
-		});
+		for (const { suffix, role } of grants) {
+			let retainOnDelete: boolean | undefined;
+			if (identityGrants(role)) {
+				retainOnDelete = true;
+			}
 
-		policyChangeToDependOn.push(policyResourceLogging);
-		policyChangeToDependOn.push(policyResourceMetric);
+			policyChangeToDependOn.push(new gcp.projects.IAMMember(`${name}-${suffix}`, {
+				project: options.common.gcp.project,
+				member: pulumi.interpolate`serviceAccount:${serviceAccountEmail}`,
+				role
+			}, {
+				parent: parent,
+				retainOnDelete
+			}));
+		}
 	}
 
 	return({
@@ -333,15 +473,59 @@ function handleGenericOptions(name: string, options: ContainerGenericOptions<tru
 	});
 }
 
+/**
+ * The options that the component registers. `natIps` names the reserved
+ * addresses of the NAT: the NAT depends on them, the component (and so the
+ * group of VMs) does not, so they are left out. This is about dependencies,
+ * not state: the registered options of a component change no diff.
+ */
+function registeredMIGOptions(options: ContainerMIGOptions): Omit<ContainerMIGBaseOptions, 'egress'> & { egress?: ContainerEgress } {
+	const registered = { ...options };
+	delete registered.natIps;
+	delete registered.rollAfter;
+
+	return(registered);
+}
+
+/**
+ * The options that a Cloud Run worker component registers: all of them but
+ * `rollAfter`, for the reason that `registeredMIGOptions` gives.
+ */
+function registeredCloudRunOptions(options: ContainerCloudRunOptions): ContainerCloudRunOptions {
+	const registered = { ...options };
+	delete registered.rollAfter;
+
+	return(registered);
+}
+
+/**
+ * Whether a VM of the template holds a fixed external address (a `natIp` in
+ * an access config). Only one VM at a time can hold it.
+ */
+function holdsFixedAddress(networkInterfaces: ContainerMIGBaseOptions['networkInterfaces']): pulumi.Output<boolean> {
+	return(pulumi.output(networkInterfaces).apply(function(interfaces) {
+		return((interfaces ?? []).some(function(networkInterface) {
+			return((networkInterface.accessConfigs ?? []).some(function(accessConfig) {
+				return(accessConfig.natIp !== undefined);
+			}));
+		}));
+	}));
+}
+
 export class ContainerMIG extends pulumi.ComponentResource {
 	private static defaultCOSImage?: ReturnType<typeof gcp.compute.getImage>;
 	instanceGroupManager: gcp.compute.RegionInstanceGroupManager | gcp.compute.InstanceGroupManager;
+	cloudNAT?: {
+		router: gcp.compute.Router;
+		nat: gcp.compute.RouterNat;
+	};
+
 	subnetwork: ContainerMIGOptions['subnetwork'];
 	serviceAccount: ContainerMIGOptions['serviceAccount'];
 	readonly type = 'MIG' as const;
 
-	constructor(name: string, options: ContainerMIGOptions, args?: pulumi.CustomResourceOptions) {
-		super('Keeta:GCP:ContainerMIG', name, options, args);
+	constructor(name: string, options: ContainerMIGOptions, args?: pulumi.ComponentResourceOptions) {
+		super('Keeta:GCP:ContainerMIG', name, registeredMIGOptions(options), args);
 
 		const {
 			subnetwork,
@@ -398,17 +582,10 @@ export class ContainerMIG extends pulumi.ComponentResource {
 			return(subnetworkResolved.network);
 		});
 
-		/**
-		 * Remove the registry from the container spec
-		 */
-		const containerSpec = {
-			...options.containerSpec,
-			containers: options.containerSpec.containers.map(function(container) {
-				// eslint-disable-next-line @typescript-eslint/no-unused-vars
-				const { registry: _ignore_registry, ...newContainerSpec } = container;
-				return(newContainerSpec);
-			})
-		};
+		const container = options.containerSpec.containers[0];
+		if (container === undefined || options.containerSpec.containers.length !== 1) {
+			throw(new Error(`ContainerMIG supports exactly one container, got ${options.containerSpec.containers.length}`));
+		}
 
 		/**
 		 * Run commands to execute on the VMs when they start up
@@ -425,31 +602,50 @@ export class ContainerMIG extends pulumi.ComponentResource {
 			runCommands.push('pkill -9 -x sshd');
 		}
 
+		/*
+		 * `vpc+direct` gives each VM an ephemeral external IP. `vpc+nat` gives
+		 * it none: it leaves through the Cloud NAT.
+		 */
+		const vmAccessConfigs: { natIp?: string }[] = [];
+		if (options.egress === 'vpc+direct') {
+			vmAccessConfigs.push({});
+		}
+
+		/**
+		 * cloud-init configuration which runs the container
+		 */
+		const userData = pulumi.all([
+			pulumi.output(container.image),
+			pulumi.output(container.name),
+			pulumi.output(container.args ?? []),
+			pulumi.output(container.env ?? [])
+		]).apply(function([image, containerName, args, env]) {
+			const cloudConfig = buildContainerCloudConfig({
+				image: image,
+				name: containerName,
+				args: args,
+				env: env,
+				runCommands: runCommands
+			});
+
+			return('#cloud-config\n' + JSON.stringify(cloudConfig));
+		});
+
 		/**
 		 * Create the Managed Instance Group Template, from which each instance will be created
 		 */
 		const instanceTemplate = new gcp.compute.InstanceTemplate(`${name}-mig-template`, {
-			machineType: options.machineType ?? 'e2-medium',
+			machineType: options.machineType ?? CONTAINER_DEFAULTS.mig.machineType,
 			region: region,
 			tags: options.tags,
 			disks: [{
 				sourceImage: cosImage,
-
-				/* XXX:TODO: Should the user be allowed to specify this in some way ? */
-				diskSizeGb: 50
+				diskSizeGb: options.diskSizeGb ?? CONTAINER_DEFAULTS.mig.diskSizeGb
 			}],
 			serviceAccount: {
 				email: serviceAccountEmail,
-				scopes: [
-					/* XXX:TODO: Should the user be allowed to specify this in some way ? */
-					'https://www.googleapis.com/auth/cloud-platform',
-					'https://www.googleapis.com/auth/compute',
-					'https://www.googleapis.com/auth/devstorage.read_only',
-					'https://www.googleapis.com/auth/logging.write',
-					'https://www.googleapis.com/auth/monitoring.write',
-					'https://www.googleapis.com/auth/servicecontrol',
-					'https://www.googleapis.com/auth/service.management.readonly'
-				]
+				/* Every VM gets CONTAINER_DEFAULTS.mig.scopes; letting a caller choose them is a possible option, not part of this release */
+				scopes: [...CONTAINER_DEFAULTS.mig.scopes]
 			},
 			networkInterfaces: pulumi.all([options.networkInterfaces, networkID, subnetworkID]).apply(function([networkInterfaces, networkIDResolved, subnetworkIDResolved]) {
 				if (networkInterfaces === undefined) {
@@ -469,7 +665,7 @@ export class ContainerMIG extends pulumi.ComponentResource {
 					{
 						network: networkIDResolved,
 						subnetwork: subnetworkIDResolved,
-						accessConfigs: [],
+						accessConfigs: vmAccessConfigs,
 						...networkInterfaces[0]
 					}
 				];
@@ -479,15 +675,7 @@ export class ContainerMIG extends pulumi.ComponentResource {
 				return(interfaces);
 			}),
 			metadata: {
-				/*
-				 * Container Specification for the container
-				 */
-				'gce-container-declaration': pulumi.jsonStringify({
-					spec: containerSpec
-				}),
-				'user-data': '#cloud-config\n' + JSON.stringify({
-					'runcmd': runCommands
-				}),
+				'user-data': userData,
 				'google-logging-enabled': 'true',
 				'block-project-ssh-keys': 'TRUE'
 			},
@@ -506,7 +694,31 @@ export class ContainerMIG extends pulumi.ComponentResource {
 		/*
 		 * Create the instance manager (the resource which constructs the instances from the templates)
 		 */
+		let waitArgs: { waitForInstances?: boolean; waitForInstancesStatus?: string } = {};
+		if (options.egress === 'vpc+nat') {
+			/* The NAT takes the address of the old VMs: wait until the rollout has replaced them (UPDATED), not just until the group is stable */
+			waitArgs = { waitForInstances: true, waitForInstancesStatus: 'UPDATED' };
+		}
+
+		/*
+		 * By default the group creates the new VM before it deletes the old
+		 * one. A new VM cannot take a fixed external address that the old VM
+		 * still holds, so then the rollout stops. With a fixed address the
+		 * group deletes the old VM first and creates the new one with the
+		 * same name (RECREATE, which needs no surge).
+		 */
+		const fixedAddress = holdsFixedAddress(options.networkInterfaces);
+		const rolloutArgs = {
+			maxSurgeFixed: fixedAddress.apply(function(fixed) {
+				return(fixed ? 0 : undefined);
+			}),
+			replacementMethod: fixedAddress.apply(function(fixed) {
+				return(fixed ? 'RECREATE' : undefined);
+			})
+		};
+
 		const igmBaseArgs = {
+			...waitArgs,
 			baseInstanceName: baseInstanceName,
 			targetSize: options.count ?? 1,
 			namedPorts: [{
@@ -521,7 +733,8 @@ export class ContainerMIG extends pulumi.ComponentResource {
 				 * ensure that the disk does not fill up
 				 */
 				minimalAction: 'REPLACE',
-				type: 'PROACTIVE'
+				type: 'PROACTIVE',
+				...rolloutArgs
 			},
 			versions: [{
 				instanceTemplate: instanceTemplate.selfLink
@@ -529,7 +742,17 @@ export class ContainerMIG extends pulumi.ComponentResource {
 		} satisfies Omit<ConstructorParameters<typeof gcp.compute.RegionInstanceGroupManager>[1], 'region'> | Omit<ConstructorParameters<typeof gcp.compute.InstanceGroupManager>[1], 'zone'>;
 
 		let igm: gcp.compute.RegionInstanceGroupManager | gcp.compute.InstanceGroupManager;
-		if ('zone' in options) {
+		/*
+		 * A `zone` key that is present makes the group zonal, even when it is
+		 * undefined (the provider then uses its default zone): that is what
+		 * 1.0.95 did, and changing it would replace the group of an existing stack.
+		 */
+		const zonal = options.zone !== undefined || Object.hasOwn(options, 'zone');
+		if (zonal && options.zone === undefined) {
+			void pulumi.log.warn(`ContainerMIG ${name}: zone is undefined, so the group stays zonal in the default zone of the provider. Omit zone for a regional group (zone: undefined will mean regional in 3.0)`);
+		}
+
+		if (zonal) {
 			igm = new gcp.compute.InstanceGroupManager(`${name}-mig`, {
 				...igmBaseArgs,
 				zone: options.zone,
@@ -540,7 +763,8 @@ export class ContainerMIG extends pulumi.ComponentResource {
 			}, {
 				parent: this,
 				dependsOn: [
-					...policyChangeToDependOn
+					...policyChangeToDependOn,
+					...(options.rollAfter ?? [])
 				]
 			});
 		} else {
@@ -557,12 +781,29 @@ export class ContainerMIG extends pulumi.ComponentResource {
 			}, {
 				parent: this,
 				dependsOn: [
-					...policyChangeToDependOn
+					...policyChangeToDependOn,
+					...(options.rollAfter ?? [])
 				]
 			});
 		}
 
 		this.instanceGroupManager = igm;
+
+		if (options.egress === 'vpc+nat') {
+			/*
+			 * The NAT waits for the group so that it takes the address after the old
+			 * VMs have released it. The order is only safe while the group has no
+			 * autohealing on a health check that needs internet egress: the group
+			 * would wait for the NAT, and the NAT for the group.
+			 */
+			this.cloudNAT = createCloudNat(name, {
+				network: networkID,
+				region,
+				natIps: options.natIps,
+				subnets: [subnetworkID],
+				description: `[${name}] Cloud NAT router for the container VMs`
+			}, { parent: this, dependsOn: [igm] });
+		}
 	}
 }
 
@@ -577,8 +818,8 @@ export class ContainerCloudRun extends pulumi.ComponentResource {
 
 	readonly type = 'CloudRun' as const;
 
-	constructor(name: string, options: ContainerCloudRunOptions, args?: pulumi.CustomResourceOptions) {
-		super('Keeta:GCP:ContainerCloudRun', name, options, args);
+	constructor(name: string, options: ContainerCloudRunOptions, args?: pulumi.ComponentResourceOptions) {
+		super('Keeta:GCP:ContainerCloudRun', name, registeredCloudRunOptions(options), args);
 
 		const {
 			subnetwork,
@@ -598,22 +839,11 @@ export class ContainerCloudRun extends pulumi.ComponentResource {
 				return(subnetworkResolved.network);
 			});
 
-			const router = new gcp.compute.Router(`${name}-cloudnat-router`, {
-				description: `[${name}] Cloud NAT router for Cloud Run Worker Pool`,
+			const { router, nat } = createCloudNat(name, {
 				network: networkID,
-				region: region
-			}, {
-				parent: this
-			});
-
-			const nat = new gcp.compute.RouterNat(`${name}-cloudnat`, {
-				router: router.name,
 				region: region,
-				natIpAllocateOption: 'AUTO_ONLY',
-				sourceSubnetworkIpRangesToNat: 'ALL_SUBNETWORKS_ALL_IP_RANGES'
-			}, {
-				parent: this
-			});
+				description: `[${name}] Cloud NAT router for Cloud Run Worker Pool`
+			}, { parent: this });
 
 			new gcp.compute.Route(`${name}-nat-default-route`, {
 				network: networkID,
@@ -684,10 +914,10 @@ export class ContainerCloudRun extends pulumi.ComponentResource {
 			}
 		}
 		if (cpuCount === undefined) {
-			cpuCount = '2';
+			cpuCount = CONTAINER_DEFAULTS.crwp.size.cpu;
 		}
 		if (ramSize === undefined) {
-			ramSize = '4096';
+			ramSize = CONTAINER_DEFAULTS.crwp.size.ram;
 		}
 
 		/**
@@ -731,7 +961,7 @@ export class ContainerCloudRun extends pulumi.ComponentResource {
 			deletionPolicy: 'DELETE'
 		}, {
 			parent: this,
-			dependsOn: [...policyChangeToDependOn.splice(0), ...toDependOn.splice(0)]
+			dependsOn: [...policyChangeToDependOn.splice(0), ...toDependOn.splice(0), ...(options.rollAfter ?? [])]
 		});
 
 		this.workerPool = workerPool;

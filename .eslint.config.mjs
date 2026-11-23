@@ -11,5 +11,15 @@ export default [
 				allowTaggedTemplates: false
 			}]
 		}
+	},
+	{
+		// "tests" is outside the rootDir of "tsconfig.json", so type-aware
+		// linting of it reads the test tsconfig. No rule changes.
+		files: ['tests/**/*.ts'],
+		languageOptions: {
+			parserOptions: {
+				project: './tsconfig.test.json'
+			}
+		}
 	}
 ];
