@@ -36,5 +36,5 @@ export async function expectMigrationsApplied(migrationsUrl: string): Promise<vo
 /** Checks the outputs that the dynamic resources of a deployment reported: the image is pinned by a build digest, and the migration run succeeded */
 export function expectDynamicOutputs(outputs: StackOutputs): void {
 	expect(expectString(outputs.deployedImage, 'deployedImage')).toMatch(/sha256:[0-9a-f]{64}$/);
-	expect(expectString(outputs.migrationStatus, 'migrationStatus')).toBe('SUCCEEDED');
+	expect(expectString(outputs.migrationStatus, 'migrationStatus')).toBe('CONDITION_SUCCEEDED');
 }

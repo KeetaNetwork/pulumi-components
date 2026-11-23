@@ -42,6 +42,59 @@ function executionStateOf(inputs: CloudRunJobExecutionInputs, output: ExecutionO
 	return({ ...inputs, ...output });
 }
 
+type RunExecution = runTypes.protos.google.cloud.run.v2.IExecution;
+type RunConditionState = runTypes.protos.google.cloud.run.v2.ICondition['state'];
+
+/**
+ * The name of the state of a condition. The execution that the run operation
+ * returns is a decoded protobuf message, so its enum fields are numbers
+ * (4 for `CONDITION_SUCCEEDED`), not the names that the type also allows.
+ */
+function conditionStateName(state: RunConditionState): string {
+	if (typeof state !== 'number') {
+		return(state ?? 'STATE_UNSPECIFIED');
+	}
+
+	// eslint-disable-next-line @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-require-imports
+	const { protos } = require('@google-cloud/run') as typeof runTypes;
+	const names: { [state: number]: string | undefined } = protos.google.cloud.run.v2.Condition.State;
+
+	return(names[state] ?? 'STATE_UNSPECIFIED');
+}
+
+/**
+ * The result of a finished execution, from its `Completed` condition. A
+ * failed execution throws, with the reason, the message and the logs.
+ */
+function executionOutputOf(execution: RunExecution): ExecutionOutput {
+	let status: ExecutionConditionState = 'STATE_UNSPECIFIED';
+
+	for (const condition of execution.conditions ?? []) {
+		if (condition.type !== 'Completed') {
+			continue;
+		}
+
+		const conditionState = conditionStateName(condition.state);
+		if (conditionState === 'CONDITION_FAILED') {
+			const message = condition.message ?? 'Unknown error';
+			const reason = condition.reason ?? 'Unknown reason';
+			throw(new Error(`Job execution failed: ${reason} - ${message}. Logs: ${execution.logUri ?? 'N/A'}`));
+		}
+		if (conditionState === 'CONDITION_SUCCEEDED' || conditionState === 'CONDITION_RECONCILING') {
+			status = conditionState;
+		}
+		break;
+	}
+
+	return({
+		executionName: execution.name ?? '',
+		status,
+		createTime: execution.createTime?.seconds?.toString() ?? null,
+		completionTime: execution.completionTime?.seconds?.toString() ?? null,
+		logUri: execution.logUri ?? null
+	});
+}
+
 async function runJob(inputs: CloudRunJobExecutionInputs): Promise<ExecutionOutput> {
 	// Dynamic import to avoid issues with Pulumi serialization
 	// eslint-disable-next-line @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-require-imports
@@ -54,32 +107,7 @@ async function runJob(inputs: CloudRunJobExecutionInputs): Promise<ExecutionOutp
 	const [operation] = await client.runJob({ name: jobPathOf(inputs) });
 	const [execution] = await operation.promise();
 
-	// Extract completion status from conditions
-	let status: ExecutionConditionState = 'STATE_UNSPECIFIED';
-	const conditions = execution.conditions ?? [];
-
-	for (const condition of conditions) {
-		if (condition.type === 'Completed') {
-			const conditionState = condition.state;
-			if (conditionState === 'CONDITION_SUCCEEDED' || conditionState === 'CONDITION_FAILED' || conditionState === 'CONDITION_RECONCILING') {
-				status = conditionState;
-			}
-			if (status === 'CONDITION_FAILED') {
-				const message = condition.message ?? 'Unknown error';
-				const reason = condition.reason ?? 'Unknown reason';
-				throw(new Error(`Job execution failed: ${reason} - ${message}. Logs: ${execution.logUri ?? 'N/A'}`));
-			}
-			break;
-		}
-	}
-
-	return({
-		executionName: execution.name ?? '',
-		status,
-		createTime: execution.createTime?.seconds?.toString() ?? null,
-		completionTime: execution.completionTime?.seconds?.toString() ?? null,
-		logUri: execution.logUri ?? null
-	});
+	return(executionOutputOf(execution));
 }
 
 /**
@@ -92,6 +120,7 @@ function jobExecutionHasChanges(olds: Partial<CloudRunJobExecutionInputs>, news:
 }
 
 export const _Testing = {
+	executionOutputOf,
 	executionStateOf,
 	jobExecutionHasChanges
 };
