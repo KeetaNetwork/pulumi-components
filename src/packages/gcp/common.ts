@@ -1,6 +1,21 @@
 import type * as pulumi from '@pulumi/pulumi';
 import type * as gcp from '@pulumi/gcp';
 
+/**
+ * Identifies the caller of `changeRegistryIAMPolicy`
+ */
+export type RegistryIAMPolicyContext = {
+	/**
+	 * Pulumi name of the component making the request
+	 */
+	name: string;
+
+	/**
+	 * Index of the image within that component's images
+	 */
+	index: number;
+};
+
 export type GCPCommonOptions = {
 	/**
 	 * GCP project name being deployed to
@@ -14,8 +29,12 @@ export type GCPCommonOptions = {
 
 	/**
 	 * Function to change the IAM policy for the container registry
+	 *
+	 * `context` identifies the caller with plain strings, so a consumer
+	 * that creates one resource per call can name it stably instead of
+	 * by a counter that shifts when other services are added or removed.
 	 */
-	changeRegistryIAMPolicy?: (image: pulumi.Input<string>, role: 'read' | 'write', members: pulumi.Input<string>[]) => pulumi.Input<pulumi.Resource> | undefined;
+	changeRegistryIAMPolicy?: (image: pulumi.Input<string>, role: 'read' | 'write', members: pulumi.Input<string>[], context?: RegistryIAMPolicyContext) => pulumi.Input<pulumi.Resource> | undefined;
 
 	/**
 	 * Configuration for the firewall rules created by this module

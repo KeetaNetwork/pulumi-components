@@ -95,6 +95,24 @@ const service = new components.gcp.apps.CloudRunService('my-service', {
 // service.mig            - ContainerMIG worker (if enabled)
 ```
 
+### Registry access for MIG workers
+
+When `gcp.changeRegistryIAMPolicy` is set, a `ContainerMIG` calls it once per image instead of creating its own registry grant. The fourth argument, `{ name, index }`, is the component's Pulumi name and the image's position, so a grant can be named after its caller and keeps its name when other services are added or removed:
+
+```typescript
+changeRegistryIAMPolicy: function(image, role, members, context) {
+	if (context === undefined) {
+		return(undefined);
+	}
+
+	return(new gcp.artifactregistry.RepositoryIamMember(`registry-${role}-${context.name}-${context.index}`, {
+		repository: registryId,
+		role: role === 'read' ? 'roles/artifactregistry.reader' : 'roles/artifactregistry.writer',
+		member: members[0]
+	}));
+}
+```
+
 ## FullStackApp
 
 Composes `StaticWebApp` and `CloudRunService` behind a shared HTTPS load balancer with configurable route rules.

@@ -375,8 +375,8 @@ function handleGenericOptions(name: string, options: ContainerGenericOptions<tru
 		/**
 		 * For each image perform a callback to grant access to the image
 		 */
-		for (const image of images) {
-			const policyResource = options.common.gcp.changeRegistryIAMPolicy(image, 'read', [pulumi.interpolate`serviceAccount:${serviceAccountEmail}`]);
+		for (const [index, image] of images.entries()) {
+			const policyResource = options.common.gcp.changeRegistryIAMPolicy(image, 'read', [pulumi.interpolate`serviceAccount:${serviceAccountEmail}`], { name, index });
 
 			if (policyResource) {
 				policyChangeToDependOn.push(policyResource);
