@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type * as cloudrunJob from '../../src/packages/gcp/cloudrun-job';
 import { requireSource } from './harness/load-sources';
 
-const { executionStateOf, jobExecutionHasChanges } = requireSource<typeof cloudrunJob>('src/packages/gcp/cloudrun-job.ts')._Testing;
+const { executionOutputOf, executionStateOf, jobExecutionHasChanges } = requireSource<typeof cloudrunJob>('src/packages/gcp/cloudrun-job.ts')._Testing;
 
 const execution: { jobName: string; projectId: string; region: string; trigger: string; auth: { project: string; impersonateServiceAccount?: string }} = {
 	jobName: 'job-1', projectId: 'project', region: 'us-central1', trigger: 'image@sha256:aaa', auth: { project: 'project' }
@@ -41,5 +41,36 @@ describe('jobExecutionHasChanges', function() {
 		const stateWithoutInputs: Partial<typeof execution> = {};
 
 		expect(jobExecutionHasChanges(stateWithoutInputs, { ...execution })).toBe(true);
+	});
+});
+
+/*
+ * The run operation returns a decoded protobuf message, whose enum fields are
+ * numbers. The status of an execution is the name of the state of its
+ * `Completed` condition, whichever form the state has.
+ */
+describe('executionOutputOf', function() {
+	const finished = { name: 'execution-1', logUri: 'https://logs' };
+
+	it.each([
+		[ 'a number, as the decoded message has it', 4 ],
+		[ 'a name', 'CONDITION_SUCCEEDED' ]
+	] as const)('reads a succeeded execution when the state is %s', function(_description, state) {
+		const result = executionOutputOf({ ...finished, conditions: [ { type: 'Started', state: 4 }, { type: 'Completed', state } ] });
+
+		expect(result.status).toBe('CONDITION_SUCCEEDED');
+	});
+
+	it.each([
+		[ 'a number, as the decoded message has it', 3 ],
+		[ 'a name', 'CONDITION_FAILED' ]
+	] as const)('throws for a failed execution when the state is %s', function(_description, state) {
+		expect(function() {
+			executionOutputOf({ ...finished, conditions: [{ type: 'Completed', state, reason: 'INTERNAL', message: 'exit 1' }] });
+		}).toThrow('Job execution failed: INTERNAL - exit 1. Logs: https://logs');
+	});
+
+	it('is STATE_UNSPECIFIED without a Completed condition', function() {
+		expect(executionOutputOf({ ...finished, conditions: [{ type: 'Started', state: 4 }] }).status).toBe('STATE_UNSPECIFIED');
 	});
 });
