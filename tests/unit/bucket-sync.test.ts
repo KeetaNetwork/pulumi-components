@@ -374,6 +374,7 @@ describe('BucketSync Cloud Storage calls', function() {
 
 describe('StaticWebApp upload', function() {
 	useIsolatedHome();
+	const directories = useTempDirectories();
 
 	afterEach(function() {
 		pulumi.runtime.setAllConfig({});
@@ -439,6 +440,33 @@ describe('StaticWebApp upload', function() {
 		})).toEqual([
 			[ 'assets/a.js', 'application/javascript', 'public, max-age=86400' ],
 			[ 'index.html', 'text/html', 'public, max-age=10' ]
+		]);
+	});
+
+	it('uses its computeContentType for the synced files, as web-wallet does for apple-app-site-association', async function() {
+		const directory = directories.make({ 'index.html': '<html></html>', '.well-known/apple-app-site-association': '{}' });
+		const tree = await captureTree(function() {
+			return(new StaticWebApp('site', {
+				staticFilesPath: directory,
+				upload: 'sync',
+				computeContentType: function(file) {
+					if (file.split('/').pop() === 'apple-app-site-association') {
+						return('application/json');
+					}
+
+					return(contentTypeOf(file));
+				}
+			}));
+		});
+
+		const [ syncCommand ] = ofType(tree, 'command:local:Command');
+		const environment = expectRecord(expectRecord(syncCommand.inputs, 'the command inputs').environment, 'the command environment');
+		const manifest = readManifest(String(environment.BUCKET_SYNC_MANIFEST_HASH), String(environment.BUCKET_SYNC_BUCKET));
+		expect(manifest.files.map(function(syncFile) {
+			return([ syncFile.name, syncFile.contentType ]);
+		})).toEqual([
+			[ '.well-known/apple-app-site-association', 'application/json' ],
+			[ 'index.html', 'text/html' ]
 		]);
 	});
 
