@@ -30,44 +30,45 @@ function filesOf(startDir: string): string[] {
 	return(files);
 }
 
+/** Content types by lower-case file extension; anything else is `application/octet-stream` */
+const CONTENT_TYPES: { readonly [extension: string]: string } = {
+	'.html': 'text/html',
+	'.htm': 'text/html',
+	'.css': 'text/css',
+	'.js': 'application/javascript',
+	'.mjs': 'application/javascript',
+	'.cjs': 'application/javascript',
+	'.json': 'application/json',
+	'.map': 'application/json',
+	'.webmanifest': 'application/manifest+json',
+	'.wasm': 'application/wasm',
+	'.png': 'image/png',
+	'.jpg': 'image/jpeg',
+	'.jpeg': 'image/jpeg',
+	'.webp': 'image/webp',
+	'.avif': 'image/avif',
+	'.gif': 'image/gif',
+	'.svg': 'image/svg+xml',
+	'.ico': 'image/x-icon',
+	'.woff2': 'font/woff2',
+	'.woff': 'font/woff',
+	'.ttf': 'font/ttf',
+	'.otf': 'font/otf',
+	'.md': 'text/markdown',
+	'.ts': 'application/typescript',
+	'.txt': 'text/plain',
+	'.csv': 'text/csv',
+	'.xml': 'application/xml',
+	'.pdf': 'application/pdf',
+	'.mp4': 'video/mp4',
+	'.webm': 'video/webm',
+	'.mp3': 'audio/mpeg',
+	'.wav': 'audio/wav'
+};
+
 /** The content type that the bucket components give a file by default, from its extension */
 export function contentTypeOf(fileName: string): string {
-	const ext = path.extname(fileName).toLowerCase();
-	switch (ext) {
-		case '.html':
-			return('text/html');
-		case '.css':
-			return('text/css');
-		case '.js':
-			return('application/javascript');
-		case '.json':
-			return('application/json');
-		case '.png':
-			return('image/png');
-		case '.jpg':
-		case '.jpeg':
-			return('image/jpeg');
-		case '.webp':
-			return('image/webp');
-		case '.gif':
-			return('image/gif');
-		case '.svg':
-			return('image/svg+xml');
-		case '.woff2':
-			return('font/woff2');
-		case '.woff':
-			return('font/woff');
-		case '.md':
-			return('text/markdown');
-		case '.ts':
-			return('application/typescript');
-		case '.txt':
-			return('text/plain');
-		case '.xml':
-			return('application/xml');
-		default:
-			return('application/octet-stream');
-	}
+	return(CONTENT_TYPES[path.extname(fileName).toLowerCase()] ?? 'application/octet-stream');
 }
 
 /**

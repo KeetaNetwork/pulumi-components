@@ -18,7 +18,7 @@ import { captureTree, ofType, useIsolatedHome } from './harness/pulumi-tree';
 import type { TreeSnapshot } from './harness/pulumi-tree';
 
 const { StaticWebApp, STATIC_WEB_APP_UPLOAD_CONFIG } = requireSource<typeof apps>('src/packages/gcp/apps.ts');
-const { BucketSync, buildBucketSyncManifest, ensurePrivateDirectory } = requireSource<typeof bucket>('src/packages/gcp/bucket.ts');
+const { BucketSync, buildBucketSyncManifest, contentTypeOf, ensurePrivateDirectory } = requireSource<typeof bucket>('src/packages/gcp/bucket.ts');
 const { manifestHash, manifestPath, fileOfObject, planSync, syncBucket, describeResult } = requireSource<typeof core>('src/packages/gcp/bucket-sync-core.ts');
 const { gcsStore, readManifest } = requireSource<typeof script>('src/packages/gcp/bucket-sync-script.ts');
 
@@ -98,6 +98,23 @@ describe('BucketSync manifest', function() {
 			retainPrefixes: [],
 			uploadLast: [ 'index.html' ],
 			prune: true
+		});
+	});
+
+	it('gives web files their content types, wasm included', function() {
+		expect(Object.fromEntries([ 'a.html', 'a.js', 'a.mjs', 'a.wasm', 'a.webmanifest', 'a.ico', 'a.ttf', 'A.SVG', 'a.unknown', 'apple-app-site-association' ].map(function(name) {
+			return([ name, contentTypeOf(name) ]);
+		}))).toEqual({
+			'a.html': 'text/html',
+			'a.js': 'application/javascript',
+			'a.mjs': 'application/javascript',
+			'a.wasm': 'application/wasm',
+			'a.webmanifest': 'application/manifest+json',
+			'a.ico': 'image/x-icon',
+			'a.ttf': 'font/ttf',
+			'A.SVG': 'image/svg+xml',
+			'a.unknown': 'application/octet-stream',
+			'apple-app-site-association': 'application/octet-stream'
 		});
 	});
 
