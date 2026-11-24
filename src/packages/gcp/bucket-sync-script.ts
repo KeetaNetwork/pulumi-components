@@ -1,8 +1,7 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
-import path from 'node:path';
 import { googleAuthFrom } from './client-auth';
-import { describeResult, manifestHash, manifestPath, syncBucket } from './bucket-sync-core';
+import { describeResult, fileOfObject, manifestHash, manifestPath, syncBucket } from './bucket-sync-core';
 import type { BucketSyncFile, BucketSyncManifest, BucketSyncRemoteObject, BucketSyncStore } from './bucket-sync-core';
 
 /*
@@ -114,7 +113,7 @@ export function gcsStore(bucket: string, directory: string, token: TokenSource, 
 		},
 
 		upload: async function(file: BucketSyncFile) {
-			const contents = fs.readFileSync(path.join(directory, ...file.name.split('/')));
+			const contents = fs.readFileSync(fileOfObject(directory, file.name));
 			if (md5Of(contents) !== file.md5) {
 				throw(new Error(`${file.name} changed after the program read it`));
 			}

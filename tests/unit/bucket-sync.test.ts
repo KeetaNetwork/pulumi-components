@@ -19,7 +19,7 @@ import type { TreeSnapshot } from './harness/pulumi-tree';
 
 const { StaticWebApp, STATIC_WEB_APP_UPLOAD_CONFIG } = requireSource<typeof apps>('src/packages/gcp/apps.ts');
 const { BucketSync, buildBucketSyncManifest } = requireSource<typeof bucket>('src/packages/gcp/bucket.ts');
-const { manifestHash, manifestPath, planSync, syncBucket, describeResult } = requireSource<typeof core>('src/packages/gcp/bucket-sync-core.ts');
+const { manifestHash, manifestPath, fileOfObject, planSync, syncBucket, describeResult } = requireSource<typeof core>('src/packages/gcp/bucket-sync-core.ts');
 const { gcsStore, readManifest } = requireSource<typeof script>('src/packages/gcp/bucket-sync-script.ts');
 
 const STATIC_DIRECTORY = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../fixtures/static');
@@ -298,6 +298,18 @@ describe('BucketSync Cloud Storage calls', function() {
 
 		await expect(gcsStore('site', '/unused', token, fetchFunction).remove('index.html')).rejects.toThrow('failed with 403: forbidden');
 		expect(calls).toHaveLength(1);
+	});
+
+	it('refuses object names outside the directory and hashes that are not hashes', function() {
+		expect(fileOfObject('/site', 'assets/a.js')).toBe(path.join('/site', 'assets', 'a.js'));
+		for (const name of [ '../secret', 'assets/../../secret', '/etc/passwd', '' ]) {
+			expect(function() {
+				fileOfObject('/site', name);
+			}).toThrow('is not inside the directory');
+		}
+		expect(function() {
+			manifestPath('../../etc/passwd');
+		}).toThrow('64 lowercase hex digits');
 	});
 
 	it('reads only the manifest of its hash and bucket', function() {

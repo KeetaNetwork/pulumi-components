@@ -76,13 +76,38 @@ export function manifestHash(manifest: BucketSyncManifest): string {
 	return(createHash('sha256').update(JSON.stringify(stable)).digest('hex'));
 }
 
+/** The directory of the manifests, per user, so no other account can place a manifest there */
+export function manifestDirectory(): string {
+	const user = typeof process.getuid === 'function' ? String(process.getuid()) : 'user';
+
+	return(path.join(os.tmpdir(), `keeta-bucket-sync-${user}`));
+}
+
 /**
  * Where the program leaves the manifest for the script. Only the hash goes
  * into the state, and the script finds the file from it, so no path of the
  * machine that deploys ends up in the inputs of the command.
  */
 export function manifestPath(hash: string): string {
-	return(path.join(os.tmpdir(), 'keeta-bucket-sync', `${hash}.json`));
+	if (!/^[0-9a-f]{64}$/.test(hash)) {
+		throw(new Error('A manifest hash is 64 lowercase hex digits'));
+	}
+
+	return(path.join(manifestDirectory(), `${hash}.json`));
+}
+
+/**
+ * The file an object name stands for, inside the directory. A name that is
+ * absolute or climbs out of the directory is refused.
+ */
+export function fileOfObject(directory: string, name: string): string {
+	const root = path.resolve(directory);
+	const file = path.resolve(root, ...name.split('/'));
+	if (name === '' || path.isAbsolute(name) || !file.startsWith(root + path.sep)) {
+		throw(new Error(`The object name ${JSON.stringify(name)} is not inside the directory`));
+	}
+
+	return(file);
 }
 
 function isRetained(name: string, retainPrefixes: string[]): boolean {

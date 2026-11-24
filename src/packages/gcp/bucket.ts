@@ -341,8 +341,8 @@ export class BucketSync extends pulumi.ComponentResource {
 			const manifest = buildBucketSyncManifest(bucket, directory, manifestArgs);
 			const hash = manifestHash(manifest);
 			const file = manifestPath(hash);
-			fs.mkdirSync(path.dirname(file), { recursive: true });
-			fs.writeFileSync(file, JSON.stringify(manifest));
+			fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+			fs.writeFileSync(file, JSON.stringify(manifest), { mode: 0o600 });
 
 			return(hash);
 		});
