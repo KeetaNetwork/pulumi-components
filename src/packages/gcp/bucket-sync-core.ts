@@ -12,8 +12,8 @@ import path from 'node:path';
 export interface BucketSyncFile {
 	/** The object name: the path relative to the directory, with `/` separators */
 	name: string;
-	/** MD5 of the contents, base64, as GCS reports it in `md5Hash` */
-	md5: string;
+	/** SHA-256 of the contents, hex; the upload keeps it in the object's metadata (`keeta-sha256`) */
+	sha256: string;
 	contentType: string;
 	cacheControl?: string;
 }
@@ -35,7 +35,8 @@ export interface BucketSyncManifest {
 /** An object as the bucket lists it */
 export interface BucketSyncRemoteObject {
 	name: string;
-	md5?: string;
+	/** The `keeta-sha256` metadata of the object, which only objects uploaded by `BucketSync` have */
+	sha256?: string;
 	contentType?: string;
 	cacheControl?: string;
 }
@@ -55,18 +56,27 @@ export interface BucketSyncResult {
 	retained: number;
 }
 
+/** Orders object names by their code units, the same on every machine (a locale order is not) */
+export function compareNames(a: string, b: string): number {
+	if (a === b) {
+		return(0);
+	}
+
+	return(a < b ? -1 : 1);
+}
+
 /**
  * The hash that stands for the manifest in the state: it changes whenever
  * the bucket would end up different, and not when only the directory moves.
  */
 export function manifestHash(manifest: BucketSyncManifest): string {
 	const files = [ ...manifest.files ].sort(function(a, b) {
-		return(a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+		return(compareNames(a.name, b.name));
 	});
 	const stable = {
 		bucket: manifest.bucket,
 		files: files.map(function(file) {
-			return([ file.name, file.md5, file.contentType, file.cacheControl ?? null ]);
+			return([ file.name, file.sha256, file.contentType, file.cacheControl ?? null ]);
 		}),
 		retainPrefixes: manifest.retainPrefixes,
 		uploadLast: manifest.uploadLast,
@@ -121,7 +131,7 @@ function isCurrent(file: BucketSyncFile, remote: BucketSyncRemoteObject | undefi
 		return(false);
 	}
 
-	return(remote.md5 === file.md5 && remote.contentType === file.contentType && (remote.cacheControl ?? undefined) === (file.cacheControl ?? undefined));
+	return(remote.sha256 === file.sha256 && remote.contentType === file.contentType && (remote.cacheControl ?? undefined) === (file.cacheControl ?? undefined));
 }
 
 /** Runs `task` over `items` with at most `concurrency` at a time, and fails with the first error */
@@ -211,7 +221,7 @@ export function planSync(manifest: BucketSyncManifest, remote: BucketSyncRemoteO
 			return(stage.length > 0);
 		}),
 		last,
-		deletes: deletes.sort(),
+		deletes: [ ...deletes ].sort(compareNames),
 		unchanged: manifest.files.length - changed.length,
 		retained
 	});

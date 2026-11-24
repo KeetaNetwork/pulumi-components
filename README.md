@@ -102,7 +102,7 @@ const site = new keetapulumi.gcp.apps.StaticWebApp('my-site', {
 ```
 
 #### Uploading with one resource (`upload: 'sync'`)
-By default a `StaticWebApp` uploads one `BucketObject` per file, so a site with a thousand files is a thousand resources and a thousand state writes on every `pulumi up` that touches them. With `upload: 'sync'` it uses one `BucketSync` instead (also available on its own, in `gcp.bucket`). The program writes a manifest of the files (MD5, content type, cache header) to a temporary file, and one `command.local.Command` runs a script of this package that uploads only the files that differ. It uploads `assets/` (the `cacheControl.assetsPrefix`) first, then the other files, then `index.html`, and only then deletes stale files. Files under `assets/` are never deleted, so a page of an older version keeps loading.
+By default a `StaticWebApp` uploads one `BucketObject` per file, so a site with a thousand files is a thousand resources and a thousand state writes on every `pulumi up` that touches them. With `upload: 'sync'` it uses one `BucketSync` instead (also available on its own, in `gcp.bucket`). The program writes a manifest of the files (SHA-256, content type, cache header) to a temporary file, and one `command.local.Command` runs a script of this package that uploads only the files that differ. It uploads `assets/` (the `cacheControl.assetsPrefix`) first, then the other files, then `index.html`, and only then deletes stale files. Files under `assets/` are never deleted, so a page of an older version keeps loading.
 
 - Only the manifest hash, the bucket and the caller go into the state. The script calls Cloud Storage with Application Default Credentials, as the account your GCP provider (or `gcp:impersonateServiceAccount`) impersonates. That account needs `storage.objects.list`, `create` and `delete` on the bucket.
 - `pulumi preview` shows one `~ update` of the command when any file changes; the uploaded and deleted names are in its output. `pulumi refresh` does not see objects changed by hand.
@@ -112,7 +112,7 @@ The upload can also come from the stack configuration, for every `StaticWebApp` 
 
 To switch an existing stack, take two deployments. Removing the `BucketObject`s from the program makes Pulumi delete them at the end of the `pulumi up`, after the sync has uploaded the same names, so the site would lose its files:
 1. Set `upload` (or the configuration) to `'objects-retain'` and `pulumi up`. Every object gets `retainOnDelete`; nothing is uploaded.
-2. Set it to `'sync'` and `pulumi up`. The objects leave the state but stay in the bucket, and the sync finds them current and uploads nothing.
+2. Set it to `'sync'` and `pulumi up`. The objects leave the state but stay in the bucket. The sync uploads every file once more, unchanged, because it keeps the SHA-256 of each object in its metadata (`keeta-sha256`) and the old objects have none; it keeps the usual order, so the site serves throughout.
 
 ### CloudRunService
 A Cloud Run service with an image that is either given (`image.uri`) or built from a directory (`image.build`, locally with Docker or remotely with Cloud Build when `remote` is set). `database`, `kv`, `vpc`, `worker` and `migration` add Cloud SQL, Redis, a VPC with connector, a worker and a migration job. `migration.enabled` requires `database`.

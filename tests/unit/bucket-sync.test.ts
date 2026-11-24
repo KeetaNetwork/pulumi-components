@@ -24,12 +24,12 @@ const { gcsStore, readManifest } = requireSource<typeof script>('src/packages/gc
 
 const STATIC_DIRECTORY = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../fixtures/static');
 
-function md5(contents: string) {
-	return(createHash('md5').update(contents).digest('base64'));
+function sha256(contents: string) {
+	return(createHash('sha256').update(contents).digest('hex'));
 }
 
 function file(name: string, contents: string, extra: Partial<BucketSyncFile> = {}): BucketSyncFile {
-	return({ name, md5: md5(contents), contentType: 'text/plain', ...extra });
+	return({ name, sha256: sha256(contents), contentType: 'text/plain', ...extra });
 }
 
 function manifestOf(files: BucketSyncFile[], extra: Partial<BucketSyncManifest> = {}): BucketSyncManifest {
@@ -37,7 +37,7 @@ function manifestOf(files: BucketSyncFile[], extra: Partial<BucketSyncManifest> 
 }
 
 function remoteOf(syncFile: BucketSyncFile): BucketSyncRemoteObject {
-	return({ name: syncFile.name, md5: syncFile.md5, contentType: syncFile.contentType, cacheControl: syncFile.cacheControl });
+	return({ name: syncFile.name, sha256: syncFile.sha256, contentType: syncFile.contentType, cacheControl: syncFile.cacheControl });
 }
 
 /** A bucket in memory that records every call in order */
@@ -70,7 +70,7 @@ function memoryStore(initial: BucketSyncRemoteObject[]) {
 describe('BucketSync manifest', function() {
 	const directories = useTempDirectories();
 
-	it('lists every file with its MD5, content type and cache header, sorted, with / separators', function() {
+	it('lists every file with its SHA-256, content type and cache header, sorted, with / separators', function() {
 		const directory = directories.make({
 			'index.html': '<html></html>',
 			'assets/app-1234.js': 'console.log(1);',
@@ -91,9 +91,9 @@ describe('BucketSync manifest', function() {
 			directory,
 			bucket: 'site',
 			files: [
-				{ name: 'assets/app-1234.js', md5: md5('console.log(1);'), contentType: 'application/javascript' },
-				{ name: 'index.html', md5: md5('<html></html>'), contentType: 'text/html', cacheControl: 'public, max-age=10' },
-				{ name: 'robots.txt', md5: md5('User-agent: *'), contentType: 'text/plain' }
+				{ name: 'assets/app-1234.js', sha256: sha256('console.log(1);'), contentType: 'application/javascript' },
+				{ name: 'index.html', sha256: sha256('<html></html>'), contentType: 'text/html', cacheControl: 'public, max-age=10' },
+				{ name: 'robots.txt', sha256: sha256('User-agent: *'), contentType: 'text/plain' }
 			],
 			retainPrefixes: [],
 			uploadLast: [ 'index.html' ],
@@ -246,21 +246,21 @@ describe('BucketSync Cloud Storage calls', function() {
 
 	it('lists every page of the bucket', async function() {
 		const { calls, fetchFunction } = fakeFetch([
-			Response.json({ items: [ { name: 'index.html', md5Hash: 'a', contentType: 'text/html', cacheControl: 'public, max-age=10' } ], nextPageToken: 'next' }),
-			Response.json({ items: [ { name: 'assets/a.js', md5Hash: 'b', contentType: 'application/javascript' } ] })
+			Response.json({ items: [ { name: 'index.html', metadata: { 'keeta-sha256': 'a' }, contentType: 'text/html', cacheControl: 'public, max-age=10' } ], nextPageToken: 'next' }),
+			Response.json({ items: [ { name: 'assets/a.js', contentType: 'application/javascript' } ] })
 		]);
 
 		const objects = await gcsStore('site', '/unused', token, fetchFunction).list();
 
 		expect(objects).toEqual([
-			{ name: 'index.html', md5: 'a', contentType: 'text/html', cacheControl: 'public, max-age=10' },
-			{ name: 'assets/a.js', md5: 'b', contentType: 'application/javascript', cacheControl: undefined }
+			{ name: 'index.html', sha256: 'a', contentType: 'text/html', cacheControl: 'public, max-age=10' },
+			{ name: 'assets/a.js', sha256: undefined, contentType: 'application/javascript', cacheControl: undefined }
 		]);
 		expect(new URL(calls[1].url).searchParams.get('pageToken')).toBe('next');
 		expect(calls[0].headers.get('Authorization')).toBe('Bearer token');
 	});
 
-	it('uploads the contents with the content type, cache header and MD5 in one multipart request', async function() {
+	it('uploads the contents with the content type, cache header and SHA-256 in one multipart request', async function() {
 		const directory = directories.make({ 'assets/a.js': 'console.log(1);' });
 		const { calls, fetchFunction } = fakeFetch([ Response.json({}) ]);
 
@@ -269,7 +269,7 @@ describe('BucketSync Cloud Storage calls', function() {
 		expect(calls[0].method).toBe('POST');
 		expect(calls[0].url).toBe('https://storage.googleapis.com/upload/storage/v1/b/site/o?uploadType=multipart');
 		expect(calls[0].headers.get('Content-Type')).toMatch(/^multipart\/related; boundary=/);
-		expect(calls[0].body).toContain(JSON.stringify({ name: 'assets/a.js', contentType: 'application/javascript', md5Hash: md5('console.log(1);'), cacheControl: 'public, max-age=86400' }));
+		expect(calls[0].body).toContain(JSON.stringify({ name: 'assets/a.js', contentType: 'application/javascript', metadata: { 'keeta-sha256': sha256('console.log(1);') }, cacheControl: 'public, max-age=86400' }));
 		expect(calls[0].body).toContain('Content-Type: application/javascript\r\n\r\nconsole.log(1);\r\n');
 	});
 

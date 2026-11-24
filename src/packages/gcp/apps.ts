@@ -156,9 +156,9 @@ const STATIC_WEB_APP_UPLOADS: readonly StaticWebAppUpload[] = [ 'objects', 'obje
 export const STATIC_WEB_APP_UPLOAD_CONFIG = { namespace: 'keeta-pulumi-components', key: 'staticWebAppUpload' } as const;
 
 function isStaticWebAppUpload(value: unknown): value is StaticWebAppUpload {
-	return(STATIC_WEB_APP_UPLOADS.some(function(upload) {
-		return(upload === value);
-	}));
+	const names: readonly string[] = STATIC_WEB_APP_UPLOADS;
+
+	return(typeof value === 'string' && names.includes(value));
 }
 
 /** The upload a `StaticWebApp` uses: its argument, else the stack configuration, else `'objects'` */
@@ -296,6 +296,8 @@ export interface StaticWebAppArgs {
  */
 export class StaticWebApp extends pulumi.ComponentResource {
 	readonly bucket: gcp.storage.Bucket;
+	/** What uploads the files: a `BucketSync` with `upload: 'sync'`, else one `BucketObject` per file */
+	readonly files: BucketSync | GoogleCloudFolderWithArgs;
 	readonly backendBucket: gcp.compute.BackendBucket;
 	readonly urlMap?: gcp.compute.URLMap;
 	readonly httpsProxy?: gcp.compute.TargetHttpsProxy;
@@ -359,7 +361,7 @@ export class StaticWebApp extends pulumi.ComponentResource {
 			 * version keep access to them. index.html goes last, once
 			 * everything it names is in place.
 			 */
-			void new BucketSync(`${name}-sync`, {
+			this.files = new BucketSync(`${name}-sync`, {
 				bucketName: bucket.name,
 				path: args.staticFilesPath,
 				filter: args.fileFilter,
@@ -371,7 +373,7 @@ export class StaticWebApp extends pulumi.ComponentResource {
 				project: bucket.project
 			}, { parent: this });
 		} else {
-			void new GoogleCloudFolderWithArgs(`${name}-files`, {
+			this.files = new GoogleCloudFolderWithArgs(`${name}-files`, {
 				bucketName: bucket.name,
 				path: args.staticFilesPath,
 				filter: args.fileFilter,

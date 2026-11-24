@@ -70,8 +70,48 @@ function optionalString(value: unknown): string | undefined {
 	return(typeof value === 'string' ? value : undefined);
 }
 
-function md5Of(contents: Buffer) {
-	return(createHash('md5').update(contents).digest('base64'));
+function sha256Of(contents: Buffer) {
+	return(createHash('sha256').update(contents).digest('hex'));
+}
+
+/** The custom metadata key that holds the SHA-256 of an object's contents */
+export const SHA256_METADATA = 'keeta-sha256';
+
+function sha256OfItem(item: object): string | undefined {
+	if (!('metadata' in item) || typeof item.metadata !== 'object' || item.metadata === null) {
+		return(undefined);
+	}
+
+	return(SHA256_METADATA in item.metadata ? optionalString(item.metadata[SHA256_METADATA]) : undefined);
+}
+
+/** An object of a list response, or undefined for an item without a name */
+function remoteObjectOf(item: unknown): BucketSyncRemoteObject | undefined {
+	if (typeof item !== 'object' || item === null || !('name' in item) || typeof item.name !== 'string') {
+		return(undefined);
+	}
+
+	return({
+		name: item.name,
+		sha256: sha256OfItem(item),
+		contentType: 'contentType' in item ? optionalString(item.contentType) : undefined,
+		cacheControl: 'cacheControl' in item ? optionalString(item.cacheControl) : undefined
+	});
+}
+
+/** The objects and the next page token of a list response */
+function listPageOf(page: unknown): { objects: BucketSyncRemoteObject[]; pageToken?: string } {
+	const record = typeof page === 'object' && page !== null ? page : {};
+	const items: unknown[] = 'items' in record && Array.isArray(record.items) ? record.items : [];
+	const objects: BucketSyncRemoteObject[] = [];
+	for (const item of items) {
+		const object = remoteObjectOf(item);
+		if (object !== undefined) {
+			objects.push(object);
+		}
+	}
+
+	return({ objects, pageToken: 'nextPageToken' in record ? optionalString(record.nextPageToken) : undefined });
 }
 
 /** The bucket through the JSON API of Cloud Storage */
@@ -84,29 +124,16 @@ export function gcsStore(bucket: string, directory: string, token: TokenSource, 
 			let pageToken: string | undefined;
 			do {
 				const url = new URL(`${STORAGE_API}/b/${bucketPath}/o`);
-				url.searchParams.set('fields', 'items(name,md5Hash,contentType,cacheControl),nextPageToken');
+				url.searchParams.set('fields', 'items(name,contentType,cacheControl,metadata),nextPageToken');
 				url.searchParams.set('maxResults', '1000');
 				if (pageToken !== undefined) {
 					url.searchParams.set('pageToken', pageToken);
 				}
 
 				const response = await call(fetchFunction, token, url.toString(), { method: 'GET' });
-				const page: unknown = await response.json();
-				const record = typeof page === 'object' && page !== null ? page : {};
-				const items: unknown[] = 'items' in record && Array.isArray(record.items) ? record.items : [];
-				for (const item of items) {
-					if (typeof item !== 'object' || item === null || !('name' in item) || typeof item.name !== 'string') {
-						continue;
-					}
-
-					objects.push({
-						name: item.name,
-						md5: 'md5Hash' in item ? optionalString(item.md5Hash) : undefined,
-						contentType: 'contentType' in item ? optionalString(item.contentType) : undefined,
-						cacheControl: 'cacheControl' in item ? optionalString(item.cacheControl) : undefined
-					});
-				}
-				pageToken = 'nextPageToken' in record ? optionalString(record.nextPageToken) : undefined;
+				const page = listPageOf(await response.json());
+				objects.push(...page.objects);
+				pageToken = page.pageToken;
 			} while (pageToken !== undefined);
 
 			return(objects);
@@ -114,17 +141,17 @@ export function gcsStore(bucket: string, directory: string, token: TokenSource, 
 
 		upload: async function(file: BucketSyncFile) {
 			const contents = fs.readFileSync(fileOfObject(directory, file.name));
-			if (md5Of(contents) !== file.md5) {
+			if (sha256Of(contents) !== file.sha256) {
 				throw(new Error(`${file.name} changed after the program read it`));
 			}
 
 			const metadata = {
 				name: file.name,
 				contentType: file.contentType,
-				md5Hash: file.md5,
+				metadata: { [SHA256_METADATA]: file.sha256 },
 				...(file.cacheControl === undefined ? {} : { cacheControl: file.cacheControl })
 			};
-			const boundary = `bucket-sync-${createHash('sha256').update(file.name).update(file.md5).digest('hex')}`;
+			const boundary = `bucket-sync-${createHash('sha256').update(file.name).update(file.sha256).digest('hex')}`;
 			const body = Buffer.concat([
 				Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: ${file.contentType}\r\n\r\n`),
 				contents,
@@ -167,7 +194,7 @@ function isStringArray(value: unknown): value is string[] {
 function isManifestFile(value: unknown): value is BucketSyncFile {
 	return(typeof value === 'object' && value !== null &&
 		'name' in value && typeof value.name === 'string' &&
-		'md5' in value && typeof value.md5 === 'string' &&
+		'sha256' in value && typeof value.sha256 === 'string' &&
 		'contentType' in value && typeof value.contentType === 'string' &&
 		(!('cacheControl' in value) || value.cacheControl === undefined || typeof value.cacheControl === 'string'));
 }

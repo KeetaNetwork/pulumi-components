@@ -1,10 +1,10 @@
 import * as pulumi from '@pulumi/pulumi';
 import * as gcp from '@pulumi/gcp';
 import * as command from '@pulumi/command';
-import { createHash } from 'crypto';
+import { createHash } from 'node:crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { manifestHash, manifestPath } from './bucket-sync-core';
+import { compareNames, manifestHash, manifestPath } from './bucket-sync-core';
 import type { BucketSyncFile, BucketSyncManifest } from './bucket-sync-core';
 import { callerOf } from './client-auth';
 
@@ -267,7 +267,7 @@ export interface BucketSyncArgs {
 	deleteAfterUpload?: boolean;
 }
 
-/** The manifest of a directory: every file with its MD5, content type and cache header */
+/** The manifest of a directory: every file with its SHA-256, content type and cache header */
 export function buildBucketSyncManifest(bucket: string, directory: string, args: Omit<BucketSyncArgs, 'bucketName' | 'path' | 'project' | 'concurrency' | 'deleteAfterUpload'>): BucketSyncManifest {
 	let names = filesOf(directory);
 	if (args.filter !== undefined) {
@@ -277,17 +277,17 @@ export function buildBucketSyncManifest(bucket: string, directory: string, args:
 	const computeContentType = args.computeContentType ?? contentTypeOf;
 	const files = names.map(function(file): BucketSyncFile {
 		const name = file.split(path.sep).join('/');
-		const md5 = createHash('md5').update(fs.readFileSync(path.join(directory, file))).digest('base64');
+		const sha256 = createHash('sha256').update(fs.readFileSync(path.join(directory, file))).digest('hex');
 		const cacheControl = args.computeCacheControl?.(name);
 
 		return({
 			name,
-			md5,
+			sha256,
 			contentType: computeContentType(name),
 			...(cacheControl === undefined ? {} : { cacheControl })
 		});
 	}).sort(function(a, b) {
-		return(a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+		return(compareNames(a.name, b.name));
 	});
 
 	return({
@@ -302,14 +302,14 @@ export function buildBucketSyncManifest(bucket: string, directory: string, args:
 
 /** A path for `/bin/sh`, in single quotes */
 function shellQuote(value: string) {
-	return(`'${value.replace(/'/g, "'\\''")}'`);
+	return(`'${value.replaceAll("'", String.raw`'\''`)}'`);
 }
 
 /**
  * Uploads a directory to a bucket with one resource instead of one
  * `BucketObject` per file.
  *
- * The program builds a manifest of the files (name, MD5, content type,
+ * The program builds a manifest of the files (name, SHA-256, content type,
  * cache header) and writes it to a temporary file named by its hash. Only
  * the hash, the bucket and the caller go into the state, as the environment
  * of a `command.local.Command`, so the command runs exactly when the bucket
