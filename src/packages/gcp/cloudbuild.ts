@@ -1,19 +1,19 @@
 import * as pulumi from '@pulumi/pulumi';
 import * as googleAuth from 'google-auth-library';
-import type * as cloudbuildTypeImport from '@google-cloud/cloudbuild';
-import type * as secretManagerTypeImport from '@google-cloud/secret-manager';
+import * as cloudbuild from '@google-cloud/cloudbuild';
+import * as secretManager from '@google-cloud/secret-manager';
 
 import { randomUUID } from 'crypto';
 import type * as fsTypeImport from 'fs';
 import type * as utilTypeImport from 'util';
 
 import type { DeepInput, DeepOutput } from '../../types';
-import { clientAuthInputs, googleAuthForClient, googleAuthFrom } from './client-auth';
+import { authLibraryOf, clientAuthInputs, googleAuthForClient, googleAuthFrom } from './client-auth';
 import type { ClientAuthInputs, ClientAuthProvider } from './client-auth';
 
-export type IBuild = cloudbuildTypeImport.protos.google.devtools.cloudbuild.v1.IBuild;
-export type IBuildOperationMetadata = cloudbuildTypeImport.protos.google.devtools.cloudbuild.v1.IBuildOperationMetadata;
-export type ISecrets = cloudbuildTypeImport.protos.google.devtools.cloudbuild.v1.ISecrets;
+export type IBuild = cloudbuild.protos.google.devtools.cloudbuild.v1.IBuild;
+export type IBuildOperationMetadata = cloudbuild.protos.google.devtools.cloudbuild.v1.IBuildOperationMetadata;
+export type ISecrets = cloudbuild.protos.google.devtools.cloudbuild.v1.ISecrets;
 
 interface TemporarySecretInput {
 	secretParent?: string;
@@ -46,6 +46,16 @@ export enum HashType {
 	SHA256 = 1,
 	MD5 = 2
 }
+
+/*
+ * The clients and their auth libraries are loaded with this module, so the
+ * provider captures them and they are serialized as a `require` of the path
+ * they were loaded from. A `require` inside the provider would run in the
+ * dynamic provider host and only find packages at the top of the program's
+ * node_modules (see `authLibraryOf`).
+ */
+const cloudbuildAuthLibrary = authLibraryOf('@google-cloud/cloudbuild');
+const secretManagerAuthLibrary = authLibraryOf('@google-cloud/secret-manager');
 
 type BuildOutput = Awaited<ReturnType<typeof createBuild>>;
 type PulumiBuildOutput = DeepOutput<BuildOutput>;
@@ -110,16 +120,11 @@ function cloudBuildHasChanges(olds: Partial<Pick<CloudBuildInputs, 'build' | 'pr
 }
 
 async function createBuild(inputs: CloudBuildInputs) {
-	// eslint-disable-next-line @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-member-access
-	const cloudbuild = require('@google-cloud/cloudbuild').default as typeof cloudbuildTypeImport;
-	// eslint-disable-next-line @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-member-access
-	const secretManager = require('@google-cloud/secret-manager').default as typeof secretManagerTypeImport;
-
 	const projectId = inputs.projectId;
 
 	/* Without an account to impersonate the clients find the credentials of the environment themselves */
-	const secretClient = new secretManager.SecretManagerServiceClient({ projectId, auth: await googleAuthForClient('@google-cloud/secret-manager', inputs.auth) });
-	const client = new cloudbuild.CloudBuildClient({ projectId, auth: await googleAuthForClient('@google-cloud/cloudbuild', inputs.auth) });
+	const secretClient = new secretManager.SecretManagerServiceClient({ projectId, auth: await googleAuthForClient(secretManagerAuthLibrary, inputs.auth) });
+	const client = new cloudbuild.CloudBuildClient({ projectId, auth: await googleAuthForClient(cloudbuildAuthLibrary, inputs.auth) });
 
 	const cleanupFunctions = [];
 
@@ -255,10 +260,6 @@ async function createBuild(inputs: CloudBuildInputs) {
 	return(retval);
 }
 
-export const _Testing = {
-	cloudBuildHasChanges
-};
-
 const cloudbuildProvider: pulumi.dynamic.ResourceProvider = {
 	async check(_ignore_oldInput: CloudBuildInputs, newInput: CloudBuildInputs) {
 		const retval = {
@@ -296,6 +297,11 @@ const cloudbuildProvider: pulumi.dynamic.ResourceProvider = {
 	async delete() {
 		return;
 	}
+};
+
+export const _Testing = {
+	cloudBuildHasChanges,
+	provider: cloudbuildProvider
 };
 
 interface CloudBuildInputsArg {

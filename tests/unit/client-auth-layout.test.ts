@@ -95,13 +95,13 @@ exports.GoogleAuth = exports.googleAuthLibrary.GoogleAuth;
 `;
 
 const SCRIPT = `
-const { googleAuthForClient } = require('./client-auth.js');
+const { authLibraryOf, googleAuthForClient } = require('./client-auth.js');
 const { CloudBuildClient } = require('@google-cloud/cloudbuild');
 
 async function main() {
-	const plain = new CloudBuildClient({ projectId: 'project-id', auth: await googleAuthForClient('@google-cloud/cloudbuild', { project: 'project-id' }) });
+	const plain = new CloudBuildClient({ projectId: 'project-id', auth: await googleAuthForClient(authLibraryOf('@google-cloud/cloudbuild'), { project: 'project-id' }) });
 
-	const impersonating = new CloudBuildClient({ projectId: 'project-id', auth: await googleAuthForClient('@google-cloud/cloudbuild', { project: 'project-id', impersonateServiceAccount: 'deployer@project-id.iam.gserviceaccount.com' }) });
+	const impersonating = new CloudBuildClient({ projectId: 'project-id', auth: await googleAuthForClient(authLibraryOf('@google-cloud/cloudbuild'), { project: 'project-id', impersonateServiceAccount: 'deployer@project-id.iam.gserviceaccount.com' }) });
 
 	console.log(JSON.stringify({ plain: await plain.call(), impersonating: await impersonating.call() }));
 }

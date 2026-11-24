@@ -100,8 +100,14 @@ function isAuthLibrary(value: unknown): value is typeof GoogleAuthLibrary {
  * The `google-auth-library` that the Google Cloud client package works
  * with: the one of its own `google-gax`, wherever the consumer's package
  * manager put them.
+ *
+ * Call it when the module of a dynamic provider loads, not inside the
+ * provider: the provider runs in the dynamic provider host, where `require`
+ * resolves from the top of the program's node_modules, which need not hold
+ * the client package. A module the provider captures is serialized as a
+ * `require` of the path it was loaded from instead.
  */
-function authLibraryOf(clientPackage: string): typeof GoogleAuthLibrary {
+export function authLibraryOf(clientPackage: string): typeof GoogleAuthLibrary {
 	const requireFromClient = createRequire(require.resolve(clientPackage));
 	const gax: unknown = requireFromClient('google-gax');
 	const library: unknown = typeof gax === 'object' && gax !== null && 'googleAuthLibrary' in gax && gax.googleAuthLibrary;
@@ -118,13 +124,14 @@ function authLibraryOf(clientPackage: string): typeof GoogleAuthLibrary {
  * impersonate it is `undefined`, and the client finds the credentials of the
  * environment on its own.
  *
- * It is made of the `google-auth-library` of the client's own `google-gax`,
- * so the client never meets an object of another version of the library.
+ * It is made of the library given, which is the `google-auth-library` of
+ * the client's own `google-gax` (see `authLibraryOf`), so the client never
+ * meets an object of another version of the library.
  */
-export async function googleAuthForClient(clientPackage: string, inputs: ClientAuthInputs | undefined): Promise<GoogleAuthLibrary.GoogleAuth | undefined> {
+export async function googleAuthForClient(clientAuthLibrary: typeof GoogleAuthLibrary, inputs: ClientAuthInputs | undefined): Promise<GoogleAuthLibrary.GoogleAuth | undefined> {
 	if (inputs?.impersonateServiceAccount === undefined) {
 		return(undefined);
 	}
 
-	return(await googleAuthOf(authLibraryOf(clientPackage), inputs, [ CLOUD_PLATFORM_SCOPE ]));
+	return(await googleAuthOf(clientAuthLibrary, inputs, [ CLOUD_PLATFORM_SCOPE ]));
 }

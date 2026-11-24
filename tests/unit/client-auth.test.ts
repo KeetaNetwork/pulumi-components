@@ -15,7 +15,7 @@ import { resolveOutput } from '../helpers/outputs';
 import { requireSource } from './harness/load-sources';
 import { captureTree } from './harness/pulumi-tree';
 
-const { callerOf, clientAuthInputs, googleAuthForClient, googleAuthFrom } = requireSource<typeof clientAuth>('src/packages/gcp/client-auth.ts');
+const { authLibraryOf, callerOf, clientAuthInputs, googleAuthForClient, googleAuthFrom } = requireSource<typeof clientAuth>('src/packages/gcp/client-auth.ts');
 
 async function inputsOfProvider(args: gcp.ProviderArgs) {
 	let inputs: unknown;
@@ -153,7 +153,7 @@ describe('googleAuthForClient with a Google Cloud client', function() {
 	const account = 'deployer@project-id.iam.gserviceaccount.com';
 
 	it('makes the client call as the account, with the Impersonated of its own google-gax', async function() {
-		const client = new CloudBuildClient({ projectId: 'project-id', auth: await googleAuthForClient('@google-cloud/cloudbuild', { project: 'project-id', impersonateServiceAccount: account }) });
+		const client = new CloudBuildClient({ projectId: 'project-id', auth: await googleAuthForClient(authLibraryOf('@google-cloud/cloudbuild'), { project: 'project-id', impersonateServiceAccount: account }) });
 
 		const authClient = await client.auth.getClient();
 
@@ -165,7 +165,7 @@ describe('googleAuthForClient with a Google Cloud client', function() {
 		[ 'no inputs', undefined ],
 		[ 'inputs with no account to impersonate', { project: 'project-id' } ]
 	])('leaves the client with the credentials of the environment for %s', async function(_description, inputs) {
-		const auth = await googleAuthForClient('@google-cloud/cloudbuild', inputs);
+		const auth = await googleAuthForClient(authLibraryOf('@google-cloud/cloudbuild'), inputs);
 		const client = new CloudBuildClient({ projectId: 'project-id', auth });
 
 		const authClient = await client.auth.getClient();
