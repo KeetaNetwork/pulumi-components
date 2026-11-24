@@ -213,6 +213,37 @@ export interface StaticWebAppArgs {
 	upload?: StaticWebAppUpload;
 
 	/**
+	 * Object names under these prefixes are never deleted, so a page of an
+	 * older version can still load them: with `'objects'` they get
+	 * `retainOnDelete`, and with `'sync'` they are uploaded first and never
+	 * pruned. Pass `[]` to retain nothing. (default: `[cacheControl.assetsPrefix]`,
+	 * that is `['assets/']`)
+	 */
+	retainPrefixes?: string[];
+
+	/**
+	 * Options of the `BucketSync` with `upload: 'sync'`
+	 */
+	sync?: {
+		/**
+		 * Object names uploaded after every other file, one at a time, in
+		 * this order (default: `['index.html']`)
+		 */
+		uploadLast?: string[];
+
+		/**
+		 * Delete objects that are not in the directory and not under
+		 * `retainPrefixes` (default: true)
+		 */
+		prune?: boolean;
+
+		/**
+		 * Uploads and deletes at the same time (default: 16)
+		 */
+		concurrency?: number;
+	};
+
+	/**
 	 * Optional function to compute content type for uploaded files
 	 */
 	computeContentType?: ConstructorParameters<typeof GoogleCloudFolderWithArgs>[1]['computeContentType'];
@@ -354,6 +385,12 @@ export class StaticWebApp extends pulumi.ComponentResource {
 		}
 
 		const upload = resolveStaticWebAppUpload(args.upload);
+		const retainPrefixes = args.retainPrefixes ?? [ assetsPrefix ];
+		function isRetained(fileName: string) {
+			return(retainPrefixes.some(function(prefix) {
+				return(fileName.startsWith(prefix));
+			}));
+		}
 		if (upload === 'sync') {
 			/*
 			 * Assets are assumed to be content-hashed and immutable, so
@@ -367,9 +404,10 @@ export class StaticWebApp extends pulumi.ComponentResource {
 				filter: args.fileFilter,
 				computeContentType: args.computeContentType,
 				computeCacheControl: cacheControlOf,
-				retainPrefixes: [ assetsPrefix ],
-				uploadLast: [ 'index.html' ],
-				prune: true,
+				retainPrefixes,
+				uploadLast: args.sync?.uploadLast ?? [ 'index.html' ],
+				prune: args.sync?.prune ?? true,
+				concurrency: args.sync?.concurrency,
 				project: bucket.project
 			}, { parent: this });
 		} else {
@@ -394,7 +432,7 @@ export class StaticWebApp extends pulumi.ComponentResource {
 						 */
 						return({
 							cacheControl: cacheControlOf(fileName),
-							retainOnDelete: upload === 'objects-retain' || fileName.startsWith(assetsPrefix)
+							retainOnDelete: upload === 'objects-retain' || isRetained(fileName)
 						});
 					}
 				}

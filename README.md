@@ -107,6 +107,7 @@ By default a `StaticWebApp` uploads one `BucketObject` per file, so a site with 
 - Only the manifest hash, the bucket and the caller go into the state. The script calls Cloud Storage with Application Default Credentials, as the account your GCP provider (or `gcp:impersonateServiceAccount`) impersonates. That account needs `storage.objects.list`, `create` and `delete` on the bucket.
 - `pulumi preview` shows one `~ update` of the command when any file changes; the uploaded and deleted names are in its output. `pulumi refresh` does not see objects changed by hand.
 - Removing a `BucketSync` from the program leaves its objects in the bucket.
+- `retainPrefixes` (default `[cacheControl.assetsPrefix]`, pass `[]` to retain nothing) chooses what is never deleted, in every mode. `sync: { uploadLast, prune, concurrency }` tunes the sync (defaults `['index.html']`, `true`, `16`).
 
 The upload can also come from the stack configuration, for every `StaticWebApp` without `upload` (including the ones inside packages you consume): `pulumi config set keeta-pulumi-components:staticWebAppUpload sync`.
 

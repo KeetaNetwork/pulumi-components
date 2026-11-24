@@ -402,6 +402,33 @@ describe('StaticWebApp upload', function() {
 		]);
 	});
 
+	it('takes the retained prefixes and the sync options from its arguments', async function() {
+		const tree = await captureTree(function() {
+			return(new StaticWebApp('site', {
+				staticFilesPath: STATIC_DIRECTORY,
+				upload: 'sync',
+				retainPrefixes: [ 'assets/', 'fonts/' ],
+				sync: { uploadLast: [ 'index.html', 'sw.js' ], prune: false, concurrency: 4 }
+			}));
+		});
+
+		const [ syncCommand ] = ofType(tree, 'command:local:Command');
+		const environment = expectRecord(expectRecord(syncCommand.inputs, 'the command inputs').environment, 'the command environment');
+		const manifest = readManifest(String(environment.BUCKET_SYNC_MANIFEST_HASH), String(environment.BUCKET_SYNC_BUCKET));
+		expect(manifest).toMatchObject({ retainPrefixes: [ 'assets/', 'fonts/' ], uploadLast: [ 'index.html', 'sw.js' ], prune: false });
+		expect(environment.BUCKET_SYNC_CONCURRENCY).toBe('4');
+	});
+
+	it('retains nothing with objects when retainPrefixes is empty', async function() {
+		const tree = await captureTree(function() {
+			return(new StaticWebApp('site', { staticFilesPath: STATIC_DIRECTORY, retainPrefixes: [] }));
+		});
+
+		expect(ofType(tree, 'gcp:storage/bucketObject:BucketObject').map(function(resource) {
+			return(resource.retainOnDelete ?? false);
+		})).toEqual([ false, false ]);
+	});
+
 	it('takes the upload from the stack configuration when the argument is not given', async function() {
 		pulumi.runtime.setAllConfig({ [`${STATIC_WEB_APP_UPLOAD_CONFIG.namespace}:${STATIC_WEB_APP_UPLOAD_CONFIG.key}`]: 'sync' });
 
