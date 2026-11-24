@@ -4,7 +4,7 @@ import { extractServiceURL } from './common';
 import type { GCPCommonOptions, CertificateManagerCert, ComputeManagedSslCert } from './common';
 import type { GCPRegion } from './constants';
 import type { EnvironmentVariables } from './cloudrun';
-import { GoogleCloudFolderWithArgs } from './bucket';
+import { BucketSync, GoogleCloudFolderWithArgs } from './bucket';
 import { EnvManager, EnvView } from './cloudrun';
 import type { ReplacedEnvironment } from './cloudrun';
 import { PostgresCloudSQL } from './sql';
@@ -148,6 +148,36 @@ function createLoadBalancer(
 	});
 }
 
+export type StaticWebAppUpload = 'objects' | 'objects-retain' | 'sync';
+
+const STATIC_WEB_APP_UPLOADS: readonly StaticWebAppUpload[] = [ 'objects', 'objects-retain', 'sync' ];
+
+/** The stack configuration namespace and key that choose the upload of every `StaticWebApp` without `upload` */
+export const STATIC_WEB_APP_UPLOAD_CONFIG = { namespace: 'keeta-pulumi-components', key: 'staticWebAppUpload' } as const;
+
+function isStaticWebAppUpload(value: unknown): value is StaticWebAppUpload {
+	return(STATIC_WEB_APP_UPLOADS.some(function(upload) {
+		return(upload === value);
+	}));
+}
+
+/** The upload a `StaticWebApp` uses: its argument, else the stack configuration, else `'objects'` */
+export function resolveStaticWebAppUpload(upload: StaticWebAppUpload | undefined): StaticWebAppUpload {
+	if (upload !== undefined) {
+		return(upload);
+	}
+
+	const configured = new pulumi.Config(STATIC_WEB_APP_UPLOAD_CONFIG.namespace).get(STATIC_WEB_APP_UPLOAD_CONFIG.key);
+	if (configured === undefined) {
+		return('objects');
+	}
+	if (!isStaticWebAppUpload(configured)) {
+		throw(new Error(`${STATIC_WEB_APP_UPLOAD_CONFIG.namespace}:${STATIC_WEB_APP_UPLOAD_CONFIG.key} is "${configured}"; use one of ${STATIC_WEB_APP_UPLOADS.join(', ')}`));
+	}
+
+	return(configured);
+}
+
 /**
  * Configuration for a Static Web Application (SPA)
  * Deploys static files to GCS bucket with a backend bucket (for use in load balancer)
@@ -167,6 +197,20 @@ export interface StaticWebAppArgs {
 	 * Optional filter for files to upload
 	 */
 	fileFilter?: ConstructorParameters<typeof GoogleCloudFolderWithArgs>[1]['filter'];
+
+	/**
+	 * How the files reach the bucket. When it is not given, the stack
+	 * configuration `keeta-pulumi-components:staticWebAppUpload` decides,
+	 * and without that `'objects'`.
+	 *
+	 * - `'objects'`: one `BucketObject` per file (the behavior of 2.0.0)
+	 * - `'objects-retain'`: the same objects, all with `retainOnDelete`, for
+	 *   the deployment before a switch to `'sync'`
+	 * - `'sync'`: one `BucketSync` for the whole directory. Switch from
+	 *   `'objects'` through one deployment with `'objects-retain'`; see the
+	 *   README.
+	 */
+	upload?: StaticWebAppUpload;
 
 	/**
 	 * Optional function to compute content type for uploaded files
@@ -294,20 +338,46 @@ export class StaticWebApp extends pulumi.ComponentResource {
 		const assetsPrefix = cacheControl.assetsPrefix ?? 'assets/';
 		const defaultTTL = cacheControl.defaultTTL ?? 300;
 
-		void new GoogleCloudFolderWithArgs(`${name}-files`, {
-			bucketName: bucket.name,
-			path: args.staticFilesPath,
-			filter: args.fileFilter,
-			computeContentType: args.computeContentType,
-			options: {
-				generated: function(fileName: string) {
-					let ttl: number;
-					let retainOnDelete = false;
-					if (fileName === 'index.html') {
-						ttl = indexTTL;
-					} else if (fileName.startsWith(assetsPrefix)) {
-						ttl = assetsTTL;
+		function cacheControlOf(fileName: string) {
+			let ttl: number;
+			if (fileName === 'index.html') {
+				ttl = indexTTL;
+			} else if (fileName.startsWith(assetsPrefix)) {
+				ttl = assetsTTL;
+			} else {
+				ttl = defaultTTL;
+			}
 
+			return(`public, max-age=${ttl}`);
+		}
+
+		const upload = resolveStaticWebAppUpload(args.upload);
+		if (upload === 'sync') {
+			/*
+			 * Assets are assumed to be content-hashed and immutable, so
+			 * they are never deleted: users with the old application
+			 * version keep access to them. index.html goes last, once
+			 * everything it names is in place.
+			 */
+			void new BucketSync(`${name}-sync`, {
+				bucketName: bucket.name,
+				path: args.staticFilesPath,
+				filter: args.fileFilter,
+				computeContentType: args.computeContentType,
+				computeCacheControl: cacheControlOf,
+				retainPrefixes: [ assetsPrefix ],
+				uploadLast: [ 'index.html' ],
+				prune: true,
+				project: bucket.project
+			}, { parent: this });
+		} else {
+			void new GoogleCloudFolderWithArgs(`${name}-files`, {
+				bucketName: bucket.name,
+				path: args.staticFilesPath,
+				filter: args.fileFilter,
+				computeContentType: args.computeContentType,
+				options: {
+					generated: function(fileName: string) {
 						/**
 						 * Assets are assumed to be
 						 * content-hashed and
@@ -315,22 +385,22 @@ export class StaticWebApp extends pulumi.ComponentResource {
 						 * them on delete so that users
 						 * with the old application
 						 * version don't lose access to
-						 * them.
+						 * them. With 'objects-retain'
+						 * every file is retained, so
+						 * the switch to 'sync' leaves
+						 * the bucket as it is.
 						 */
-						retainOnDelete = true;
-					} else {
-						ttl = defaultTTL;
+						return({
+							cacheControl: cacheControlOf(fileName),
+							retainOnDelete: upload === 'objects-retain' || fileName.startsWith(assetsPrefix)
+						});
 					}
-					return({
-						cacheControl: `public, max-age=${ttl}`,
-						retainOnDelete: retainOnDelete
-					});
 				}
-			}
-		}, {
-			parent: this,
-			aliases: movedFrom(`${name}-files`, 'keeta:synced-folder:GoogleCloudFolderWithArgs', { kind: 'stack' })
-		});
+			}, {
+				parent: this,
+				aliases: movedFrom(`${name}-files`, 'keeta:synced-folder:GoogleCloudFolderWithArgs', { kind: 'stack' })
+			});
+		}
 
 		const customResponseHeadersInput = args.customResponseHeaders ?? [];
 		const customResponseHeaders = pulumi.output(customResponseHeadersInput).apply(function(headers) {

@@ -31,7 +31,7 @@ const CLOUD_PLATFORM_SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
  * of the stack configuration, which the default provider uses. Call it on the
  * component, once it is registered.
  */
-export function callerOf(component: pulumi.Resource, project: pulumi.Input<string>): ClientAuthProvider {
+export function callerOf(component: pulumi.Resource, project: pulumi.Input<string | undefined>): ClientAuthProvider {
 	const provider = component.getProvider('gcp::');
 	if (gcp.Provider.isInstance(provider)) {
 		return({ project: pulumi.output(project), impersonateServiceAccount: provider.impersonateServiceAccount });

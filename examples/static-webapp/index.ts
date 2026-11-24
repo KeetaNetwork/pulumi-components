@@ -29,9 +29,11 @@ export const staticApp = new gcpComponents.apps.StaticWebApp(name, {
 	cdn: { enabled: true }
 });
 
+// Uploads with one BucketSync instead of one BucketObject per file
 export const staticAppCDNOverride = new gcpComponents.apps.StaticWebApp(`tf-static-cdn-${stackId}`, {
 	staticFilesPath: path.join(__dirname, 'static'),
 	bucketConfig: { location: 'US' },
+	upload: 'sync',
 	cdn: {
 		enabled: true,
 		compressionMode: 'DISABLED',
