@@ -300,6 +300,23 @@ export function buildBucketSyncManifest(bucket: string, directory: string, args:
 	});
 }
 
+/**
+ * Creates the manifest directory, or checks the one that exists: it must be
+ * a real directory of this user, and it is made private, so another account
+ * on the machine cannot place a link where the manifest goes
+ */
+export function ensurePrivateDirectory(directory: string): void {
+	fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+	const stats = fs.lstatSync(directory);
+	const ownedByUs = typeof process.getuid !== 'function' || stats.uid === process.getuid();
+	if (!stats.isDirectory() || !ownedByUs) {
+		throw(new Error(`${directory} must be a directory of this user, or not exist`));
+	}
+	if ((stats.mode & 0o077) !== 0) {
+		fs.chmodSync(directory, 0o700);
+	}
+}
+
 /** A path for `/bin/sh`, in single quotes */
 function shellQuote(value: string) {
 	return(`'${value.replaceAll("'", String.raw`'\''`)}'`);
@@ -341,7 +358,7 @@ export class BucketSync extends pulumi.ComponentResource {
 			const manifest = buildBucketSyncManifest(bucket, directory, manifestArgs);
 			const hash = manifestHash(manifest);
 			const file = manifestPath(hash);
-			fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+			ensurePrivateDirectory(path.dirname(file));
 			fs.writeFileSync(file, JSON.stringify(manifest), { mode: 0o600 });
 
 			return(hash);

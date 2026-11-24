@@ -251,6 +251,9 @@ export async function main(): Promise<void> {
 
 	const result = await syncBucket(manifest, gcsStore(bucket, manifest.directory, token), Number.isInteger(concurrency) && concurrency > 0 ? concurrency : 16);
 	console.log(describeResult(bucket, result));
+
+	/* The manifest is only for this run; a later run writes it again */
+	fs.rmSync(manifestPath(hash), { force: true });
 }
 
 if (require.main === module) {

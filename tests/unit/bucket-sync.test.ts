@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as gcp from '@pulumi/gcp';
 import * as pulumi from '@pulumi/pulumi';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type * as apps from '../../src/packages/gcp/apps';
 import type * as bucket from '../../src/packages/gcp/bucket';
@@ -18,7 +18,7 @@ import { captureTree, ofType, useIsolatedHome } from './harness/pulumi-tree';
 import type { TreeSnapshot } from './harness/pulumi-tree';
 
 const { StaticWebApp, STATIC_WEB_APP_UPLOAD_CONFIG } = requireSource<typeof apps>('src/packages/gcp/apps.ts');
-const { BucketSync, buildBucketSyncManifest } = requireSource<typeof bucket>('src/packages/gcp/bucket.ts');
+const { BucketSync, buildBucketSyncManifest, ensurePrivateDirectory } = requireSource<typeof bucket>('src/packages/gcp/bucket.ts');
 const { manifestHash, manifestPath, fileOfObject, planSync, syncBucket, describeResult } = requireSource<typeof core>('src/packages/gcp/bucket-sync-core.ts');
 const { gcsStore, readManifest } = requireSource<typeof script>('src/packages/gcp/bucket-sync-script.ts');
 
@@ -283,7 +283,14 @@ describe('BucketSync Cloud Storage calls', function() {
 	it('retries a throttled call and accepts a delete of an object that is already gone', async function() {
 		const { calls, fetchFunction } = fakeFetch([ new Response('slow down', { status: 429 }), new Response('', { status: 404 }) ]);
 
-		await gcsStore('site', '/unused', token, fetchFunction).remove('assets/a b.js');
+		vi.useFakeTimers();
+		try {
+			const removed = gcsStore('site', '/unused', token, fetchFunction).remove('assets/a b.js');
+			await vi.advanceTimersByTimeAsync(500);
+			await removed;
+		} finally {
+			vi.useRealTimers();
+		}
 
 		expect(calls.map(function(call) {
 			return(`${call.method} ${call.url}`);
@@ -310,6 +317,22 @@ describe('BucketSync Cloud Storage calls', function() {
 		expect(function() {
 			manifestPath('../../etc/passwd');
 		}).toThrow('64 lowercase hex digits');
+	});
+
+	it('makes the manifest directory private and refuses one that is not a directory', function() {
+		const directory = directories.make({ 'file.txt': 'not a directory' });
+		fs.chmodSync(directory, 0o777);
+		ensurePrivateDirectory(directory);
+		expect(fs.statSync(directory).mode & 0o777).toBe(0o700);
+
+		fs.symlinkSync(directory, `${directory}-link`);
+		try {
+			expect(function() {
+				ensurePrivateDirectory(`${directory}-link`);
+			}).toThrow('must be a directory of this user');
+		} finally {
+			fs.rmSync(`${directory}-link`, { force: true });
+		}
 	});
 
 	it('reads only the manifest of its hash and bucket', function() {

@@ -115,6 +115,8 @@ To switch an existing stack, take two deployments. Removing the `BucketObject`s 
 1. Set `upload` (or the configuration) to `'objects-retain'` and `pulumi up`. Every object gets `retainOnDelete`; nothing is uploaded.
 2. Set it to `'sync'` and `pulumi up`. The objects leave the state but stay in the bucket. The sync uploads every file once more, unchanged, because it keeps the SHA-256 of each object in its metadata (`keeta-sha256`) and the old objects have none; it keeps the usual order, so the site serves throughout.
 
+If a stack went straight from `'objects'` to `'sync'`, the end of that `pulumi up` deleted the files that the sync had just uploaded, except the retained ones (`index.html` is gone), and the next `pulumi up` does not run the sync again because no file changed. To restore the site, run the sync again: `pulumi up --replace '<URN of the <name>-sync-sync command>'` (find it with `pulumi stack --show-urns`).
+
 ### CloudRunService
 A Cloud Run service with an image that is either given (`image.uri`) or built from a directory (`image.build`, locally with Docker or remotely with Cloud Build when `remote` is set). `database`, `kv`, `vpc`, `worker` and `migration` add Cloud SQL, Redis, a VPC with connector, a worker and a migration job. `migration.enabled` requires `database`.
 ```js
