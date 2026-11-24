@@ -386,9 +386,21 @@ describe('StaticWebApp upload', function() {
 		}));
 	}
 
-	it('keeps one BucketObject per file by default', async function() {
+	it('keeps one BucketObject per file, all retained, by default', async function() {
 		const tree = await captureTree(function() {
 			return(new StaticWebApp('site', { staticFilesPath: STATIC_DIRECTORY }));
+		});
+
+		expect(names(tree, 'gcp:storage/bucketObject:BucketObject').sort()).toEqual([ 'site-files-assets/a.js', 'site-files-index.html' ]);
+		expect(ofType(tree, 'gcp:storage/bucketObject:BucketObject').map(function(resource) {
+			return([ resource.name, resource.retainOnDelete ?? false ]);
+		}).sort()).toEqual([ [ 'site-files-assets/a.js', true ], [ 'site-files-index.html', true ] ]);
+		expect(names(tree, 'keeta:synced-folder:BucketSync')).toEqual([]);
+	});
+
+	it('retains only the assets with objects, as 2.0.0 did', async function() {
+		const tree = await captureTree(function() {
+			return(new StaticWebApp('site', { staticFilesPath: STATIC_DIRECTORY, upload: 'objects' }));
 		});
 
 		expect(names(tree, 'gcp:storage/bucketObject:BucketObject').sort()).toEqual([ 'site-files-assets/a.js', 'site-files-index.html' ]);
@@ -489,7 +501,7 @@ describe('StaticWebApp upload', function() {
 
 	it('retains nothing with objects when retainPrefixes is empty', async function() {
 		const tree = await captureTree(function() {
-			return(new StaticWebApp('site', { staticFilesPath: STATIC_DIRECTORY, retainPrefixes: [] }));
+			return(new StaticWebApp('site', { staticFilesPath: STATIC_DIRECTORY, upload: 'objects', retainPrefixes: [] }));
 		});
 
 		expect(ofType(tree, 'gcp:storage/bucketObject:BucketObject').map(function(resource) {

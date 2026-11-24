@@ -33,7 +33,7 @@ const app = new components.gcp.apps.StaticWebApp('my-app', {
 
 When used inside `FullStackApp`, omit `loadBalancer` -- the parent component manages routing.
 
-Set `upload: 'sync'` to upload the whole directory with one `BucketSync` resource instead of one `BucketObject` per file (or set the stack configuration `keeta-pulumi-components:staticWebAppUpload`). An existing stack switches through one deployment with `'objects-retain'` first; see "Uploading with one resource" in the top-level README.
+Set `upload: 'sync'` to upload the whole directory with one `BucketSync` resource instead of one `BucketObject` per file (or set the stack configuration `keeta-pulumi-components:staticWebAppUpload`). The default, `'objects-retain'`, retains every object, so a stack switches after one deployment on 2.1; see "Uploading with one resource" in the top-level README.
 
 ### Cloud CDN
 

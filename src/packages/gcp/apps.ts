@@ -161,7 +161,7 @@ function isStaticWebAppUpload(value: unknown): value is StaticWebAppUpload {
 	return(typeof value === 'string' && names.includes(value));
 }
 
-/** The upload a `StaticWebApp` uses: its argument, else the stack configuration, else `'objects'` */
+/** The upload a `StaticWebApp` uses: its argument, else the stack configuration, else `'objects-retain'` */
 export function resolveStaticWebAppUpload(upload: StaticWebAppUpload | undefined): StaticWebAppUpload {
 	if (upload !== undefined) {
 		return(upload);
@@ -169,7 +169,7 @@ export function resolveStaticWebAppUpload(upload: StaticWebAppUpload | undefined
 
 	const configured = new pulumi.Config(STATIC_WEB_APP_UPLOAD_CONFIG.namespace).get(STATIC_WEB_APP_UPLOAD_CONFIG.key);
 	if (configured === undefined) {
-		return('objects');
+		return('objects-retain');
 	}
 	if (!isStaticWebAppUpload(configured)) {
 		throw(new Error(`${STATIC_WEB_APP_UPLOAD_CONFIG.namespace}:${STATIC_WEB_APP_UPLOAD_CONFIG.key} is "${configured}"; use one of ${STATIC_WEB_APP_UPLOADS.join(', ')}`));
@@ -201,14 +201,14 @@ export interface StaticWebAppArgs {
 	/**
 	 * How the files reach the bucket. When it is not given, the stack
 	 * configuration `keeta-pulumi-components:staticWebAppUpload` decides,
-	 * and without that `'objects'`.
+	 * and without that `'objects-retain'`.
 	 *
-	 * - `'objects'`: one `BucketObject` per file (the behavior of 2.0.0)
-	 * - `'objects-retain'`: the same objects, all with `retainOnDelete`, for
-	 *   the deployment before a switch to `'sync'`
-	 * - `'sync'`: one `BucketSync` for the whole directory. Switch from
-	 *   `'objects'` through one deployment with `'objects-retain'`; see the
-	 *   README.
+	 * - `'objects-retain'`: one `BucketObject` per file, every one with
+	 *   `retainOnDelete`, so a file that leaves the build stays in the
+	 *   bucket. After one deployment with it, a stack can switch to `'sync'`.
+	 * - `'objects'`: the same objects, and only those under `retainPrefixes`
+	 *   are retained (the behavior of 2.0.0)
+	 * - `'sync'`: one `BucketSync` for the whole directory; see the README
 	 */
 	upload?: StaticWebAppUpload;
 
