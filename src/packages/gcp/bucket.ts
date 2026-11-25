@@ -4,7 +4,7 @@ import * as command from '@pulumi/command';
 import { createHash } from 'node:crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { compareNames, manifestHash, manifestPath } from './bucket-sync-core';
+import { compareNames, manifestHash, manifestPath, normalizePrefix } from './bucket-sync-core';
 import type { BucketSyncFile, BucketSyncManifest } from './bucket-sync-core';
 import { callerOf } from './client-auth';
 
@@ -219,6 +219,14 @@ export interface BucketSyncArgs {
 	path: pulumi.Input<string>;
 
 	/**
+	 * The folder of the bucket to upload into, such as `'docs/'` (default:
+	 * the root). Objects outside it are never listed, changed or deleted, so
+	 * several `BucketSync`s, or other objects, can share one bucket.
+	 * `retainPrefixes` and `uploadLast` are relative to it.
+	 */
+	prefix?: string;
+
+	/**
 	 * Filter to apply to the files in the directory (paths relative to it)
 	 */
 	filter?: (file: string) => boolean;
@@ -294,6 +302,7 @@ export function buildBucketSyncManifest(bucket: string, directory: string, args:
 	return({
 		directory: path.resolve(directory),
 		bucket,
+		prefix: normalizePrefix(args.prefix),
 		files,
 		retainPrefixes: args.retainPrefixes ?? [],
 		uploadLast: args.uploadLast ?? [ 'index.html' ],
@@ -350,6 +359,7 @@ export class BucketSync extends pulumi.ComponentResource {
 			filter: args.filter,
 			computeContentType: args.computeContentType,
 			computeCacheControl: args.computeCacheControl,
+			prefix: args.prefix,
 			retainPrefixes: args.retainPrefixes,
 			uploadLast: args.uploadLast,
 			prune: args.prune

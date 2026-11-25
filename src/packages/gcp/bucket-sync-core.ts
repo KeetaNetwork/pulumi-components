@@ -23,6 +23,12 @@ export interface BucketSyncManifest {
 	/** The directory the files are read from; it is not part of the hash, because it can be a new temporary directory on each run */
 	directory: string;
 	bucket: string;
+	/**
+	 * The folder of the bucket the files go to: `''` for the root, else a
+	 * name ending in `/`. Every other name in the manifest is relative to
+	 * it, and objects outside it are never listed, changed or deleted.
+	 */
+	prefix: string;
 	files: BucketSyncFile[];
 	/** Object names under these prefixes are uploaded first and never deleted */
 	retainPrefixes: string[];
@@ -75,6 +81,7 @@ export function manifestHash(manifest: BucketSyncManifest): string {
 	});
 	const stable = {
 		bucket: manifest.bucket,
+		prefix: manifest.prefix,
 		files: files.map(function(file) {
 			return([ file.name, file.sha256, file.contentType, file.cacheControl ?? null ]);
 		}),
@@ -84,6 +91,16 @@ export function manifestHash(manifest: BucketSyncManifest): string {
 	};
 
 	return(createHash('sha256').update(JSON.stringify(stable)).digest('hex'));
+}
+
+/** A destination folder as the manifest holds it: no leading `/`, and a trailing `/` unless it is the root */
+export function normalizePrefix(prefix: string | undefined): string {
+	const trimmed = (prefix ?? '').replace(/^\/+/, '');
+	if (trimmed === '' || trimmed.endsWith('/')) {
+		return(trimmed);
+	}
+
+	return(`${trimmed}/`);
 }
 
 /** The directory of the manifests, per user, so no other account can place a manifest there */

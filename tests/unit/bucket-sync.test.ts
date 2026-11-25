@@ -19,7 +19,7 @@ import type { TreeSnapshot } from './harness/pulumi-tree';
 
 const { StaticWebApp, STATIC_WEB_APP_UPLOAD_CONFIG } = requireSource<typeof apps>('src/packages/gcp/apps.ts');
 const { BucketSync, buildBucketSyncManifest, contentTypeOf, ensurePrivateDirectory } = requireSource<typeof bucket>('src/packages/gcp/bucket.ts');
-const { manifestHash, manifestPath, fileOfObject, planSync, syncBucket, describeResult } = requireSource<typeof core>('src/packages/gcp/bucket-sync-core.ts');
+const { manifestHash, manifestPath, normalizePrefix, fileOfObject, planSync, syncBucket, describeResult } = requireSource<typeof core>('src/packages/gcp/bucket-sync-core.ts');
 const { gcsStore, readManifest } = requireSource<typeof script>('src/packages/gcp/bucket-sync-script.ts');
 
 const STATIC_DIRECTORY = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../fixtures/static');
@@ -33,7 +33,7 @@ function file(name: string, contents: string, extra: Partial<BucketSyncFile> = {
 }
 
 function manifestOf(files: BucketSyncFile[], extra: Partial<BucketSyncManifest> = {}): BucketSyncManifest {
-	return({ directory: '/unused', bucket: 'site', files, retainPrefixes: [ 'assets/' ], uploadLast: [ 'index.html' ], prune: true, ...extra });
+	return({ directory: '/unused', bucket: 'site', prefix: '', files, retainPrefixes: [ 'assets/' ], uploadLast: [ 'index.html' ], prune: true, ...extra });
 }
 
 function remoteOf(syncFile: BucketSyncFile): BucketSyncRemoteObject {
@@ -90,6 +90,7 @@ describe('BucketSync manifest', function() {
 		expect(manifest).toEqual({
 			directory,
 			bucket: 'site',
+			prefix: '',
 			files: [
 				{ name: 'assets/app-1234.js', sha256: sha256('console.log(1);'), contentType: 'application/javascript' },
 				{ name: 'index.html', sha256: sha256('<html></html>'), contentType: 'text/html', cacheControl: 'public, max-age=10' },
@@ -260,6 +261,32 @@ describe('BucketSync Cloud Storage calls', function() {
 	async function token() {
 		return('token');
 	}
+
+	it('lists, uploads and deletes only under its prefix, with names relative to it', async function() {
+		const directory = directories.make({ 'index.html': '<html></html>' });
+		const { calls, fetchFunction } = fakeFetch([
+			Response.json({ items: [ { name: 'docs/' }, { name: 'docs/old.html', contentType: 'text/html' }, { name: 'docs/index.html', contentType: 'text/html' } ] }),
+			Response.json({}),
+			new Response(null, { status: 204 })
+		]);
+		const store = gcsStore('site', directory, token, fetchFunction, 'docs/');
+
+		expect((await store.list()).map(function(object) {
+			return(object.name);
+		})).toEqual([ 'old.html', 'index.html' ]);
+		await store.upload(file('index.html', '<html></html>', { contentType: 'text/html' }));
+		await store.remove('old.html');
+
+		expect(new URL(calls[0].url).searchParams.get('prefix')).toBe('docs/');
+		expect(calls[1].body).toContain('"name":"docs/index.html"');
+		expect(calls[2].url).toBe('https://storage.googleapis.com/storage/v1/b/site/o/docs%2Fold.html');
+	});
+
+	it('normalizes a prefix to no leading and one trailing slash, and puts it in the hash', function() {
+		expect([ undefined, '', '/', 'docs', '/docs/', 'a/b' ].map(normalizePrefix)).toEqual([ '', '', '', 'docs/', 'docs/', 'a/b/' ]);
+		const manifest = manifestOf([ file('index.html', 'a') ]);
+		expect(manifestHash({ ...manifest, prefix: 'docs/' })).not.toBe(manifestHash(manifest));
+	});
 
 	it('lists every page of the bucket', async function() {
 		const { calls, fetchFunction } = fakeFetch([

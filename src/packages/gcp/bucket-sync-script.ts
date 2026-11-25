@@ -115,7 +115,11 @@ function listPageOf(page: unknown): { objects: BucketSyncRemoteObject[]; pageTok
 }
 
 /** The bucket through the JSON API of Cloud Storage */
-export function gcsStore(bucket: string, directory: string, token: TokenSource, fetchFunction: Fetch = fetch): BucketSyncStore {
+/**
+ * The bucket through the JSON API. With a prefix, the store lists, uploads
+ * and deletes only under it, and its names are relative to it.
+ */
+export function gcsStore(bucket: string, directory: string, token: TokenSource, fetchFunction: Fetch = fetch, prefix = ''): BucketSyncStore {
 	const bucketPath = encodeURIComponent(bucket);
 
 	return({
@@ -126,13 +130,21 @@ export function gcsStore(bucket: string, directory: string, token: TokenSource, 
 				const url = new URL(`${STORAGE_API}/b/${bucketPath}/o`);
 				url.searchParams.set('fields', 'items(name,contentType,cacheControl,metadata),nextPageToken');
 				url.searchParams.set('maxResults', '1000');
+				if (prefix !== '') {
+					url.searchParams.set('prefix', prefix);
+				}
 				if (pageToken !== undefined) {
 					url.searchParams.set('pageToken', pageToken);
 				}
 
 				const response = await call(fetchFunction, token, url.toString(), { method: 'GET' });
 				const page = listPageOf(await response.json());
-				objects.push(...page.objects);
+				for (const object of page.objects) {
+					/* The folder placeholder itself, if the console made one, is not a file */
+					if (object.name.startsWith(prefix) && object.name !== prefix) {
+						objects.push({ ...object, name: object.name.slice(prefix.length) });
+					}
+				}
 				pageToken = page.pageToken;
 			} while (pageToken !== undefined);
 
@@ -146,7 +158,7 @@ export function gcsStore(bucket: string, directory: string, token: TokenSource, 
 			}
 
 			const metadata = {
-				name: file.name,
+				name: `${prefix}${file.name}`,
 				contentType: file.contentType,
 				metadata: { [SHA256_METADATA]: file.sha256 },
 				...(file.cacheControl === undefined ? {} : { cacheControl: file.cacheControl })
@@ -167,7 +179,7 @@ export function gcsStore(bucket: string, directory: string, token: TokenSource, 
 
 		remove: async function(name: string) {
 			/* Already gone is fine */
-			await call(fetchFunction, token, `${STORAGE_API}/b/${bucketPath}/o/${encodeURIComponent(name)}`, { method: 'DELETE' }, [ 404 ]);
+			await call(fetchFunction, token, `${STORAGE_API}/b/${bucketPath}/o/${encodeURIComponent(`${prefix}${name}`)}`, { method: 'DELETE' }, [ 404 ]);
 		}
 	});
 }
@@ -203,6 +215,7 @@ function isManifest(value: unknown): value is BucketSyncManifest {
 	return(typeof value === 'object' && value !== null &&
 		'directory' in value && typeof value.directory === 'string' &&
 		'bucket' in value && typeof value.bucket === 'string' &&
+		'prefix' in value && typeof value.prefix === 'string' &&
 		'files' in value && Array.isArray(value.files) && value.files.every(isManifestFile) &&
 		'retainPrefixes' in value && isStringArray(value.retainPrefixes) &&
 		'uploadLast' in value && isStringArray(value.uploadLast) &&
@@ -249,7 +262,7 @@ export async function main(): Promise<void> {
 		return(accessToken);
 	};
 
-	const result = await syncBucket(manifest, gcsStore(bucket, manifest.directory, token), Number.isInteger(concurrency) && concurrency > 0 ? concurrency : 16);
+	const result = await syncBucket(manifest, gcsStore(bucket, manifest.directory, token, fetch, manifest.prefix), Number.isInteger(concurrency) && concurrency > 0 ? concurrency : 16);
 	console.log(describeResult(bucket, result));
 
 	/* The manifest is only for this run; a later run writes it again */
