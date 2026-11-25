@@ -1,11 +1,75 @@
 import * as pulumi from '@pulumi/pulumi';
 import * as gcp from '@pulumi/gcp';
+import * as command from '@pulumi/command';
+import { createHash } from 'node:crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import { compareNames, manifestHash, manifestPath, normalizePrefix } from './bucket-sync-core';
+import type { BucketSyncFile, BucketSyncManifest } from './bucket-sync-core';
+import { callerOf } from './client-auth';
 
 type BucketObjectOptions = {
 	retainOnDelete?: boolean;
 };
+
+/** Every file under a directory, as paths relative to it */
+function filesOf(startDir: string): string[] {
+	const files: string[] = [];
+
+	for (const file of fs.readdirSync(startDir)) {
+		const filePath = path.join(startDir, file);
+		const fileInfo = fs.statSync(filePath);
+		if (fileInfo.isDirectory()) {
+			for (const subFile of filesOf(filePath)) {
+				files.push(path.join(file, subFile));
+			}
+		} else {
+			files.push(file);
+		}
+	}
+	return(files);
+}
+
+/** Content types by lower-case file extension; anything else is `application/octet-stream` */
+const CONTENT_TYPES: { readonly [extension: string]: string } = {
+	'.html': 'text/html',
+	'.htm': 'text/html',
+	'.css': 'text/css',
+	'.js': 'application/javascript',
+	'.mjs': 'application/javascript',
+	'.cjs': 'application/javascript',
+	'.json': 'application/json',
+	'.map': 'application/json',
+	'.webmanifest': 'application/manifest+json',
+	'.wasm': 'application/wasm',
+	'.png': 'image/png',
+	'.jpg': 'image/jpeg',
+	'.jpeg': 'image/jpeg',
+	'.webp': 'image/webp',
+	'.avif': 'image/avif',
+	'.gif': 'image/gif',
+	'.svg': 'image/svg+xml',
+	'.ico': 'image/x-icon',
+	'.woff2': 'font/woff2',
+	'.woff': 'font/woff',
+	'.ttf': 'font/ttf',
+	'.otf': 'font/otf',
+	'.md': 'text/markdown',
+	'.ts': 'application/typescript',
+	'.txt': 'text/plain',
+	'.csv': 'text/csv',
+	'.xml': 'application/xml',
+	'.pdf': 'application/pdf',
+	'.mp4': 'video/mp4',
+	'.webm': 'video/webm',
+	'.mp3': 'audio/mpeg',
+	'.wav': 'audio/wav'
+};
+
+/** The content type that the bucket components give a file by default, from its extension */
+export function contentTypeOf(fileName: string): string {
+	return(CONTENT_TYPES[path.extname(fileName).toLowerCase()] ?? 'application/octet-stream');
+}
 
 /**
  * Reimplement the GoogleCloudFolder but with support for specifying
@@ -63,60 +127,12 @@ export class GoogleCloudFolderWithArgs extends pulumi.ComponentResource {
 	private readonly computeContentType: (fileName: string) => string;
 
 	private static getAllFiles(startDir: string): string[] {
-		const files: string[] = [];
-
-		for (const file of fs.readdirSync(startDir)) {
-			const filePath = path.join(startDir, file);
-			const fileInfo = fs.statSync(filePath);
-			if (fileInfo.isDirectory()) {
-				for (const subFile of GoogleCloudFolderWithArgs.getAllFiles(filePath)) {
-					files.push(path.join(file, subFile));
-				}
-			} else {
-				files.push(file);
-			}
-		}
-		return(files);
+		return(filesOf(startDir));
 	}
 
 	// eslint-disable-next-line @typescript-eslint/no-invalid-void-type
 	private static getComputedContentTypeFromFilename(this: void, fileName: string): string {
-		const ext = path.extname(fileName).toLowerCase();
-		switch (ext) {
-			case '.html':
-				return('text/html');
-			case '.css':
-				return('text/css');
-			case '.js':
-				return('application/javascript');
-			case '.json':
-				return('application/json');
-			case '.png':
-				return('image/png');
-			case '.jpg':
-			case '.jpeg':
-				return('image/jpeg');
-			case '.webp':
-				return('image/webp');
-			case '.gif':
-				return('image/gif');
-			case '.svg':
-				return('image/svg+xml');
-			case '.woff2':
-				return('font/woff2');
-			case '.woff':
-				return('font/woff');
-			case '.md':
-				return('text/markdown');
-			case '.ts':
-				return('application/typescript');
-			case '.txt':
-				return('text/plain');
-			case '.xml':
-				return('application/xml');
-			default:
-				return('application/octet-stream');
-		}
+		return(contentTypeOf(fileName));
 	}
 
 	constructor(name: string, args: GoogleCloudFolderArgs, opts?: pulumi.ComponentResourceOptions) {
@@ -186,5 +202,211 @@ export class GoogleCloudFolderWithArgs extends pulumi.ComponentResource {
 				});
 			});
 		}
+	}
+}
+
+export interface BucketSyncArgs {
+	/**
+	 * The bucket to upload to
+	 */
+	bucketName: pulumi.Input<string>;
+
+	/**
+	 * The directory to upload. When the program writes or patches the files
+	 * inside an `apply`, pass an output that resolves once they are written,
+	 * so the manifest is built from the final files.
+	 */
+	path: pulumi.Input<string>;
+
+	/**
+	 * The folder of the bucket to upload into, such as `'docs/'` (default:
+	 * the root). Objects outside it are never listed, changed or deleted, so
+	 * several `BucketSync`s, or other objects, can share one bucket.
+	 * `retainPrefixes` and `uploadLast` are relative to it.
+	 */
+	prefix?: string;
+
+	/**
+	 * Filter to apply to the files in the directory (paths relative to it)
+	 */
+	filter?: (file: string) => boolean;
+
+	/**
+	 * The content type of a file (default: from its extension, as `GoogleCloudFolderWithArgs`)
+	 */
+	computeContentType?: (fileName: string) => string;
+
+	/**
+	 * The `Cache-Control` header of a file (default: none)
+	 */
+	computeCacheControl?: (fileName: string) => string | undefined;
+
+	/**
+	 * Object names under these prefixes are uploaded before every other
+	 * file and are never deleted, so a page of an older version can still
+	 * load them (default: none)
+	 */
+	retainPrefixes?: string[];
+
+	/**
+	 * Object names uploaded after every other file, one at a time, in this
+	 * order (default: `['index.html']`)
+	 */
+	uploadLast?: string[];
+
+	/**
+	 * Delete objects that are not in the directory and not under
+	 * `retainPrefixes`, after the uploads (default: true)
+	 */
+	prune?: boolean;
+
+	/**
+	 * The project the caller is in, for the credentials (default: the `gcp:project` of the stack)
+	 */
+	project?: pulumi.Input<string>;
+
+	/**
+	 * Uploads and deletes at the same time (default: 16)
+	 */
+	concurrency?: number;
+
+	/**
+	 * Delete the source directory after the upload is complete (default: false)
+	 */
+	deleteAfterUpload?: boolean;
+}
+
+/** The manifest of a directory: every file with its SHA-256, content type and cache header */
+export function buildBucketSyncManifest(bucket: string, directory: string, args: Omit<BucketSyncArgs, 'bucketName' | 'path' | 'project' | 'concurrency' | 'deleteAfterUpload'>): BucketSyncManifest {
+	let names = filesOf(directory);
+	if (args.filter !== undefined) {
+		names = names.filter(args.filter);
+	}
+
+	const computeContentType = args.computeContentType ?? contentTypeOf;
+	const files = names.map(function(file): BucketSyncFile {
+		const name = file.split(path.sep).join('/');
+		const sha256 = createHash('sha256').update(fs.readFileSync(path.join(directory, file))).digest('hex');
+		const cacheControl = args.computeCacheControl?.(name);
+
+		return({
+			name,
+			sha256,
+			contentType: computeContentType(name),
+			...(cacheControl === undefined ? {} : { cacheControl })
+		});
+	}).sort(function(a, b) {
+		return(compareNames(a.name, b.name));
+	});
+
+	return({
+		directory: path.resolve(directory),
+		bucket,
+		prefix: normalizePrefix(args.prefix),
+		files,
+		retainPrefixes: args.retainPrefixes ?? [],
+		uploadLast: args.uploadLast ?? [ 'index.html' ],
+		prune: args.prune ?? true
+	});
+}
+
+/**
+ * Creates the manifest directory, or checks the one that exists: it must be
+ * a real directory of this user, and it is made private, so another account
+ * on the machine cannot place a link where the manifest goes
+ */
+export function ensurePrivateDirectory(directory: string): void {
+	fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+	const stats = fs.lstatSync(directory);
+	const ownedByUs = typeof process.getuid !== 'function' || stats.uid === process.getuid();
+	if (!stats.isDirectory() || !ownedByUs) {
+		throw(new Error(`${directory} must be a directory of this user, or not exist`));
+	}
+	if ((stats.mode & 0o077) !== 0) {
+		fs.chmodSync(directory, 0o700);
+	}
+}
+
+/** A path for `/bin/sh`, in single quotes */
+function shellQuote(value: string) {
+	return(`'${value.replaceAll("'", String.raw`'\''`)}'`);
+}
+
+/**
+ * Uploads a directory to a bucket with one resource instead of one
+ * `BucketObject` per file.
+ *
+ * The program builds a manifest of the files (name, SHA-256, content type,
+ * cache header) and writes it to a temporary file named by its hash. Only
+ * the hash, the bucket and the caller go into the state, as the environment
+ * of a `command.local.Command`, so the command runs exactly when the bucket
+ * would end up different. The command runs a script of this package that
+ * uploads the files that differ: `retainPrefixes` first, then the rest, then
+ * `uploadLast`, and deletes stale objects after that.
+ *
+ * Pulumi does not track the objects: `pulumi refresh` does not see an object
+ * changed by hand, and a removed `BucketSync` leaves the objects in the
+ * bucket (delete the bucket, or the objects, to remove them).
+ */
+export class BucketSync extends pulumi.ComponentResource {
+	readonly manifestHash: pulumi.Output<string>;
+	readonly command: command.local.Command;
+
+	constructor(name: string, args: BucketSyncArgs, opts?: pulumi.ComponentResourceOptions) {
+		super('keeta:synced-folder:BucketSync', name, {}, opts);
+
+		const manifestArgs = {
+			filter: args.filter,
+			computeContentType: args.computeContentType,
+			computeCacheControl: args.computeCacheControl,
+			prefix: args.prefix,
+			retainPrefixes: args.retainPrefixes,
+			uploadLast: args.uploadLast,
+			prune: args.prune
+		};
+
+		this.manifestHash = pulumi.all([ args.bucketName, args.path ]).apply(function([ bucket, directory ]) {
+			const manifest = buildBucketSyncManifest(bucket, directory, manifestArgs);
+			const hash = manifestHash(manifest);
+			const file = manifestPath(hash);
+			ensurePrivateDirectory(path.dirname(file));
+			fs.writeFileSync(file, JSON.stringify(manifest), { mode: 0o600 });
+
+			return(hash);
+		});
+
+		const caller = callerOf(this, args.project ?? gcp.config.project);
+
+		/*
+		 * Relative to the program directory, where the command runs, so the
+		 * command is the same on every machine that deploys the stack
+		 */
+		const script = path.relative(process.cwd(), path.join(__dirname, 'bucket-sync-script.js')).split(path.sep).join('/');
+		const run = `node ${shellQuote(script)}`;
+
+		this.command = new command.local.Command(`${name}-sync`, {
+			create: run,
+			update: run,
+			addPreviousOutputInEnv: false,
+			environment: {
+				BUCKET_SYNC_MANIFEST_HASH: this.manifestHash,
+				BUCKET_SYNC_BUCKET: args.bucketName,
+				BUCKET_SYNC_PROJECT: caller.project.apply(function(project) {
+					return(project ?? '');
+				}),
+				BUCKET_SYNC_IMPERSONATE: pulumi.output(caller.impersonateServiceAccount).apply(function(account) {
+					return(account ?? '');
+				}),
+				BUCKET_SYNC_CONCURRENCY: String(args.concurrency ?? 16)
+			}
+		}, { parent: this });
+
+		if (args.deleteAfterUpload) {
+			pulumi.all([ this.command.stdout, args.path ]).apply(function([ _ignoreStdout, directory ]) {
+				fs.rmSync(directory, { recursive: true, force: true });
+			});
+		}
+
+		this.registerOutputs({ manifestHash: this.manifestHash });
 	}
 }

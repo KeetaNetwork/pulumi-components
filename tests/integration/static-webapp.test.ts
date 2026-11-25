@@ -41,6 +41,14 @@ describe('StaticWebApp', function() {
 		const html = await response.text();
 		expect(html).toContain('Static Web App');
 		expect(html).toContain('Deployed successfully via Pulumi');
+
+		/* The second app uploads with BucketSync: same files, same headers */
+		const syncedBucketName = expectString(expectRecord(staticAppCDNOverride.bucket, 'staticAppCDNOverride bucket').name, 'staticAppCDNOverride bucket name');
+		const syncedResponse = await fetch(`https://storage.googleapis.com/${syncedBucketName}/index.html`);
+		expect(syncedResponse.ok).toBe(true);
+		expect(syncedResponse.headers.get('content-type')).toBe('text/html');
+		expect(syncedResponse.headers.get('cache-control')).toBe('public, max-age=10');
+		expect(await syncedResponse.text()).toBe(html);
 	}, 300_000); // 5 min timeout (simple GCS deployment)
 
 	afterAll(async function() {
