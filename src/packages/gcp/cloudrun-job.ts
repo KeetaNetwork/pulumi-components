@@ -2,9 +2,18 @@ import * as pulumi from '@pulumi/pulumi';
 import { randomUUID } from 'node:crypto';
 
 import type { DeepInput, DeepOutput } from '../../types';
-import { clientAuthInputs, googleAuthForClient } from './client-auth';
+import { authLibraryOf, clientAuthInputs, googleAuthForClient } from './client-auth';
 import type { ClientAuthInputs, ClientAuthProvider } from './client-auth';
-import type * as runTypes from '@google-cloud/run';
+import * as run from '@google-cloud/run';
+
+/*
+ * The client and its auth library are loaded with this module, so the
+ * provider captures them and they are serialized as a `require` of the path
+ * they were loaded from. A `require` inside the provider would run in the
+ * dynamic provider host and only find packages at the top of the program's
+ * node_modules (see `authLibraryOf`).
+ */
+const runAuthLibrary = authLibraryOf('@google-cloud/run');
 
 type ExecutionConditionState = 'STATE_UNSPECIFIED' | 'CONDITION_PENDING' | 'CONDITION_RECONCILING' | 'CONDITION_FAILED' | 'CONDITION_SUCCEEDED';
 
@@ -42,8 +51,8 @@ function executionStateOf(inputs: CloudRunJobExecutionInputs, output: ExecutionO
 	return({ ...inputs, ...output });
 }
 
-type RunExecution = runTypes.protos.google.cloud.run.v2.IExecution;
-type RunConditionState = runTypes.protos.google.cloud.run.v2.ICondition['state'];
+type RunExecution = run.protos.google.cloud.run.v2.IExecution;
+type RunConditionState = run.protos.google.cloud.run.v2.ICondition['state'];
 
 /**
  * The name of the state of a condition. The execution that the run operation
@@ -55,9 +64,7 @@ function conditionStateName(state: RunConditionState): string {
 		return(state ?? 'STATE_UNSPECIFIED');
 	}
 
-	// eslint-disable-next-line @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-require-imports
-	const { protos } = require('@google-cloud/run') as typeof runTypes;
-	const names: { [state: number]: string | undefined } = protos.google.cloud.run.v2.Condition.State;
+	const names: { [state: number]: string | undefined } = run.protos.google.cloud.run.v2.Condition.State;
 
 	return(names[state] ?? 'STATE_UNSPECIFIED');
 }
@@ -96,12 +103,8 @@ function executionOutputOf(execution: RunExecution): ExecutionOutput {
 }
 
 async function runJob(inputs: CloudRunJobExecutionInputs): Promise<ExecutionOutput> {
-	// Dynamic import to avoid issues with Pulumi serialization
-	// eslint-disable-next-line @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-require-imports
-	const { JobsClient } = require('@google-cloud/run') as typeof runTypes;
-
 	/* Without an account to impersonate the client finds the credentials of the environment itself */
-	const client = new JobsClient({ auth: await googleAuthForClient('@google-cloud/run', inputs.auth) });
+	const client = new run.JobsClient({ auth: await googleAuthForClient(runAuthLibrary, inputs.auth) });
 
 	// Run the job and wait for completion
 	const [operation] = await client.runJob({ name: jobPathOf(inputs) });
@@ -118,12 +121,6 @@ async function runJob(inputs: CloudRunJobExecutionInputs): Promise<ExecutionOutp
 function jobExecutionHasChanges(olds: Partial<CloudRunJobExecutionInputs>, news: Partial<CloudRunJobExecutionInputs>) {
 	return(olds.trigger !== news.trigger || jobPathOf(olds) !== jobPathOf(news));
 }
-
-export const _Testing = {
-	executionOutputOf,
-	executionStateOf,
-	jobExecutionHasChanges
-};
 
 const cloudRunJobExecutionProvider: pulumi.dynamic.ResourceProvider = {
 	async check(_ignore_oldInput: CloudRunJobExecutionInputs, newInput: CloudRunJobExecutionInputs) {
@@ -149,6 +146,13 @@ const cloudRunJobExecutionProvider: pulumi.dynamic.ResourceProvider = {
 		// Nothing to clean up - executions are immutable
 		return;
 	}
+};
+
+export const _Testing = {
+	executionOutputOf,
+	executionStateOf,
+	jobExecutionHasChanges,
+	provider: cloudRunJobExecutionProvider
 };
 
 export interface CloudRunJobExecutionArgs {
