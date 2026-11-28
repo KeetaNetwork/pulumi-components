@@ -106,6 +106,12 @@ function isAuthLibrary(value: unknown): value is typeof GoogleAuthLibrary {
  * resolves from the top of the program's node_modules, which need not hold
  * the client package. A module the provider captures is serialized as a
  * `require` of the path it was loaded from instead.
+ *
+ * That path is what follows the first `node_modules` in the file's location
+ * (for example `@keetanetwork/pulumi-components/node_modules/@google-cloud/run/build/src/index.js`),
+ * and it resolves only because the client packages declare no `exports` map.
+ * If one of them adds one, the deep path is refused and the provider fails
+ * to load in the host again.
  */
 export function authLibraryOf(clientPackage: string): typeof GoogleAuthLibrary {
 	const requireFromClient = createRequire(require.resolve(clientPackage));
